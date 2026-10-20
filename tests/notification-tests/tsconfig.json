@@ -1,0 +1,22 @@
+{
+  "extends": "@tsconfig/node26/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "rewriteRelativeImportExtensions": true,
+    "noUncheckedIndexedAccess": true,
+    "rootDir": "../..",
+    "types": ["node"]
+  },
+  "include": [
+    "unit/**/*.ts",
+    "integration/**/*.ts",
+    "contracts/**/*.ts",
+    "support/**/*.ts",
+    "../../src/fieldservice-notifications/src/**/*.ts"
+  ]
+}
