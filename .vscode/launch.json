@@ -1,0 +1,55 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build: api",
+      "program": "${workspaceFolder}/src/FieldService.Api/bin/Debug/net10.0/FieldService.Api.dll",
+      "cwd": "${workspaceFolder}/src/FieldService.Api",
+      "launchSettingsProfile": "http",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Notifications",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/src/fieldservice-notifications",
+      "program": "${workspaceFolder}/src/fieldservice-notifications/src/main.ts",
+      "runtimeArgs": ["--env-file-if-exists=.env"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Web dev server",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/src/fieldservice-web",
+      "command": "npm run dev"
+    },
+    {
+      "name": "Web in Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/src/fieldservice-web"
+    },
+    {
+      "name": "Web in Edge",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/src/fieldservice-web"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack",
+      "configurations": ["API", "Notifications", "Web dev server"],
+      "preLaunchTask": "env: check",
+      "stopAll": true
+    }
+  ]
+}

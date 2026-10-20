@@ -1,0 +1,216 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "tasks": [
+    {
+      "label": "env: create",
+      "type": "process",
+      "command": "node",
+      "args": ["infrastructure/scripts/create-dev-env.mjs"],
+      "problemMatcher": []
+    },
+    {
+      "label": "env: check",
+      "type": "process",
+      "command": "node",
+      "args": ["infrastructure/scripts/start-dev.mjs", "--check"],
+      "problemMatcher": []
+    },
+    {
+      "label": "db: bootstrap local server",
+      "type": "process",
+      "command": "node",
+      "args": ["infrastructure/scripts/create-dev-env.mjs", "--bootstrap"],
+      "problemMatcher": []
+    },
+    {
+      "label": "db: start container",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "infrastructure/docker-compose.yml", "up", "-d", "--wait", "db"],
+      "problemMatcher": []
+    },
+    {
+      "label": "tools: restore",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["tool", "restore"],
+      "problemMatcher": []
+    },
+    {
+      "label": "db: migrate",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["ef", "database", "update", "--project", "src/FieldService.Api"],
+      "dependsOn": ["tools: restore"],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "db: drop local database",
+      "type": "process",
+      "command": "dropdb",
+      "args": ["-h", "127.0.0.1", "--force", "fieldservice"],
+      "windows": {
+        "args": ["-h", "127.0.0.1", "-U", "postgres", "--force", "fieldservice"]
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "db: reset",
+      "dependsOn": ["db: drop local database", "db: bootstrap local server", "db: migrate"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "db: migration script",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["ef", "migrations", "script", "--idempotent", "--project", "src/FieldService.Api", "--output", "artifacts/migrations.sql"],
+      "dependsOn": ["tools: restore"],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build: api",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "src/FieldService.Api/FieldService.Api.csproj"],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "dev: api",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["watch", "--project", "src/FieldService.Api"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "dev-api",
+        "pattern": { "regexp": "^(?!)$" },
+        "background": { "activeBegins": true, "beginsPattern": "dotnet watch", "endsPattern": "Now listening on" }
+      }
+    },
+    {
+      "label": "dev: notifications",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/src/fieldservice-notifications" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "dev-notifications",
+        "pattern": { "regexp": "^(?!)$" },
+        "background": { "activeBegins": true, "beginsPattern": "--watch", "endsPattern": "server\\.listening" }
+      }
+    },
+    {
+      "label": "dev: web",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "dev-web",
+        "pattern": { "regexp": "^(?!)$" },
+        "background": { "activeBegins": true, "beginsPattern": "generate:api", "endsPattern": "ready in" }
+      }
+    },
+    {
+      "label": "dev: full stack",
+      "dependsOn": ["dev: api", "dev: notifications", "dev: web"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "test: api",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "--project", "tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj"],
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test: api (domain only)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "--project", "tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj", "--filter-namespace", "FieldService.Api.Tests.Domain"],
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test: mobile",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "--project", "tests/FieldService.Mobile.Tests/FieldService.Mobile.Tests.csproj"],
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test: notifications",
+      "type": "shell",
+      "command": "npm test",
+      "options": { "cwd": "${workspaceFolder}/src/fieldservice-notifications" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "test: web",
+      "type": "shell",
+      "command": "npm test",
+      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "test: e2e (host)",
+      "type": "shell",
+      "command": "npm run test:e2e:host",
+      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "test: e2e (compose)",
+      "type": "shell",
+      "command": "npm run test:e2e",
+      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "check: comments",
+      "type": "process",
+      "command": "node",
+      "args": ["infrastructure/scripts/check-no-comments.mjs"],
+      "problemMatcher": []
+    },
+    {
+      "label": "check: tracked files",
+      "type": "process",
+      "command": "node",
+      "args": ["infrastructure/scripts/check-tracked-files.mjs"],
+      "problemMatcher": []
+    },
+    {
+      "label": "compose: backend up",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "infrastructure/docker-compose.yml", "--profile", "backend", "up", "-d", "--build", "--wait"],
+      "problemMatcher": []
+    },
+    {
+      "label": "compose: full up",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "infrastructure/docker-compose.yml", "--profile", "full", "up", "-d", "--build", "--wait"],
+      "problemMatcher": []
+    },
+    {
+      "label": "compose: down",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "infrastructure/docker-compose.yml", "--profile", "full", "down"],
+      "problemMatcher": []
+    }
+  ]
+}

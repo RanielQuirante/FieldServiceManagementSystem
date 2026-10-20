@@ -1,0 +1,316 @@
+# Configuration
+
+This document lists every setting and environment variable of FieldService: the API, the notification service, the web dashboard and its end-to-end tests, the technician app, the Compose file, the database bootstrap and the test runs. For each one it gives the purpose, the value per environment and where the value comes from. Secrets are named here, never shown: the `.env.example` files list names with empty values, and `infrastructure/scripts/create-dev-env.mjs` creates the local values ([development.md](development.md)).
+
+## Environments
+
+| Aspect | Development | Testing | Staging | CI | Production |
+|---|---|---|---|---|---|
+| Purpose | Inner loop on a developer machine | .NET integration tests on an in-process host | Production-like local stack and end-to-end target | Checks of pull requests and pushes | A real deployment |
+| Where it runs | Host processes on macOS or Windows | The `dotnet test` process | Docker Compose, profiles `backend` or `full` | GitHub-hosted runners | A container platform |
+| `ASPNETCORE_ENVIRONMENT` | `Development`, from `launchSettings.json` | `Testing`, set by the test host | `Staging` | `Testing` for the API tests; `Staging` for end-to-end runs | `Production` |
+| `NODE_ENV` | `development` | `test` | `production` | `test` for the Node tests; `production` for end-to-end runs | `production` |
+| Database | Local PostgreSQL 17 on 127.0.0.1:5432, database `fieldservice`; optionally the Compose `db` on 127.0.0.1:5433 | The same server, with one `fieldservice_test_<run>` database per run | Compose `db` | Compose `db` on the runner, 127.0.0.1:5433 | Managed PostgreSQL 17 with TLS |
+| Migrations applied by | `dotnet ef database update`, as `fieldservice_migrator` | The test fixture, as `fieldservice_migrator` | The `migrate` service | The test fixture; the `migrate` service for end-to-end runs | A release step, as `fieldservice_migrator` |
+| Secrets come from | API user-secrets store `fieldservice-api`; `src/fieldservice-notifications/.env`; `src/fieldservice-web/e2e/.env` for Playwright | Random values per run, in memory | `infrastructure/.env` | Throwaway values from `create-dev-env.mjs --ci` | The platform's secret store, as environment variables |
+| OpenAPI document | http://localhost:5080/openapi/v1.json | In process | Not mapped | In process | Not mapped |
+
+Staging runs the Production code paths: Secure cookies, JSON console logs and no OpenAPI document. It differs from Production in two ways only: it allows demo data, and it binds only to loopback.
+
+## Sources and precedence
+
+Later sources override earlier ones.
+
+| Consumer | Sources, from lowest to highest precedence | Where development secrets live |
+|---|---|---|
+| API | `appsettings.json`, then `appsettings.{Environment}.json`, then user-secrets (Development only, id `fieldservice-api`), then environment variables, then the command line | User-secrets |
+| Design-time database context and migrations bundle | User-secrets `fieldservice-api` (optional), then environment variables | User-secrets |
+| API tests | The test host sets its configuration in memory. The test fixture reads environment variables first, then user-secrets `fieldservice-api-tests` | Test user-secrets |
+| Notification service | Built-in defaults, then `.env` (loaded only through `--env-file-if-exists=.env` by `npm run dev` and the VS Code launch configuration), then real environment variables, which always win. An empty value counts as unset | `src/fieldservice-notifications/.env` |
+| Web dashboard | `vite.config.ts` reads two proxy targets from the environment. Nothing reaches the browser bundle: there are no `VITE_` variables, and Vite reads no env file | None |
+| End-to-end tests | `src/fieldservice-web/e2e/.env`, which `playwright.config.ts` loads only when the file exists and `E2E_DEMO_PASSWORD` is unset; then real environment variables, which always win | `src/fieldservice-web/e2e/.env` |
+| Technician app | MSBuild properties at build time, embedded as assembly metadata | None |
+| Compose | `infrastructure/.env`, loaded from the Compose project folder `infrastructure/`; shell environment variables override it. Fixed values live in `docker-compose.yml` | `infrastructure/.env` |
+| `bootstrap.sql` | psql `\getenv` from the process environment | The environment that `create-dev-env.mjs`, the Compose `db` service or the test fixture sets |
+
+## Naming rules
+
+- **API keys** are hierarchical, `Section:Key`. As environment variables they use a double underscore, `Auth__AccessTokenKey`, and array items take an index, `Cors__AllowedOrigins__0`. Serilog override keys contain dots, for example `Serilog__MinimumLevel__Override__Microsoft.AspNetCore`; process and Compose environments accept these names, but a shell `export` does not.
+- **Compose variables** are UPPER_SNAKE_CASE. `docker-compose.yml` maps each one explicitly to an API key or a Node variable, and uses no `env_file`, so a service receives only the values it names.
+- **Node variables** are UPPER_SNAKE_CASE. Lists are space-separated.
+- **Test switches** start with `FIELDSERVICE_`, and Playwright inputs start with `E2E_`.
+
+## Values fixed in code
+
+These values are deliberately not configurable; changing one is a code change with tests, so no setting exists for it:
+
+- token and session lifetimes, and the 30-second refresh grace window;
+- rate limits;
+- the event queue (capacity 1,000, oldest dropped first) and the event dispatcher's retry budget;
+- the 16 KB webhook body limit;
+- the 60-second socket-ticket lifetime;
+- the notification service's event-id retention for duplicate detection: 2 × `WEBHOOK_TOLERANCE_SECONDS` + 60 seconds (660 seconds at the default tolerance), in a map of at most 10,000 ids that evicts the oldest first, so it always outlasts the window in which an event's timestamp is accepted;
+- the technician app's HTTP timeout of 15 seconds;
+- OpenAPI exposure (Development and Testing only);
+- the refusal to seed demo data in Production;
+- the notification service's log rotation (daily, 50 MB, 14 files) and the technician app's (daily, 5 MB, 7 files).
+
+## API (`src/FieldService.Api`)
+
+### Settings
+
+| Key (environment variable) | Purpose | Secret | Set in |
+|---|---|---|---|
+| `ConnectionStrings:FieldService` (`ConnectionStrings__FieldService`) | Connection of the running API, as `fieldservice_app`. See [Connection strings](#connection-strings) | Yes | User-secrets; test host; Compose; secret store |
+| `ConnectionStrings:Migrations` (`ConnectionStrings__Migrations`) | Connection as `fieldservice_migrator`, read only by the design-time database context and the migrations bundle, never by the running API | Yes | User-secrets; Compose `migrate` service; release step |
+| `Auth:AccessTokenKey` (`Auth__AccessTokenKey`) | HS256 signing key of access tokens: base64 of 32 bytes or more | Yes | User-secrets; test host; Compose; secret store |
+| `Auth:SocketTicketKey` (`Auth__SocketTicketKey`) | HS256 key of socket tickets: base64 of 32 bytes or more, the same value as the notification service's `SOCKET_TICKET_KEY` | Yes | As above |
+| `Notifications:BaseUrl` (`Notifications__BaseUrl`) | Base URL of the notification service. When it is empty, the API sends no job events and runs on its own | No | `appsettings.Development.json`; Compose; platform |
+| `Notifications:WebhookSecret` (`Notifications__WebhookSecret`) | Signing secret of the job events sent to the notification service: `whsec_` followed by base64 of 32 bytes or more, the same value as the notification service's `WEBHOOK_SECRETS`. Needed when `Notifications:BaseUrl` is set | Yes | User-secrets; test host; Compose; secret store |
+| `Cors:AllowedOrigins` (`Cors__AllowedOrigins__0` and up) | Browser origins allowed by the CORS policy. Traffic through the Vite proxy or nginx is same-origin and does not need them | No | `appsettings.Development.json`; Compose; platform |
+| `ForwardedHeaders:KnownProxies` (`ForwardedHeaders__KnownProxies__0` and up) | Proxy addresses trusted for `X-Forwarded-For` and `X-Forwarded-Proto`, with a forward limit of 1; `X-Forwarded-Host` is never used. When set, the list replaces the built-in loopback defaults | No | Compose; platform |
+| `ForwardedHeaders:KnownNetworks` (`ForwardedHeaders__KnownNetworks__0` and up) | Proxy networks in CIDR form. Empty in every environment: no network range is trusted | No | `appsettings.json` |
+| `Seed:DemoData` (`Seed__DemoData`) | Lets the API seed the demo data at startup. Refused in Production | No | `appsettings.Development.json`; Compose |
+| `Seed:DemoPassword` (`Seed__DemoPassword`) | Password of every demo account, 12 characters or more | Yes, local only | User-secrets; Compose |
+| `Logs:Directory` (`Logs__Directory`) | Log folder, resolved against the content root | No | `appsettings*.json`; Compose |
+| `Logs:FileEnabled` (`Logs__FileEnabled`) | Turns the file sink on or off | No | `appsettings*.json` |
+| `Logs:RetainedFileCountLimit` (`Logs__RetainedFileCountLimit`) | Number of log files kept, the current one included | No | `appsettings.json` |
+| `Logs:FileSizeLimitBytes` (`Logs__FileSizeLimitBytes`) | Size at which a log file rolls over to a numbered file | No | `appsettings.json` |
+| `Logs:ConsoleFormat` (`Logs__ConsoleFormat`) | `Text`, or `Json` for compact JSON events | No | `appsettings*.json`; Compose |
+| `Serilog:MinimumLevel:Default` (`Serilog__MinimumLevel__Default`) | Minimum log level | No | `appsettings*.json` |
+| `Serilog:MinimumLevel:Override:<namespace>` | Minimum level per namespace. `Microsoft.AspNetCore.Hosting.Diagnostics` stays at `Warning` everywhere, because its request lines contain query strings | No | `appsettings*.json` |
+| `Kestrel:Limits:MaxRequestBodySize` | Global request body limit. Individual endpoints lower it | No | `appsettings.json` |
+| `AllowedHosts` | Host filtering: a request whose `Host` header is not listed gets 400. On loopback this blocks DNS rebinding, which a loopback binding alone does not stop | No | `appsettings.json`; `appsettings.Development.json`; Compose; platform |
+| `ASPNETCORE_ENVIRONMENT` (environment only) | Selects the environment | No | `launchSettings.json`; test host; Compose; platform |
+| `ASPNETCORE_HTTP_PORTS` (environment only) | Listen port inside a container | No | The base image |
+
+### Values per environment
+
+| Key | Development | Testing | Staging (Compose) | Production |
+|---|---|---|---|---|
+| `ConnectionStrings:FieldService` | Local server, app role | The run's test database, app role | `db` service, app role | Managed server, app role, TLS |
+| `ConnectionStrings:Migrations` | Local server, migrator role | Not set: the fixture migrates by itself | `migrate` service only | Release step only |
+| `Auth:AccessTokenKey`, `Auth:SocketTicketKey` | Random values from `create-dev-env.mjs` | Random per run | `${AUTH_ACCESS_TOKEN_KEY}`, `${AUTH_SOCKET_TICKET_KEY}` | Secret store |
+| `Notifications:BaseUrl` | `http://127.0.0.1:5090` | Empty | `http://notifications:5090` | Private `https` URL of the service |
+| `Notifications:WebhookSecret` | Random value from `create-dev-env.mjs` | Random per run | `${NOTIFICATIONS_WEBHOOK_SECRET}` | Secret store |
+| `Cors:AllowedOrigins` | `http://localhost:5173`, `http://127.0.0.1:5173` | Set by the tests that need it | `http://localhost:8081`, `http://127.0.0.1:8081`, `http://localhost:5173`, `http://127.0.0.1:5173` | The public web origin, `https` only |
+| `ForwardedHeaders:KnownProxies` | Empty: the loopback defaults cover the Vite proxy and `vite preview` | Empty | `${WEB_IPV4_ADDRESS:-172.30.80.10}`, nginx's fixed address | nginx's address, one entry per instance; never the TLS proxy |
+| `ForwardedHeaders:KnownNetworks` | Empty | Empty | Empty | Empty |
+| `Seed:DemoData` | `true` | `false` | `true` | `false` |
+| `Seed:DemoPassword` | Random value from `create-dev-env.mjs` | Not set | `${SEED_DEMO_PASSWORD}` | Not set |
+| `Logs:Directory` | `../../logs/api` | A temporary folder, in the file-logging test only | `/app/logs` | `/app/logs`, on a volume |
+| `Logs:FileEnabled` | `true` | `false` | `true` | `true` |
+| `Logs:RetainedFileCountLimit` | `14` | Not used | `14` | `14` |
+| `Logs:FileSizeLimitBytes` | `52428800` | Not used | `52428800` | `52428800` |
+| `Logs:ConsoleFormat` | `Text` | `Text` | `Json` | `Json` |
+| `Serilog:MinimumLevel:Default` | `Debug` | `Warning` | `Information` | `Information` |
+| `Serilog:MinimumLevel:Override` | `Microsoft`, `Microsoft.AspNetCore`, `Microsoft.EntityFrameworkCore` and `System.Net.Http` at `Information`; `Microsoft.AspNetCore.Hosting.Diagnostics` at `Warning` | The base file's overrides | `Microsoft.AspNetCore`, `Microsoft.AspNetCore.Hosting.Diagnostics`, `Microsoft.EntityFrameworkCore` and `System.Net.Http` at `Warning` | As Staging |
+| `Kestrel:Limits:MaxRequestBodySize` | `1048576` | `1048576` | `1048576` | `1048576` |
+| `AllowedHosts` | `localhost;127.0.0.1;10.0.2.2` | `*` (the test server) | `localhost;127.0.0.1;10.0.2.2` | The public host name |
+| `ASPNETCORE_ENVIRONMENT` | `Development` | `Testing` | `Staging` | `Production` |
+| `ASPNETCORE_HTTP_PORTS` | Not set: `launchSettings.json` binds http://localhost:5080 | Not set | `8080` | `8080` |
+
+### Connection strings
+
+| Connection | Development | Staging (Compose) | Production |
+|---|---|---|---|
+| App, `ConnectionStrings:FieldService` | `Host=127.0.0.1;Port=5432;Database=fieldservice;Username=fieldservice_app;Password=…;Maximum Pool Size=20;Application Name=fieldservice-api` | `Host=db;Port=5432;Database=fieldservice;Username=fieldservice_app;Password=…;Maximum Pool Size=20;Application Name=fieldservice-api;GSS Encryption Mode=Disable` | The managed host, with `Maximum Pool Size=20;Application Name=fieldservice-api` and `SSL Mode=VerifyFull;Root Certificate=<CA path>` |
+| Migrator, `ConnectionStrings:Migrations` | `Host=127.0.0.1;Port=5432;Database=fieldservice;Username=fieldservice_migrator;Password=…;Application Name=fieldservice-migrator` | `Host=db;Port=5432;Database=fieldservice;Username=fieldservice_migrator;Password=…;Application Name=fieldservice-migrator;GSS Encryption Mode=Disable` | The managed host, with `Application Name=fieldservice-migrator` and TLS |
+
+- `create-dev-env.mjs --database compose` points both Development strings at the Compose `db` on 127.0.0.1:5433; `--database local` points them back at 127.0.0.1:5432.
+- `Maximum Pool Size=20` keeps the API's pool below the app role's connection limit of 30; Npgsql's default of 100 would exhaust it under load.
+- `Application Name` names the sessions in `pg_stat_activity` and in the server log.
+- `Include Error Detail` must stay off, so that database errors never carry row values into logs.
+
+### Settings files
+
+The API has exactly three settings files:
+
+| File | Holds |
+|---|---|
+| `appsettings.json` | The production-safe defaults, which Staging and Production use: `AllowedHosts` `*`, the request body limit, the Serilog levels, the `Logs` section with JSON console output, empty CORS and forwarded-header lists, an empty `Notifications:BaseUrl` and `Seed:DemoData` `false` |
+| `appsettings.Development.json` | The Development host list, the Debug level with its overrides, `../../logs/api` with text console output, the two `:5173` origins, the local notification service URL and `Seed:DemoData` `true` |
+| `appsettings.Testing.json` | The `Warning` level, the file sink off and text console output |
+
+- **No Staging or Production file.** Staging values come from the Compose environment and Production values from the platform, so each value has one source. The same image runs in both environments, and a committed Production file could not hold the real values, such as the public host name.
+- **Repeated namespaces.** The Development file repeats the base file's namespaces, because configuration merges key by key: a broader `Microsoft` override alone would leave the base file's `Warning` overrides in force.
+- **SQL in Development logs.** `Microsoft.EntityFrameworkCore` at `Information` shows the executed SQL commands. Parameter values stay hidden, because sensitive-data logging is off everywhere.
+- **No query strings.** `Microsoft.AspNetCore.Hosting.Diagnostics` stays at `Warning` in every file: its "Request starting" and "Request finished" lines contain the query string, which may hold search terms. The API's own request log already records each request without its query string. Because the base file sets the same override, raising `Microsoft.AspNetCore` through an environment variable does not bring these lines back.
+- **Allowed hosts.** `localhost` serves browsers, the Windows app and a USB device through `adb reverse`; `127.0.0.1` serves the Vite proxy, which rewrites `Host` to its target, plus scripts and Playwright; `10.0.2.2` serves the Android emulator. A session that serves another host name adds it on the command line, for example `dotnet run --project src/FieldService.Api -- --AllowedHosts "localhost;127.0.0.1;10.0.2.2;<extra host>"`.
+
+`Properties/launchSettings.json` has one profile, `http`: it binds http://localhost:5080 and sets `ASPNETCORE_ENVIRONMENT` to `Development`. `dotnet run`, `dotnet watch` and the VS Code `API` configuration all use it.
+
+### OpenAPI document
+
+The API serves its OpenAPI 3.1 document at `/openapi/v1.json` in Development and Testing only. No setting changes this. The API ships no API explorer page, and `/swagger` answers 404 in every environment ([ADR 0017](decisions/0017-api-explorer-in-development.md)).
+
+### Design-time database context and migrations bundle
+
+- The design-time database context builds its configuration from user-secrets `fieldservice-api` (optional) and environment variables, in that order, and reads only `ConnectionStrings:Migrations`.
+- `dotnet ef migrations has-pending-model-changes` never opens a connection, so a password-free value is enough for it, for example `Host=127.0.0.1;Port=5433;Database=fieldservice;Username=fieldservice_migrator`.
+- The migrations bundle uses the same factory, so the Compose `migrate` service sets `ConnectionStrings__Migrations`.
+
+### Startup checks
+
+The API validates its configuration before it listens. A failed check logs the event `config.invalid` with the key and the rule, never the value, and the process exits with a non-zero code.
+
+| Check | Rule |
+|---|---|
+| `ConnectionStrings:FieldService` | Set, a valid PostgreSQL connection string, and `Include Error Detail` not enabled |
+| `Logs` | `ConsoleFormat` is `Text` or `Json`. When `FileEnabled` is `true`: `Directory` is set, and `RetainedFileCountLimit` and `FileSizeLimitBytes` are 1 or more. An invalid `Logs` setting is reported as one fatal line naming the key and the rule, because no configured logger exists yet |
+| `Cors:AllowedOrigins` | Each entry is an absolute `http` or `https` origin without a path; `*` is refused. In Production every entry uses `https` |
+| `ForwardedHeaders:KnownProxies` and `KnownNetworks` | Each entry parses as an IP address, or as a network in CIDR notation |
+| Pending migrations (Development and Staging only) | The database has no pending migration; otherwise the message names the pending migrations and the command `dotnet ef database update --project src/FieldService.Api` |
+
+An empty or whitespace-only value counts as missing.
+
+## Compose variables (`infrastructure/.env`)
+
+`create-dev-env.mjs` writes every key, so interpolation never fails, whichever profile is active. The Compose file marks each secret as required with `${VAR:?}`, which stops Compose with "required variable … is missing a value" when `infrastructure/.env` is missing, and reads optional values with `${VAR:-default}`, which treats an empty value as unset.
+
+| Variable | Used by | Purpose | Default | Secret | Format |
+|---|---|---|---|---|---|
+| `DB_HOST_PORT` | `db` port mapping | Host port of the container's PostgreSQL | `5433` | No | 1024 to 65535 |
+| `NETWORK_SUBNET` | Network `fieldservice-net` | Fixed subnet that holds nginx's fixed address | `172.30.80.0/24` | No | IPv4 CIDR. Change it only if it overlaps an existing Docker network, and then set a matching `WEB_IPV4_ADDRESS` |
+| `WEB_IPV4_ADDRESS` | `web` address; the API's only trusted proxy | nginx's fixed address | `172.30.80.10` | No | An IPv4 address inside `NETWORK_SUBNET`, with the host part `.10`. An address outside the subnet makes `docker compose up` fail |
+| `POSTGRES_PASSWORD` | `db` | Superuser password, used by the database initialisation and by the test admin connection on a CI runner | Required | Yes | 32 characters, base64url |
+| `FIELDSERVICE_MIGRATOR_PASSWORD` | `db` bootstrap; `migrate` | Password of `fieldservice_migrator` | Required | Yes | 32 characters, base64url |
+| `FIELDSERVICE_APP_PASSWORD` | `db` bootstrap; `api` | Password of `fieldservice_app` | Required | Yes | 32 characters, base64url |
+| `AUTH_ACCESS_TOKEN_KEY` | `api` `Auth__AccessTokenKey` | Access-token key | Required | Yes | Base64 of 32 random bytes |
+| `AUTH_SOCKET_TICKET_KEY` | `api` `Auth__SocketTicketKey`; `notifications` `SOCKET_TICKET_KEY` | Socket-ticket key, shared by both services | Required | Yes | Base64 of 32 random bytes |
+| `NOTIFICATIONS_WEBHOOK_SECRET` | `api` `Notifications__WebhookSecret`; `notifications` `WEBHOOK_SECRETS` | Event signing secret | Required | Yes | `whsec_` followed by base64 of 32 random bytes |
+| `SEED_DEMO_PASSWORD` | `api` `Seed__DemoPassword` | Demo account password | Required | Yes, local only | `xxxx-xxxx-xxxx-xxxx`, 19 characters |
+
+- The `db` service fixes its superuser and maintenance database at `postgres`. The bootstrap script creates `fieldservice`, owned by `fieldservice_migrator`.
+- The bootstrap script runs once, on an empty volume, with the two role passwords from the container's environment. After `create-dev-env.mjs --force`, reset the volume with `down -v`.
+
+## Notification service (`src/fieldservice-notifications`)
+
+`src/config.ts` validates the environment at startup and returns a frozen configuration. An empty value counts as unset. An invalid value stops the service with exit code 1 and the message `config.invalid: <variable> <rule>`, which names the variable and the rule, never the value.
+
+| Variable | Purpose | Development (`.env`) | Test | Staging (Compose) | Production | Secret | Rules and default |
+|---|---|---|---|---|---|---|---|
+| `HOST` | Listen address | `127.0.0.1` | `127.0.0.1` | `0.0.0.0` | `0.0.0.0` | No | An IP literal or a host name; default `127.0.0.1` |
+| `PORT` | Listen port | `5090` | `0` (any free port) | `5090` | `5090` | No | 0 to 65535; default `5090` |
+| `NODE_ENV` | Runtime mode | `development` | `test` | `production` | `production` | No | `development`, `test` or `production`; default `production` |
+| `LOG_LEVEL` | pino level of every log target | `debug` | `silent`, or per test | `info` | `info` | No | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`; default `info` |
+| `LOG_DIR` | Folder of the log files, relative to the working directory | `../../logs/notifications` | A temporary folder | `/app/logs` | `/app/logs`, on a volume | No | Required |
+| `LOG_PRETTY` | Readable console output through pino-pretty | `true` | `false` | `false` | `false` | No | `true` or `false`; default `false`. Honoured only when `NODE_ENV` is `development`, and ignored otherwise; the production path never loads pino-pretty |
+| `WEBHOOK_SECRETS` | Accepted event signing secrets, newest first, space-separated | The API's `Notifications:WebhookSecret` | Per test | `${NOTIFICATIONS_WEBHOOK_SECRET}` | Secret store; two values during a rotation | Yes | Required. 1 or 2 entries, each `whsec_` followed by base64 of 32 bytes or more, and none a published test key or a patterned key |
+| `WEBHOOK_TOLERANCE_SECONDS` | Allowed clock skew of an event's `webhook-timestamp` | Empty (300) | Per test | Empty (300) | `300` | No | An integer from 1 to 300; default `300` |
+| `SOCKET_TICKET_KEY` | HS256 key that verifies socket tickets | The API's `Auth:SocketTicketKey` | Per test | `${AUTH_SOCKET_TICKET_KEY}` | Secret store | Yes | Required. Base64 of 32 bytes or more, not a published test key and not a patterned key. Both services decode it to the same bytes |
+| `SOCKET_TICKET_ISSUER` | Expected ticket issuer | Empty | Default | Default | Default | No | Default `fieldservice-api` |
+| `SOCKET_TICKET_AUDIENCE` | Expected ticket audience | Empty | Default | Default | Default | No | Default `fieldservice-notifications` |
+| `SOCKET_ALLOWED_ORIGINS` | Browser origins that may open a socket, space-separated | `http://localhost:5173 http://127.0.0.1:5173` | Per test | `http://localhost:8081 http://127.0.0.1:8081 http://localhost:5173 http://127.0.0.1:5173` | The public web origin | No | Required. 1 to 10 absolute `http` or `https` origins, with no path and no `*` |
+| `SOCKET_SESSION_MAX_SECONDS` | Forced disconnect after this many seconds | Empty (900) | Small, in the session-cap test | Empty (900) | `900` | No | An integer from 1 to 3600; default `900` |
+
+- A **patterned key** is one whose decoded bytes are all equal, or each differ from the previous byte by the same step. A **published test key** is one of the keys in the test vector files under `docs/contracts/events/`. A key copied from an example or typed by hand therefore fails at startup.
+- `WEBHOOK_SECRETS` holds one secret normally and two during a rotation (see [Secrets](#secrets)).
+- The service logs the event `server.listening`, with `host` and `port`, once it accepts connections.
+
+## Web dashboard and end-to-end tests (`src/fieldservice-web`)
+
+| Variable | Read by | Purpose | Default | Secret |
+|---|---|---|---|---|
+| `API_PROXY_TARGET` | `vite.config.ts` | Target of the `/api` proxy of the dev server and of `vite preview` | `http://127.0.0.1:5080` | No |
+| `REALTIME_PROXY_TARGET` | `vite.config.ts` | Target of the `/socket.io` proxy, WebSocket included, of the dev server and of `vite preview` | `http://127.0.0.1:5090` | No |
+| `E2E_BASE_URL` | `playwright.config.ts` | Overrides the base URL of the Playwright project that runs | The project's own base URL: `compose` http://127.0.0.1:8081, `host` http://127.0.0.1:5173 | No |
+| `E2E_DEMO_PASSWORD` | Playwright tests | Demo account password for sign-in; one value serves the host stack and the Compose stack | Locally, `playwright.config.ts` loads it from `src/fieldservice-web/e2e/.env` when it is unset. CI exports it | Yes, local only |
+| `E2E_LOGS_DIR` | Playwright global teardown | The folder whose `api` and `notifications` logs are scanned for leaked secrets after a run | `../../logs`, the repository's `logs/` seen from `src/fieldservice-web` | No |
+| `E2E_RUN_ID` | Playwright global setup | Marks every record a run creates | Created per run | No |
+| `CI` | `playwright.config.ts`, Vitest | Set by the CI runner. Turns on `forbidOnly`, one retry, failure on flaky tests and the CI reporters | Unset locally | No |
+
+- No `VITE_` variable exists, and none may hold a secret, because Vite inlines such variables into the bundle.
+- The dev server and `vite preview` both bind 127.0.0.1:5173 with `strictPort`. Both proxy `/api` with `changeOrigin` and `xfwd`, so the API sees the browser's address through its forwarded-headers handling, and `/socket.io` with WebSocket support. Only `vite preview` sends the production security headers: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy`, with the values nginx sends.
+
+**Playwright projects.** Each package script runs one project:
+
+| Project | Stack under test | Script |
+|---|---|---|
+| `compose` | The Compose `full` profile: nginx with the production Content Security Policy, the API in Staging | `npm run test:e2e` |
+| `host` | The host processes, with the dashboard on 127.0.0.1:5173 served by the Vite dev server or by `vite preview` | `npm run test:e2e:host` |
+
+Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantine` are excluded from both scripts.
+
+## Technician app (`src/FieldService.Mobile`)
+
+| Property | Purpose | Debug | Release |
+|---|---|---|---|
+| `ApplicationId`, `ApplicationTitle` | Android package name and Windows identity; the display name | `io.github.ranielquirante.fieldservice.tech`, `FieldService Tech` | Same |
+| `ApiBaseUrl` | API root, embedded as assembly metadata | `http://10.0.2.2:5080` on Android, `http://localhost:5080` on Windows; no default on the plain `net10.0` target, which only the tests build | Required on the Android and Windows targets, and it must use `https`; the build fails otherwise, and a runtime check enforces the same rule. CI passes `https://fieldservice.example` |
+| Log level | Minimum log level, fixed at compile time | Debug | Information |
+| `RuntimeIdentifierOverride` | Windows publish architecture | Host default | `win-x64` in CI |
+| `WindowsPackageType` | Unpackaged Windows app | `None` | `None` |
+| `AndroidPackageFormats` | Package format of the CI Release build | Not set | `apk` in CI |
+| `AndroidSdkDirectory`, `JavaSdkDirectory`, `AcceptAndroidSDKLicenses` | One-time `InstallAndroidDependencies` on a developer machine | Absolute paths | Not set |
+
+## Database bootstrap and API test runs
+
+| Variable | Read by | Purpose | Local | CI | Secret |
+|---|---|---|---|---|---|
+| `FIELDSERVICE_MIGRATOR_PASSWORD` | `bootstrap.sql` (`\getenv`), the `db` container, the test fixture | Password set on, and used for, `fieldservice_migrator` | Created by `create-dev-env.mjs`; stored in `infrastructure/.env` and in the test user-secrets store | Exported by `create-dev-env.mjs --ci` | Yes |
+| `FIELDSERVICE_APP_PASSWORD` | As above | The same, for `fieldservice_app` | As above | As above | Yes |
+| `FIELDSERVICE_TEST_ADMIN_CONNECTION` | API test fixture | Superuser connection that runs `bootstrap.sql` and creates and drops `fieldservice_test_<run>` databases | macOS: `Host=127.0.0.1;Port=5432;Username=<macOS account>;Database=postgres`, with trust authentication. Windows: `Username=postgres` with the installer password. Stored in the test user-secrets store | `Host=127.0.0.1;Port=5433;Username=postgres;Password=…;Database=postgres` | Yes, when it holds a password |
+| `FIELDSERVICE_UPDATE_CONTRACTS` | OpenAPI snapshot test | `1` rewrites `docs/contracts/openapi.v1.json` instead of comparing | Unset; set by hand for a reviewed contract update | Never set | No |
+
+- The fixture reads each `FIELDSERVICE_*` value from the environment first, then from the user-secrets store `fieldservice-api-tests`. It never reads `infrastructure/.env` and never creates a password.
+- `bootstrap.sql` sets both role passwords on every run, so running it again re-synchronises them. It refuses a password shorter than 16 characters.
+- The database name comes from the psql variable `db_name`, default `fieldservice`; the fixture passes `-v db_name=fieldservice_test_<run>`.
+- The fixture runs `bootstrap.sql` through `psql`, and `\getenv` needs psql 15 or later. On macOS Homebrew's `postgresql@17` provides it; on Windows, add the PostgreSQL `bin` folder to `PATH`.
+
+## Toolchain and CI variables
+
+| Variable | Where | Value |
+|---|---|---|
+| `DOTNET_NOLOGO`, `DOTNET_CLI_TELEMETRY_OPTOUT`, `TESTINGPLATFORM_TELEMETRY_OPTOUT` | CI; optional on developer machines | `true` |
+| `CI` | Set by the CI runner | `true`. `Directory.Build.props` then turns on locked restores for every .NET project with a lock file |
+| `GITHUB_ENV` | Set by the CI runner | `create-dev-env.mjs --ci` appends the test and end-to-end values here |
+| `JAVA_HOME` | Developer machines | macOS: `$(/usr/libexec/java_home -v 21)`. Windows: the Microsoft OpenJDK 21 folder |
+| `ANDROID_HOME` | Developer machines | macOS: `$HOME/Library/Android/sdk`. Windows: `%LOCALAPPDATA%\Android\Sdk` |
+| `DOTNET_ROOT` | Developer machines | Unset. It must not point into `/opt/homebrew/Cellar/dotnet/`; the Microsoft SDK installs to `/usr/local/share/dotnet` |
+| `PGPASSWORD` | Optional, for `create-dev-env.mjs --bootstrap` and `dropdb` on a password-protected server (Windows) | The superuser password, for one terminal session; never written to disk by the scripts |
+
+## Secrets
+
+### Formats, stores and rotation
+
+| Secret | Format | Development | Staging | CI | Production | Rotation |
+|---|---|---|---|---|---|---|
+| Compose superuser password | 24 random bytes, base64url (32 characters) | `infrastructure/.env` | Same | Throwaway | Managed by the database service | Reset the Compose volume, or `ALTER ROLE postgres` |
+| `fieldservice_migrator` and `fieldservice_app` passwords | Same | `infrastructure/.env`, API user-secrets, test user-secrets | `infrastructure/.env` | Throwaway | Secret store | `ALTER ROLE … PASSWORD`, then update the connection string and restart |
+| `Auth:AccessTokenKey` | 32 random bytes, standard base64 | API user-secrets | `infrastructure/.env` | Throwaway | Secret store | Replace it and restart the API; clients refresh their sessions silently |
+| `Auth:SocketTicketKey` and `SOCKET_TICKET_KEY` | 32 random bytes, standard base64 | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Replace it in both services together. Tickets last 60 seconds, and open sockets reconnect within the 900-second session cap |
+| `Notifications:WebhookSecret` and `WEBHOOK_SECRETS` | `whsec_` followed by base64 of 32 random bytes | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Without downtime: (1) the notification service gets the new and the old secret, newest first; (2) the API switches to the new secret; (3) the notification service drops the old one |
+| `Seed:DemoPassword` and `E2E_DEMO_PASSWORD` | 16 characters from `abcdefghjkmnpqrstuvwxyz23456789`, grouped `xxxx-xxxx-xxxx-xxxx` | API user-secrets and `src/fieldservice-web/e2e/.env` | `infrastructure/.env` | Throwaway (`E2E_DEMO_PASSWORD`) | None | `create-dev-env.mjs --force`, then reset the database, because existing password hashes are not rewritten |
+
+- The values `create-dev-env.mjs` creates never contain `$`, `#`, quotes, spaces or `;`, so they are safe in env files, in Compose interpolation and inside connection strings.
+- Values come only from Node's `crypto.randomBytes`.
+- One value per secret feeds every output: `AUTH_SOCKET_TICKET_KEY`, `Auth:SocketTicketKey` and `SOCKET_TICKET_KEY` are identical, and so are `SEED_DEMO_PASSWORD`, `Seed:DemoPassword` and `E2E_DEMO_PASSWORD`.
+
+### Local files and stores
+
+The two `.env.example` files list the variable names with empty values, in a stable order:
+
+- `infrastructure/.env.example`: `DB_HOST_PORT`, `NETWORK_SUBNET`, `WEB_IPV4_ADDRESS`, `POSTGRES_PASSWORD`, `FIELDSERVICE_MIGRATOR_PASSWORD`, `FIELDSERVICE_APP_PASSWORD`, `AUTH_ACCESS_TOKEN_KEY`, `AUTH_SOCKET_TICKET_KEY`, `NOTIFICATIONS_WEBHOOK_SECRET`, `SEED_DEMO_PASSWORD`.
+- `src/fieldservice-notifications/.env.example`: `HOST`, `PORT`, `NODE_ENV`, `LOG_LEVEL`, `LOG_DIR`, `LOG_PRETTY`, `WEBHOOK_SECRETS`, `WEBHOOK_TOLERANCE_SECONDS`, `SOCKET_TICKET_KEY`, `SOCKET_TICKET_ISSUER`, `SOCKET_TICKET_AUDIENCE`, `SOCKET_ALLOWED_ORIGINS`, `SOCKET_SESSION_MAX_SECONDS`.
+
+`create-dev-env.mjs` writes the real files, which git ignores, with mode 0600 on macOS and Linux:
+
+| File | Holds |
+|---|---|
+| `infrastructure/.env` | Every Compose variable. The three network settings stay empty, so the Compose defaults apply |
+| `src/fieldservice-notifications/.env` | Every notification service variable, with the development values of the table above; the two secrets are created |
+| `src/fieldservice-web/e2e/.env` | One line, `E2E_DEMO_PASSWORD`, the same value as `SEED_DEMO_PASSWORD` |
+
+The user-secrets stores live outside the repository, at `~/.microsoft/usersecrets/<id>/secrets.json` on macOS and Linux and `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json` on Windows:
+
+| Store id | Declared by | Keys |
+|---|---|---|
+| `fieldservice-api` | `src/FieldService.Api/FieldService.Api.csproj` | `ConnectionStrings:FieldService`, `ConnectionStrings:Migrations`, `Auth:AccessTokenKey`, `Auth:SocketTicketKey`, `Notifications:WebhookSecret`, `Seed:DemoPassword` |
+| `fieldservice-api-tests` | `tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj` | `FIELDSERVICE_TEST_ADMIN_CONNECTION` (written automatically on macOS and Linux, or whenever `PGPASSWORD` is set), `FIELDSERVICE_MIGRATOR_PASSWORD`, `FIELDSERVICE_APP_PASSWORD` |
+
+`create-dev-env.mjs` addresses each store by its id, so it can fill a store before its project exists.
+
+### Production
+
+Every production secret reaches the services as an environment variable, injected from the platform's secret store: `ConnectionStrings__FieldService`, `Auth__AccessTokenKey`, `Auth__SocketTicketKey`, `Notifications__WebhookSecret`, the notification service's `WEBHOOK_SECRETS` and `SOCKET_TICKET_KEY`, and `ConnectionStrings__Migrations` for the release step only. There is no file-based secret provider and no `*_FILE` variable. Create each secret in the format of the table above, for example with `openssl rand -base64 32`.
