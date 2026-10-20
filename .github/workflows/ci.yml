@@ -1,0 +1,284 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Create throwaway environment values
+        run: node infrastructure/scripts/create-dev-env.mjs --ci
+      - name: Start PostgreSQL from the Compose file
+        run: docker compose -f infrastructure/docker-compose.yml up -d --wait --wait-timeout 120 db
+      - name: Restore local tools
+        run: dotnet tool restore
+      - name: Restore packages in locked mode for Release
+        run: dotnet restore tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj --locked-mode -p:Configuration=Release
+      - name: Verify formatting
+        run: |
+          dotnet format src/FieldService.Api/FieldService.Api.csproj --verify-no-changes --no-restore
+          dotnet format tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj --verify-no-changes --no-restore
+      - name: Build
+        run: dotnet build tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj --configuration Release --no-restore
+      - name: Publish the API
+        run: dotnet publish src/FieldService.Api/FieldService.Api.csproj --configuration Release --no-build --output artifacts/publish/api
+      - name: Fail when the Release output holds Swagger UI
+        run: test -z "$(find src/FieldService.Api/bin/Release tests/FieldService.Api.Tests/bin/Release artifacts/publish/api -name Swashbuckle.AspNetCore.SwaggerUI.dll)"
+      - name: Fail on model changes without a migration
+        run: dotnet ef migrations has-pending-model-changes --project src/FieldService.Api --configuration Release --no-build
+        env:
+          ConnectionStrings__Migrations: Host=127.0.0.1;Port=5433;Database=fieldservice;Username=fieldservice_migrator
+      - name: Test
+        run: dotnet test --project tests/FieldService.Api.Tests --configuration Release --no-build --results-directory artifacts/test-results/api --coverlet --coverlet-output-format cobertura --filter-not-trait "Category=Quarantine" --timeout 20m
+      - name: Run quarantined tests
+        continue-on-error: true
+        run: dotnet test --project tests/FieldService.Api.Tests --configuration Release --no-build --results-directory artifacts/test-results/api-quarantine --filter-trait "Category=Quarantine" --ignore-exit-code 8 --timeout 20m
+      - name: Report vulnerable packages
+        run: dotnet list tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj package --vulnerable --include-transitive
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-test-results
+          path: artifacts/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Show database logs
+        if: failure()
+        run: docker compose -f infrastructure/docker-compose.yml logs --no-color db
+
+  notifications:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            src/fieldservice-notifications/package-lock.json
+            tests/notification-tests/package-lock.json
+      - name: Install service dependencies
+        working-directory: src/fieldservice-notifications
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures of the service dependencies
+        working-directory: src/fieldservice-notifications
+        run: npm audit signatures
+      - name: Install test dependencies
+        working-directory: tests/notification-tests
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures of the test dependencies
+        working-directory: tests/notification-tests
+        run: npm audit signatures
+      - name: Lint
+        working-directory: src/fieldservice-notifications
+        run: npm run lint
+      - name: Check formatting of the service and its tests
+        working-directory: src/fieldservice-notifications
+        run: npm run format:check
+      - name: Type-check the service
+        working-directory: src/fieldservice-notifications
+        run: npm run typecheck
+      - name: Type-check the tests
+        working-directory: tests/notification-tests
+        run: npm run typecheck
+      - name: Build
+        working-directory: src/fieldservice-notifications
+        run: npm run build
+      - name: Test
+        working-directory: src/fieldservice-notifications
+        run: npm test
+      - name: Audit runtime dependencies
+        working-directory: src/fieldservice-notifications
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Audit all service dependencies
+        working-directory: src/fieldservice-notifications
+        run: npm audit --audit-level=high
+      - name: Audit test dependencies
+        working-directory: tests/notification-tests
+        run: npm audit --audit-level=high
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: notifications-test-results
+          path: tests/notification-tests/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/fieldservice-web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/fieldservice-web/package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures
+        run: npm audit signatures
+      - name: Create API types from the contract
+        run: npm run generate:api
+      - name: Lint
+        run: npm run lint
+      - name: Check formatting
+        run: npm run format:check
+      - name: Type-check
+        run: npm run type-check
+      - name: Unit tests
+        run: npm test -- --coverage
+      - name: Build
+        run: npm run build
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Audit all dependencies
+        run: npm audit --audit-level=high
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-coverage
+          path: src/fieldservice-web/coverage
+          retention-days: 7
+          if-no-files-found: ignore
+
+  mobile-android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: microsoft
+          java-version: "21"
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Install the Android workload set
+        run: dotnet workload install maui-android --version 10.0.402
+      - name: Show the installed workloads
+        run: dotnet workload list
+      - name: Restore
+        run: dotnet restore tests/FieldService.Mobile.Tests/FieldService.Mobile.Tests.csproj
+      - name: Verify formatting
+        run: |
+          dotnet format src/FieldService.Mobile/FieldService.Mobile.csproj --verify-no-changes --no-restore
+          dotnet format tests/FieldService.Mobile.Tests/FieldService.Mobile.Tests.csproj --verify-no-changes --no-restore
+      - name: Test
+        run: dotnet test --project tests/FieldService.Mobile.Tests --configuration Release -p:ApiBaseUrl=https://fieldservice.example --results-directory artifacts/test-results/mobile --coverlet --coverlet-output-format cobertura --filter-not-trait "Category=Quarantine" --timeout 15m
+      - name: Run quarantined tests
+        continue-on-error: true
+        run: dotnet test --project tests/FieldService.Mobile.Tests --configuration Release -p:ApiBaseUrl=https://fieldservice.example --no-build --results-directory artifacts/test-results/mobile-quarantine --filter-trait "Category=Quarantine" --ignore-exit-code 8 --timeout 15m
+      - name: Publish the Release APK
+        run: dotnet publish src/FieldService.Mobile/FieldService.Mobile.csproj --framework net10.0-android --configuration Release -p:ApiBaseUrl=https://fieldservice.example -p:AndroidPackageFormats=apk --output artifacts/android
+      - name: Upload the APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: fieldservice-android
+          path: artifacts/android/*-Signed.apk
+          retention-days: 7
+          if-no-files-found: error
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-test-results
+          path: artifacts/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  mobile-windows:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Install the Windows and Android workload sets
+        run: dotnet workload install maui-windows maui-android --version 10.0.402
+      - name: Show the installed workloads
+        run: dotnet workload list
+      - name: Publish the Windows app
+        run: dotnet publish src/FieldService.Mobile/FieldService.Mobile.csproj --framework net10.0-windows10.0.19041.0 --configuration Release -p:RuntimeIdentifierOverride=win-x64 -p:WindowsPackageType=None -p:ApiBaseUrl=https://fieldservice.example --output artifacts/windows
+      - name: Upload the Windows app
+        uses: actions/upload-artifact@v7
+        with:
+          name: fieldservice-windows
+          path: artifacts/windows
+          retention-days: 7
+          if-no-files-found: error
+
+  hygiene:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Scan files for comments
+        run: node infrastructure/scripts/check-no-comments.mjs
+      - name: Check tracked files and scan their content for secrets
+        run: node infrastructure/scripts/check-tracked-files.mjs
+
+  ci-passed:
+    if: always()
+    needs:
+      - api
+      - notifications
+      - web
+      - mobile-android
+      - mobile-windows
+      - hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail when a required job did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
+      - name: Confirm
+        run: echo "All required jobs succeeded"
