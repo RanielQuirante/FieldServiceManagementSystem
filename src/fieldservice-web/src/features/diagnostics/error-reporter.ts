@@ -1,0 +1,41 @@
+export type ErrorSource = 'app.errorHandler' | 'window.unhandledrejection' | 'router.onError'
+
+export interface ClientErrorReport {
+  readonly message: string
+  readonly source: ErrorSource
+  readonly route: string | null
+  readonly stack: string | null
+  readonly occurredAt: string
+}
+
+const unknownErrorMessage = 'Unknown error'
+
+function describeError(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message
+  }
+
+  if (typeof error === 'string' && error.length > 0) {
+    return error
+  }
+
+  return unknownErrorMessage
+}
+
+function stackOf(error: unknown): string | null {
+  return error instanceof Error && typeof error.stack === 'string' ? error.stack : null
+}
+
+export function reportError(
+  error: unknown,
+  source: ErrorSource,
+  route: string | null,
+): ClientErrorReport {
+  return {
+    message: describeError(error),
+    source,
+    route,
+    stack: stackOf(error),
+    occurredAt: new Date().toISOString(),
+  }
+}

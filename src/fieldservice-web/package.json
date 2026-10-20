@@ -1,0 +1,62 @@
+{
+  "name": "fieldservice-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^26.12.0"
+  },
+  "scripts": {
+    "generate:api": "openapi-typescript ../../docs/contracts/openapi.v1.json --output src/shared/api/schema.gen.ts",
+    "dev": "npm run generate:api && vite",
+    "build": "npm run generate:api && vue-tsc --build && vite build",
+    "build-only": "vite build",
+    "preview": "vite preview",
+    "type-check": "npm run generate:api && vue-tsc --build",
+    "test": "npm run generate:api && vitest run",
+    "test:e2e": "playwright test --project=compose --grep-invert @quarantine",
+    "test:e2e:host": "playwright test --project=host --grep-invert \"@compose-only|@quarantine\"",
+    "lint": "eslint .",
+    "format:check": "prettier --check . \"!src/shared/api/schema.gen.ts\" --ignore-path ../../.gitignore"
+  },
+  "dependencies": {
+    "@vue/devtools-api": "^8.2.1",
+    "openapi-fetch": "~0.17.0",
+    "pinia": "^4.0.3",
+    "socket.io-client": "^4.8.4",
+    "vue": "^3.5.43",
+    "vue-router": "^5.4.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "~4.13.0",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.0",
+    "@tsconfig/node26": "^26.0.1",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^26.6.5",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vitest/coverage-v8": "5.0.4",
+    "@vitest/eslint-plugin": "^1.6.27",
+    "@vue/test-utils": "^2.5.1",
+    "@vue/tsconfig": "^0.9.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-playwright": "^2.12.1",
+    "eslint-plugin-vue": "~10.11.1",
+    "jiti": "^2.7.0",
+    "jsdom": "^30.1.2",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4",
+    "vitest": "5.0.4",
+    "vue-eslint-parser": "^10.4.1",
+    "vue-tsc": "^3.3.13"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
+  }
+}

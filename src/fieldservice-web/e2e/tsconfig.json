@@ -1,0 +1,9 @@
+{
+  "extends": "@tsconfig/node26/tsconfig.json",
+  "include": ["./**/*"],
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  }
+}
