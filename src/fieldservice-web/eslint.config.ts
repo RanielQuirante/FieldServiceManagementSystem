@@ -60,7 +60,10 @@ export default defineConfig(
       'no-implied-eval': 'error',
       'vue/no-v-html': 'error',
       'vue/no-static-inline-styles': 'error',
-      'vue/multi-word-component-names': ['error', { ignores: ['Avatar', 'Pagination', 'Toast'] }],
+      'vue/multi-word-component-names': [
+        'error',
+        { ignores: ['Avatar', 'Banner', 'Pagination', 'Toast'] },
+      ],
     },
   },
   {
