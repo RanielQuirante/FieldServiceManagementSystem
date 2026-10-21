@@ -1,6 +1,6 @@
 # Logging
 
-This document describes where each FieldService application writes its logs, how files are named, rolled and kept, which levels apply per environment, how one request is traced through its correlation id, and what is never logged. The settings named here are listed with their defaults in [configuration.md](configuration.md); the file naming decision is recorded in [ADR 0012](decisions/0012-log-file-naming-and-retention.md).
+This document describes where each FieldService application writes its logs, how files are named, rolled and kept, which levels apply per environment, how one request is traced through its correlation id, which named events the API and the notification service write, and what is never logged. The settings named here are listed with their defaults in [configuration.md](configuration.md); the file naming decision is recorded in [ADR 0012](decisions/0012-log-file-naming-and-retention.md).
 
 ## Destinations
 
@@ -98,6 +98,70 @@ To follow one request, search both log folders for its id:
 ```
 grep -r "<correlation id>" logs/
 ```
+
+## API events
+
+Besides the request log, the API writes named events. Each one carries the property `EventId`, with the event's number as `Id` and its name as `Name`; in a CLEF line it reads `"EventId":{"Id":4002,"Name":"auth.sign-in.failed"}`. To find every occurrence of one event:
+
+```
+grep -h '"Name":"auth.sign-in.failed"' logs/api/*.log
+```
+
+- Events written while a request runs also carry the request's `CorrelationId` and the trace and span ids. Startup events carry no request properties.
+- `config.invalid` is logged at Critical, which Serilog writes as Fatal (`"@l":"Fatal"`).
+
+### Startup and request events
+
+| Event | Id | Level | Written when | Properties |
+|---|---|---|---|---|
+| `config.invalid` | 1001 | Fatal | At startup, once for each setting that breaks its rule ([Startup checks](configuration.md#startup-checks)), before the API stops. In Development and Staging also when the database has pending migrations | `Key`, the setting's name, and `Rule`, the rule it breaks. For pending migrations, `Key` is `ConnectionStrings:FieldService` and `Rule` names the migrations and the command that applies them. Never the value |
+| `seed.demo-data.completed` | 3002 | Information | At startup, after the demo data was inserted into an empty database | `Users`, `Technicians`, `Jobs`, `HistoryEntries`, `Inspections`, `Answers` and `Readings`, the number of rows of each kind, and `NextJobNumber`, the number the next created job receives |
+| `seed.demo-data.skipped` | 3001 | Information | At startup, when no demo data is inserted | `Reason`, one of `Seed:DemoData is false`, `the environment is Production`, `Seed:DemoPassword has fewer than 12 characters` and `demo data present` (the database already holds users) |
+| `request.unhandled-exception` | 2001 | Error | An exception that neither the concurrency handler nor the bad-request handler answers; the response is 500 ([API request log](#api-request-log)) | `ExceptionType`, `RequestMethod`, `RequestPath` without the query string, `CorrelationId`, and the exception with its message and stack trace in `@x` |
+
+Entity Framework's own Error and Fatal events are dropped, so a database exception is never logged twice.
+
+### Security events
+
+| Event | Id | Level | Written when | Properties |
+|---|---|---|---|---|
+| `auth.sign-in.succeeded` | 4001 | Information | A sign-in creates a session | `UserId`, `Role`, `Client`, `SessionId` |
+| `auth.sign-in.failed` | 4002 | Warning | A sign-in is refused | `Reason`; `UserId`, only when the account exists; `Client`; `ClientIp` |
+| `auth.refresh.grace-retry` | 4003 | Information | A refresh token used less than 30 seconds earlier is presented again while its replacement is still unused, and the API issues a new token instead of treating it as reuse | `UserId`, `SessionId`, `Client` |
+| `auth.refresh.reuse-detected` | 4004 | Warning | A refresh token that was already used is presented again outside that grace, and the API revokes the session | `UserId`, `SessionId`, `Client`, `SecondsSinceConsumed`, `ClientIp` |
+| `auth.refresh.rejected` | 4005 | Information | A refresh is refused for one of the reasons below. A refresh without any credential writes no event | `Reason`; `SessionId`, only when the token matched a session |
+| `auth.sign-out` | 4006 | Information | A sign-out revokes a session. A missing or unknown credential, a credential of the other client and an already revoked session write no event | `UserId`, `SessionId` |
+| `authz.forbidden` | 4007 | Information | An authorization policy refuses a signed-in user, and the response is 403. A request without a valid access token gets 401 and writes no event | `Policy`, `UserId`, `Role`, `RoutePattern` |
+| `rate-limit.rejected` | 4008 | Warning | A rate limit refuses a request, and the response is 429. Written at the first refusal of a partition, then not again for that partition until its window ends | `Policy`, `PartitionKind`, `UserId` or `ClientIp`, `RoutePattern` |
+
+| Property | Content |
+|---|---|
+| `UserId`, `SessionId` | The ids of the user and of the session |
+| `Role` | `Administrator` or `Technician` |
+| `Client` | `Web` for the web dashboard, `Mobile` for the technician app |
+| `Reason` | A reason code from the table below |
+| `SecondsSinceConsumed` | Whole seconds between the token's first use and its reuse |
+| `ClientIp` | The client's IP address as the API sees it, after the forwarded headers of a trusted proxy apply; `unknown` when the connection has none |
+| `Policy` | On `authz.forbidden`, the endpoint's authorization policies, separated by commas, or `fallback` when the endpoint names none. On `rate-limit.rejected`, `sign-in`, `refresh` or `global` |
+| `PartitionKind` | `user` when the `global` limit counts a signed-in user's requests, logged with `UserId`; `ip` when a limit counts the requests of one address, logged with `ClientIp`. The other of the two properties is null |
+| `RoutePattern` | The route template of the endpoint that matched, never the request path with its values or the query string. On `rate-limit.rejected` it is null when the request matched no endpoint |
+
+| Event | Reason | Meaning |
+|---|---|---|
+| `auth.sign-in.failed` | `unknown-account` | No account has the email address; `UserId` is null |
+| `auth.sign-in.failed` | `wrong-password` | The password does not match |
+| `auth.sign-in.failed` | `inactive-account` | The account is deactivated |
+| `auth.sign-in.failed` | `wrong-application` | The account's role does not match the client: the web dashboard accepts administrators only, the technician app technicians only |
+| `auth.refresh.rejected` | `csrf-header-missing` | A refresh sent the `fs_refresh` cookie without the `X-FieldService-Csrf` header |
+| `auth.refresh.rejected` | `unknown-token` | The token is malformed or matches no stored token |
+| `auth.refresh.rejected` | `client-mismatch` | The token belongs to a session of the other client |
+| `auth.refresh.rejected` | `session-revoked` | The session was signed out or revoked earlier |
+| `auth.refresh.rejected` | `session-expired` | The session passed its idle or absolute expiry |
+| `auth.refresh.rejected` | `user-inactive` | The user was deactivated; the API also revokes the session |
+
+For each event the checks run in the order listed, and the first one that applies is logged.
+
+**What the events carry.** The security, configuration and seeding events follow the rules of [Redaction](#redaction) and carry identifiers only: user and session ids, role and client names, reason codes, counts, policy names, route templates and setting names. None of them carries a password, a token or its hash, a cookie, a header, a body, a query string, an email address, a name, a phone number or a postal address. `ClientIp` appears only on `auth.sign-in.failed`, `auth.refresh.reuse-detected` and `rate-limit.rejected`, and `config.invalid` names the key and the rule, never the value.
 
 ## Notification service events
 

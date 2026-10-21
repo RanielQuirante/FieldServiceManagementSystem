@@ -12,6 +12,7 @@ Each record states one decision, why it was made and what follows from it. Recor
 | [0004](0004-minimal-api-slices-without-mediator.md) | Minimal API slices without a mediator | Accepted |
 | [0005](0005-postgresql-17-with-two-database-roles.md) | PostgreSQL 17 with two database roles | Accepted |
 | [0006](0006-optimistic-concurrency-with-xmin.md) | Optimistic concurrency with xmin | Accepted |
+| [0007](0007-token-authentication-with-rotating-refresh-tokens.md) | Token authentication with rotating refresh tokens | Accepted |
 | [0011](0011-openapi-snapshot-as-the-rest-contract.md) | OpenAPI snapshot as the REST contract | Accepted |
 | [0012](0012-log-file-naming-and-retention.md) | Log file naming and retention | Accepted |
 | [0013](0013-native-vue-components-and-design-tokens.md) | Native Vue components and design tokens | Accepted |

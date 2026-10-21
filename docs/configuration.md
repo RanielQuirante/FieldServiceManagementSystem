@@ -44,8 +44,14 @@ Later sources override earlier ones.
 
 These values are deliberately not configurable; changing one is a code change with tests, so no setting exists for it:
 
-- token and session lifetimes, and the 30-second refresh grace window;
-- rate limits;
+- the access-token lifetime of 15 minutes;
+- session lifetimes: a Web session ends after 60 minutes without a refresh or 12 hours after sign-in, and a Mobile session after 7 days without a refresh or 30 days after sign-in;
+- the 30-second refresh grace window, and the 30-second clock skew allowed when the API validates an access token;
+- the issuer and the access-token audience, both `fieldservice-api`, with HS256 as the only accepted algorithm;
+- the refresh cookie `fs_refresh`, limited to the path `/api/auth`;
+- password hashing with PBKDF2 at 210,000 iterations;
+- the rate limits, in fixed 60-second windows: 10 sign-ins and 30 refreshes per minute per client address; on top of these, every `/api` request counts against 300 per minute per signed-in user, or 60 per minute per client address for a request without a valid token. Health checks and the OpenAPI document are not limited;
+- the 16 KB request body limit of sign-in, refresh and sign-out;
 - the event queue (capacity 1,000, oldest dropped first) and the event dispatcher's retry budget;
 - the 16 KB webhook body limit;
 - the 60-second socket-ticket lifetime;
@@ -59,30 +65,32 @@ These values are deliberately not configurable; changing one is a code change wi
 
 ### Settings
 
-| Key (environment variable) | Purpose | Secret | Set in |
-|---|---|---|---|
-| `ConnectionStrings:FieldService` (`ConnectionStrings__FieldService`) | Connection of the running API, as `fieldservice_app`. See [Connection strings](#connection-strings) | Yes | User-secrets; test host; Compose; secret store |
-| `ConnectionStrings:Migrations` (`ConnectionStrings__Migrations`) | Connection as `fieldservice_migrator`, read only by the design-time database context and the migrations bundle, never by the running API | Yes | User-secrets; Compose `migrate` service; release step |
-| `Auth:AccessTokenKey` (`Auth__AccessTokenKey`) | HS256 signing key of access tokens: base64 of 32 bytes or more | Yes | User-secrets; test host; Compose; secret store |
-| `Auth:SocketTicketKey` (`Auth__SocketTicketKey`) | HS256 key of socket tickets: base64 of 32 bytes or more, the same value as the notification service's `SOCKET_TICKET_KEY` | Yes | As above |
-| `Notifications:BaseUrl` (`Notifications__BaseUrl`) | Base URL of the notification service. When it is empty, the API sends no job events and runs on its own | No | `appsettings.Development.json`; Compose; platform |
-| `Notifications:WebhookSecret` (`Notifications__WebhookSecret`) | Signing secret of the job events sent to the notification service: `whsec_` followed by base64 of 32 bytes or more, the same value as the notification service's `WEBHOOK_SECRETS`. Needed when `Notifications:BaseUrl` is set | Yes | User-secrets; test host; Compose; secret store |
-| `Cors:AllowedOrigins` (`Cors__AllowedOrigins__0` and up) | Browser origins allowed by the CORS policy. Traffic through the Vite proxy or nginx is same-origin and does not need them | No | `appsettings.Development.json`; Compose; platform |
-| `ForwardedHeaders:KnownProxies` (`ForwardedHeaders__KnownProxies__0` and up) | Proxy addresses trusted for `X-Forwarded-For` and `X-Forwarded-Proto`, with a forward limit of 1; `X-Forwarded-Host` is never used. When set, the list replaces the built-in loopback defaults | No | Compose; platform |
-| `ForwardedHeaders:KnownNetworks` (`ForwardedHeaders__KnownNetworks__0` and up) | Proxy networks in CIDR form. Empty in every environment: no network range is trusted | No | `appsettings.json` |
-| `Seed:DemoData` (`Seed__DemoData`) | Lets the API seed the demo data at startup. Refused in Production | No | `appsettings.Development.json`; Compose |
-| `Seed:DemoPassword` (`Seed__DemoPassword`) | Password of every demo account, 12 characters or more | Yes, local only | User-secrets; Compose |
-| `Logs:Directory` (`Logs__Directory`) | Log folder, resolved against the content root | No | `appsettings*.json`; Compose |
-| `Logs:FileEnabled` (`Logs__FileEnabled`) | Turns the file sink on or off | No | `appsettings*.json` |
-| `Logs:RetainedFileCountLimit` (`Logs__RetainedFileCountLimit`) | Number of log files kept, the current one included | No | `appsettings.json` |
-| `Logs:FileSizeLimitBytes` (`Logs__FileSizeLimitBytes`) | Size at which a log file rolls over to a numbered file | No | `appsettings.json` |
-| `Logs:ConsoleFormat` (`Logs__ConsoleFormat`) | `Text`, or `Json` for compact JSON events | No | `appsettings*.json`; Compose |
-| `Serilog:MinimumLevel:Default` (`Serilog__MinimumLevel__Default`) | Minimum log level | No | `appsettings*.json` |
-| `Serilog:MinimumLevel:Override:<namespace>` | Minimum level per namespace. `Microsoft.AspNetCore.Hosting.Diagnostics` stays at `Warning` everywhere, because its request lines contain query strings | No | `appsettings*.json` |
-| `Kestrel:Limits:MaxRequestBodySize` | Global request body limit. Individual endpoints lower it | No | `appsettings.json` |
-| `AllowedHosts` | Host filtering: a request whose `Host` header is not listed gets 400. On loopback this blocks DNS rebinding, which a loopback binding alone does not stop | No | `appsettings.json`; `appsettings.Development.json`; Compose; platform |
-| `ASPNETCORE_ENVIRONMENT` (environment only) | Selects the environment | No | `launchSettings.json`; test host; Compose; platform |
-| `ASPNETCORE_HTTP_PORTS` (environment only) | Listen port inside a container | No | The base image |
+The default is the value in `appsettings.json`, or the framework's own when that file has none. "None" means that no committed file holds a value, so it must come from a secret store, the test host or the environment. The startup rule of each key is in [Startup checks](#startup-checks).
+
+| Key (environment variable) | Type | Default | Purpose | Secret | Set in |
+|---|---|---|---|---|---|
+| `ConnectionStrings:FieldService` (`ConnectionStrings__FieldService`) | String: a PostgreSQL connection string | None; required in every environment | Connection of the running API, as `fieldservice_app`. See [Connection strings](#connection-strings) | Yes | User-secrets; test host; Compose; secret store |
+| `ConnectionStrings:Migrations` (`ConnectionStrings__Migrations`) | String: a PostgreSQL connection string | None | Connection as `fieldservice_migrator`, read only by the design-time database context and the migrations bundle, never by the running API | Yes | User-secrets; Compose `migrate` service; release step |
+| `Auth:AccessTokenKey` (`Auth__AccessTokenKey`) | String: standard base64 of 32 bytes or more | None; required in every environment | HS256 signing key of access tokens | Yes | User-secrets; test host; Compose; secret store |
+| `Auth:SocketTicketKey` (`Auth__SocketTicketKey`) | String: standard base64 of 32 bytes or more | None; required in every environment, also when no notification service runs | HS256 key of socket tickets, the same value as the notification service's `SOCKET_TICKET_KEY`. It must differ from `Auth:AccessTokenKey` | Yes | As above |
+| `Notifications:BaseUrl` (`Notifications__BaseUrl`) | String: an absolute `http` or `https` URL, or empty | Empty | Base URL of the notification service. When it is empty, the API sends no job events and runs on its own | No | `appsettings.Development.json`; Compose; platform |
+| `Notifications:WebhookSecret` (`Notifications__WebhookSecret`) | String: `whsec_` followed by standard base64 of 32 bytes or more | None; required when `Notifications:BaseUrl` is set | Signing secret of the job events sent to the notification service, the same value as the notification service's `WEBHOOK_SECRETS`. It must differ from both `Auth` keys | Yes | User-secrets; test host; Compose; secret store |
+| `Cors:AllowedOrigins` (`Cors__AllowedOrigins__0` and up) | Array of origins, each `scheme://host` or `scheme://host:port` | Empty | Browser origins allowed by the CORS policy. Traffic through the Vite proxy or nginx is same-origin and does not need them | No | `appsettings.Development.json`; Compose; platform |
+| `ForwardedHeaders:KnownProxies` (`ForwardedHeaders__KnownProxies__0` and up) | Array of IP addresses | Empty: the built-in loopback defaults apply | Proxy addresses trusted for `X-Forwarded-For` and `X-Forwarded-Proto`, with a forward limit of 1; `X-Forwarded-Host` is never used. When either forwarded-header list has an entry, the two lists replace the built-in loopback defaults | No | Compose; platform |
+| `ForwardedHeaders:KnownNetworks` (`ForwardedHeaders__KnownNetworks__0` and up) | Array of networks in CIDR notation | Empty | Proxy networks. Empty in every environment: no network range is trusted, and outside Development and Testing the API refuses an entry | No | `appsettings.json` |
+| `Seed:DemoData` (`Seed__DemoData`) | Boolean | `false` | Lets the API seed the demo data at startup. Refused in Production | No | `appsettings.Development.json`; Compose |
+| `Seed:DemoPassword` (`Seed__DemoPassword`) | String of 12 characters or more | None; required when `Seed:DemoData` is `true` | Password of every demo account | Yes, local only | User-secrets; Compose |
+| `Logs:Directory` (`Logs__Directory`) | String: a folder path | `logs` | Log folder, resolved against the content root | No | `appsettings*.json`; Compose |
+| `Logs:FileEnabled` (`Logs__FileEnabled`) | Boolean | `true` | Turns the file sink on or off | No | `appsettings*.json` |
+| `Logs:RetainedFileCountLimit` (`Logs__RetainedFileCountLimit`) | Integer, 1 or more | `14` | Number of log files kept, the current one included | No | `appsettings.json` |
+| `Logs:FileSizeLimitBytes` (`Logs__FileSizeLimitBytes`) | Integer in bytes, 1 or more | `52428800` | Size at which a log file rolls over to a numbered file | No | `appsettings.json` |
+| `Logs:ConsoleFormat` (`Logs__ConsoleFormat`) | `Text` or `Json` | `Json` | `Text`, or `Json` for compact JSON events | No | `appsettings*.json`; Compose |
+| `Serilog:MinimumLevel:Default` (`Serilog__MinimumLevel__Default`) | Serilog level | `Information` | Minimum log level | No | `appsettings*.json` |
+| `Serilog:MinimumLevel:Override:<namespace>` | Serilog level per namespace | `Warning` for four namespaces | Minimum level per namespace. `Microsoft.AspNetCore.Hosting.Diagnostics` stays at `Warning` everywhere, because its request lines contain query strings | No | `appsettings*.json` |
+| `Kestrel:Limits:MaxRequestBodySize` | Integer in bytes | `1048576` | Global request body limit. Individual endpoints lower it | No | `appsettings.json` |
+| `AllowedHosts` | String: host names separated by `;` | `*` | Host filtering: a request whose `Host` header is not listed gets 400. On loopback this blocks DNS rebinding, which a loopback binding alone does not stop. Production refuses `*`, so a deployment must list its host names | No | `appsettings.json`; `appsettings.Development.json`; Compose; platform |
+| `ASPNETCORE_ENVIRONMENT` (environment only) | String | `Production` when unset | Selects the environment | No | `launchSettings.json`; test host; Compose; platform |
+| `ASPNETCORE_HTTP_PORTS` (environment only) | Port list | Unset on a host; `8080` in the base image | Listen port inside a container | No | The base image |
 
 ### Values per environment
 
@@ -106,7 +114,7 @@ These values are deliberately not configurable; changing one is a code change wi
 | `Serilog:MinimumLevel:Default` | `Debug` | `Warning` | `Information` | `Information` |
 | `Serilog:MinimumLevel:Override` | `Microsoft`, `Microsoft.AspNetCore`, `Microsoft.EntityFrameworkCore` and `System.Net.Http` at `Information`; `Microsoft.AspNetCore.Hosting.Diagnostics` at `Warning` | The base file's overrides | `Microsoft.AspNetCore`, `Microsoft.AspNetCore.Hosting.Diagnostics`, `Microsoft.EntityFrameworkCore` and `System.Net.Http` at `Warning` | As Staging |
 | `Kestrel:Limits:MaxRequestBodySize` | `1048576` | `1048576` | `1048576` | `1048576` |
-| `AllowedHosts` | `localhost;127.0.0.1;10.0.2.2` | `*` (the test server) | `localhost;127.0.0.1;10.0.2.2` | The public host name |
+| `AllowedHosts` | `localhost;127.0.0.1;10.0.2.2` | `*` (the test server) | `localhost;127.0.0.1;10.0.2.2` | The public host name; required, because the API refuses the base file's `*` in Production |
 | `ASPNETCORE_ENVIRONMENT` | `Development` | `Testing` | `Staging` | `Production` |
 | `ASPNETCORE_HTTP_PORTS` | Not set: `launchSettings.json` binds http://localhost:5080 | Not set | `8080` | `8080` |
 
@@ -133,10 +141,11 @@ The API has exactly three settings files:
 | `appsettings.Testing.json` | The `Warning` level, the file sink off and text console output |
 
 - **No Staging or Production file.** Staging values come from the Compose environment and Production values from the platform, so each value has one source. The same image runs in both environments, and a committed Production file could not hold the real values, such as the public host name.
+- **No secrets.** No settings file holds a connection string, a key, the webhook secret or the demo password. They come from the user-secrets store in Development, from the test host in Testing, from `infrastructure/.env` through Compose in Staging, and from the secret store in Production.
 - **Repeated namespaces.** The Development file repeats the base file's namespaces, because configuration merges key by key: a broader `Microsoft` override alone would leave the base file's `Warning` overrides in force.
 - **SQL in Development logs.** `Microsoft.EntityFrameworkCore` at `Information` shows the executed SQL commands. Parameter values stay hidden, because sensitive-data logging is off everywhere.
 - **No query strings.** `Microsoft.AspNetCore.Hosting.Diagnostics` stays at `Warning` in every file: its "Request starting" and "Request finished" lines contain the query string, which may hold search terms. The API's own request log already records each request without its query string. Because the base file sets the same override, raising `Microsoft.AspNetCore` through an environment variable does not bring these lines back.
-- **Allowed hosts.** `localhost` serves browsers, the Windows app and a USB device through `adb reverse`; `127.0.0.1` serves the Vite proxy, which rewrites `Host` to its target, plus scripts and Playwright; `10.0.2.2` serves the Android emulator. A session that serves another host name adds it on the command line, for example `dotnet run --project src/FieldService.Api -- --AllowedHosts "localhost;127.0.0.1;10.0.2.2;<extra host>"`.
+- **Allowed hosts.** `localhost` serves browsers, the Windows app and a USB device through `adb reverse`; `127.0.0.1` serves the Vite proxy, which rewrites `Host` to its target, plus scripts and Playwright; `10.0.2.2` serves the Android emulator. A session that serves another host name adds it on the command line, for example `dotnet run --project src/FieldService.Api -- --AllowedHosts "localhost;127.0.0.1;10.0.2.2;<extra host>"`. The base file's `*` suits the test server only: in Production the API refuses it, so the platform sets the public host names.
 
 `Properties/launchSettings.json` has one profile, `http`: it binds http://localhost:5080 and sets `ASPNETCORE_ENVIRONMENT` to `Development`. `dotnet run`, `dotnet watch` and the VS Code `API` configuration all use it.
 
@@ -152,17 +161,31 @@ The API serves its OpenAPI 3.1 document at `/openapi/v1.json` in Development and
 
 ### Startup checks
 
-The API validates its configuration before it listens. A failed check logs the event `config.invalid` with the key and the rule, never the value, and the process exits with a non-zero code.
+The API validates its configuration after it builds the host and before it touches the database or listens. It runs every check before it stops, so one start lists each invalid key. Each failed rule logs the event `config.invalid` at the fatal level, as `Configuration key <key> breaks the rule: <rule>`, naming the key and the rule and never the value; the API then logs `The API stopped unexpectedly` and exits with a non-zero code.
 
-| Check | Rule |
-|---|---|
-| `ConnectionStrings:FieldService` | Set, a valid PostgreSQL connection string, and `Include Error Detail` not enabled |
-| `Logs` | `ConsoleFormat` is `Text` or `Json`. When `FileEnabled` is `true`: `Directory` is set, and `RetainedFileCountLimit` and `FileSizeLimitBytes` are 1 or more. An invalid `Logs` setting is reported as one fatal line naming the key and the rule, because no configured logger exists yet |
-| `Cors:AllowedOrigins` | Each entry is an absolute `http` or `https` origin without a path; `*` is refused. In Production every entry uses `https` |
-| `ForwardedHeaders:KnownProxies` and `KnownNetworks` | Each entry parses as an IP address, or as a network in CIDR notation |
-| Pending migrations (Development and Staging only) | The database has no pending migration; otherwise the message names the pending migrations and the command `dotnet ef database update --project src/FieldService.Api` |
+| Key | Rule | Environments |
+|---|---|---|
+| `ConnectionStrings:FieldService` | Set, a valid PostgreSQL connection string, and `Include Error Detail` not enabled | All |
+| `Auth:AccessTokenKey` | Set; standard base64 that decodes to 32 bytes or more; not a published test key; not a patterned key | All |
+| `Auth:SocketTicketKey` | The rules of `Auth:AccessTokenKey`, and its decoded bytes differ from that key's | All |
+| `Notifications:BaseUrl` | When set: an absolute `http` or `https` URL | All |
+| `Notifications:BaseUrl` | When set: `https` | Production |
+| `Notifications:WebhookSecret` | Set whenever `Notifications:BaseUrl` is set. Whenever it is present, even with an empty `Notifications:BaseUrl`: `whsec_` followed by standard base64 that decodes to 32 bytes or more; not a published test key; not a patterned key; its decoded bytes differ from both `Auth` keys | All |
+| `Seed:DemoData` | Not `true` | Production |
+| `Seed:DemoPassword` | 12 characters or more when `Seed:DemoData` is `true` | All |
+| `Cors:AllowedOrigins` | Each entry is an absolute `http` or `https` origin, `scheme://host` or `scheme://host:port`, with no path, not even a trailing `/`; `*` is refused | All |
+| `Cors:AllowedOrigins` | Each entry uses `https` | Production |
+| `ForwardedHeaders:KnownProxies` | Each entry parses as an IP address | All |
+| `ForwardedHeaders:KnownNetworks` | Each entry parses as a network in CIDR notation | All |
+| `ForwardedHeaders:KnownNetworks` | Empty | All except Development and Testing |
+| `AllowedHosts` | At least one host name, and no `*` entry | Production |
+| `Logs` | `ConsoleFormat` is `Text` or `Json`. When `FileEnabled` is `true`: `Directory` is set, and `RetainedFileCountLimit` and `FileSizeLimitBytes` are 1 or more. An invalid `Logs` setting is reported as one fatal line naming the key and the rule, because no configured logger exists yet | All |
 
-An empty or whitespace-only value counts as missing.
+- An empty or whitespace-only value counts as missing, so an empty value copied from an `.env.example` file fails as `must be set`.
+- A **published test key** is one of three 32-byte runs: the bytes 0x00 to 0x1F, 0x20 to 0x3F and 0x40 to 0x5F. The test vector files under `docs/contracts/events/`, `signature-test-vector.json` and `socket-ticket-test-vector.json`, publish two of them, and anyone can compute the third. The rule compares decoded bytes, so it catches a key in plain base64 and a secret in its `whsec_` form alike.
+- A **patterned key** is one whose decoded bytes are all equal, or each differ from the previous byte by the same step, modulo 256. A hand-typed value such as a run of `A` characters, whose bytes are all zero, fails this rule.
+- The keys must be standard base64, with `+` and `/`. Base64url, with `-` and `_`, is refused.
+- After these checks the API looks for pending migrations, in Development and Staging only. When one is pending, it logs `config.invalid` for `ConnectionStrings:FieldService` with the names of the pending migrations and the command `dotnet ef database update --project src/FieldService.Api`, and stops. Only then does it seed the demo data, when `Seed:DemoData` allows it ([database.md](database.md#demo-data)).
 
 ## Compose variables (`infrastructure/.env`)
 
@@ -176,9 +199,9 @@ An empty or whitespace-only value counts as missing.
 | `POSTGRES_PASSWORD` | `db` | Superuser password, used by the database initialisation and by the test admin connection on a CI runner | Required | Yes | 32 characters, base64url |
 | `FIELDSERVICE_MIGRATOR_PASSWORD` | `db` bootstrap; `migrate` | Password of `fieldservice_migrator` | Required | Yes | 32 characters, base64url |
 | `FIELDSERVICE_APP_PASSWORD` | `db` bootstrap; `api` | Password of `fieldservice_app` | Required | Yes | 32 characters, base64url |
-| `AUTH_ACCESS_TOKEN_KEY` | `api` `Auth__AccessTokenKey` | Access-token key | Required | Yes | Base64 of 32 random bytes |
-| `AUTH_SOCKET_TICKET_KEY` | `api` `Auth__SocketTicketKey`; `notifications` `SOCKET_TICKET_KEY` | Socket-ticket key, shared by both services | Required | Yes | Base64 of 32 random bytes |
-| `NOTIFICATIONS_WEBHOOK_SECRET` | `api` `Notifications__WebhookSecret`; `notifications` `WEBHOOK_SECRETS` | Event signing secret | Required | Yes | `whsec_` followed by base64 of 32 random bytes |
+| `AUTH_ACCESS_TOKEN_KEY` | `api` `Auth__AccessTokenKey` | Access-token key | Required | Yes | Standard base64 of 32 random bytes, distinct from `AUTH_SOCKET_TICKET_KEY` |
+| `AUTH_SOCKET_TICKET_KEY` | `api` `Auth__SocketTicketKey`; `notifications` `SOCKET_TICKET_KEY` | Socket-ticket key, shared by both services | Required | Yes | Standard base64 of 32 random bytes, distinct from `AUTH_ACCESS_TOKEN_KEY` |
+| `NOTIFICATIONS_WEBHOOK_SECRET` | `api` `Notifications__WebhookSecret`; `notifications` `WEBHOOK_SECRETS` | Event signing secret | Required | Yes | `whsec_` followed by standard base64 of 32 random bytes |
 | `SEED_DEMO_PASSWORD` | `api` `Seed__DemoPassword` | Demo account password | Required | Yes, local only | `xxxx-xxxx-xxxx-xxxx`, 19 characters |
 
 - The `db` service fixes its superuser and maintenance database at `postgres`. The bootstrap script creates `fieldservice`, owned by `fieldservice_migrator`.
@@ -280,7 +303,7 @@ Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantin
 | `fieldservice_migrator` and `fieldservice_app` passwords | Same | `infrastructure/.env`, API user-secrets, test user-secrets | `infrastructure/.env` | Throwaway | Secret store | `ALTER ROLE … PASSWORD`, then update the connection string and restart |
 | `Auth:AccessTokenKey` | 32 random bytes, standard base64 | API user-secrets | `infrastructure/.env` | Throwaway | Secret store | Replace it and restart the API; clients refresh their sessions silently |
 | `Auth:SocketTicketKey` and `SOCKET_TICKET_KEY` | 32 random bytes, standard base64 | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Replace it in both services together. Tickets last 60 seconds, and open sockets reconnect within the 900-second session cap |
-| `Notifications:WebhookSecret` and `WEBHOOK_SECRETS` | `whsec_` followed by base64 of 32 random bytes | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Without downtime: (1) the notification service gets the new and the old secret, newest first; (2) the API switches to the new secret; (3) the notification service drops the old one |
+| `Notifications:WebhookSecret` and `WEBHOOK_SECRETS` | `whsec_` followed by standard base64 of 32 random bytes | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Without downtime: (1) the notification service gets the new and the old secret, newest first; (2) the API switches to the new secret; (3) the notification service drops the old one |
 | `Seed:DemoPassword` and `E2E_DEMO_PASSWORD` | 16 characters from `abcdefghjkmnpqrstuvwxyz23456789`, grouped `xxxx-xxxx-xxxx-xxxx` | API user-secrets and `src/fieldservice-web/e2e/.env` | `infrastructure/.env` | Throwaway (`E2E_DEMO_PASSWORD`) | None | `create-dev-env.mjs --force`, then reset the database, because existing password hashes are not rewritten |
 
 - The values `create-dev-env.mjs` creates never contain `$`, `#`, quotes, spaces or `;`, so they are safe in env files, in Compose interpolation and inside connection strings.
@@ -313,4 +336,4 @@ The user-secrets stores live outside the repository, at `~/.microsoft/usersecret
 
 ### Production
 
-Every production secret reaches the services as an environment variable, injected from the platform's secret store: `ConnectionStrings__FieldService`, `Auth__AccessTokenKey`, `Auth__SocketTicketKey`, `Notifications__WebhookSecret`, the notification service's `WEBHOOK_SECRETS` and `SOCKET_TICKET_KEY`, and `ConnectionStrings__Migrations` for the release step only. There is no file-based secret provider and no `*_FILE` variable. Create each secret in the format of the table above, for example with `openssl rand -base64 32`.
+Every production secret reaches the services as an environment variable, injected from the platform's secret store: `ConnectionStrings__FieldService`, `Auth__AccessTokenKey`, `Auth__SocketTicketKey`, `Notifications__WebhookSecret`, the notification service's `WEBHOOK_SECRETS` and `SOCKET_TICKET_KEY`, and `ConnectionStrings__Migrations` for the release step only. There is no file-based secret provider and no `*_FILE` variable. Create each secret in the format of the table above, for example with `openssl rand -base64 32`, with `whsec_` in front for the webhook secret. Create every key and secret separately: the API refuses equal keys, a published test key and a patterned key ([Startup checks](#startup-checks)), so a value copied from documentation or a test fails at startup.

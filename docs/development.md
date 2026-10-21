@@ -181,6 +181,17 @@ The script creates every local secret once and writes them where each applicatio
 - `--bootstrap` then runs `infrastructure/postgres/bootstrap.sql` on 127.0.0.1:5432 through `psql`. The script creates the roles `fieldservice_migrator` and `fieldservice_app`, or sets their passwords again when they exist, and creates the `fieldservice` database when it is missing. It needs `psql` on `PATH`.
 - Running the script again without flags creates nothing new. It reads the existing values first, reports each output as `unchanged`, and ends with `create-dev-env: no changes; every output already holds its values`. If one output has drifted from the others, the same run writes it back in step.
 
+**What the API needs from it.** In Development the API refuses to start unless it finds five values, each valid by the rules in [configuration.md](configuration.md#startup-checks). Locally it reads them from the user-secrets store `fieldservice-api`:
+
+| Key | Why Development needs it |
+|---|---|
+| `ConnectionStrings:FieldService` | Every environment needs it |
+| `Auth:AccessTokenKey` and `Auth:SocketTicketKey` | Every environment needs both signing keys, also when the notification service is not running |
+| `Notifications:WebhookSecret` | `appsettings.Development.json` sets `Notifications:BaseUrl` |
+| `Seed:DemoPassword` | `appsettings.Development.json` turns on `Seed:DemoData` |
+
+The script writes all five, plus `ConnectionStrings:Migrations` for `dotnet ef`. It creates the two keys and the webhook secret from fresh random bytes, distinct from each other, so none can be a published test key or a patterned key. Never type or paste one of these values by hand. `node infrastructure/scripts/start-dev.mjs --check` confirms that the store holds every key, by name and without printing a value.
+
 ### 3. Apply the migrations
 
 Run the VS Code task `db: migrate`, or:
@@ -201,6 +212,8 @@ node infrastructure/scripts/start-dev.mjs
 
 Both are described in [Running the stack](#running-the-stack).
 
+At its first start on the new database, the API seeds the demo data, after its configuration and migration checks and before it listens: one administrator, six technicians, 20 jobs, JOB-1036 to JOB-1055, and three inspections ([database.md](database.md#demo-data)). It logs `seed.demo-data.completed` with row counts and the next job number, so the first job created afterwards is JOB-1056. Later starts find the users already there, write nothing and log `seed.demo-data.skipped` with the reason `demo data present`. To start again from the demo data, reset the database ([Resets](#resets)).
+
 ### 5. Check that it runs
 
 ```
@@ -208,7 +221,15 @@ curl -s http://localhost:5080/health/ready
 curl -s http://127.0.0.1:5090/health/ready
 ```
 
-Both print `Healthy`. Then open http://localhost:5173 for the dashboard.
+Both print `Healthy`. Then open http://localhost:5173, which leads to the sign-in page.
+
+**Signing in.** Sign in as the demo administrator, `dana.whitfield@fieldservice.example`, with the demo password. Every demo account shares that password, and the dashboard admits administrators only: a technician account gets the message that technicians sign in from the FieldService Tech app. No setup step prints the password, and no tracked file holds it. To see it, run this yourself, in your own terminal:
+
+```
+node infrastructure/scripts/create-dev-env.mjs --show-demo-password
+```
+
+It prints the password and nothing else. Keep it out of shared terminals, screen recordings and issue reports.
 
 In Development the API serves its OpenAPI document at http://localhost:5080/openapi/v1.json; open it in any OpenAPI viewer. The API ships no API explorer page, so `/swagger` answers 404 ([ADR 0017](decisions/0017-api-explorer-in-development.md)).
 
@@ -311,9 +332,9 @@ dotnet ef database update --project src/FieldService.Api
 
 | Goal | Steps |
 |---|---|
-| Fresh local database | The VS Code task `db: reset`, which runs `db: drop local database`, `db: bootstrap local server` and `db: migrate` in sequence. The terminal equivalent is below. Restart the API afterwards, so that its startup checks run against the new database |
-| Fresh Compose database | `docker compose -f infrastructure/docker-compose.yml down -v`, then `docker compose -f infrastructure/docker-compose.yml up -d --wait db`, then `db: migrate` |
-| New secrets | `node infrastructure/scripts/create-dev-env.mjs --force`, then the steps it prints: bootstrap the local server again, reset the Compose database, and reset the local database |
+| Fresh local database, or the demo data back as seeded | The VS Code task `db: reset`, which runs `db: drop local database`, `db: bootstrap local server` and `db: migrate` in sequence. The terminal equivalent is below. Restart the API afterwards: its startup checks run against the new database, it seeds the demo data again, and the next created job is JOB-1056 again |
+| Fresh Compose database | `docker compose -f infrastructure/docker-compose.yml down -v`, then `docker compose -f infrastructure/docker-compose.yml up -d --wait db`, then `db: migrate`. The next API start seeds the demo data |
+| New secrets | `node infrastructure/scripts/create-dev-env.mjs --force`, then the steps it prints: bootstrap the local server again, reset the Compose database, and reset the local database. The reset matters for signing in: the seeder never rewrites existing password hashes, so the demo accounts take the new demo password only when the API seeds an empty database |
 | Empty log folders | Delete the files inside `logs/api/` and `logs/notifications/`, and keep the folders |
 
 The terminal equivalent of `db: reset` on macOS:
@@ -332,13 +353,13 @@ dotnet ef database update --project src/FieldService.Api
 `--force` and `--show-demo-password` are deliberate steps for a person at a terminal, and no task, script or CI step runs them:
 
 - `--force` replaces every secret, then prints the follow-up steps. It prints no value.
-- `--show-demo-password` prints the demo account password from `infrastructure/.env` and nothing else, for signing in by hand. Nothing automated needs it: the API and the tests read the user-secrets stores, the notification service reads its `.env` file, and Playwright reads `src/fieldservice-web/e2e/.env`.
+- `--show-demo-password` prints the demo account password from `infrastructure/.env` and nothing else, for signing in by hand ([step 5](#5-check-that-it-runs)). Nothing automated needs it: the API and the tests read the user-secrets stores, the notification service reads its `.env` file, and Playwright reads `src/fieldservice-web/e2e/.env`.
 
 ## Tests
 
 | Suite | Command | Needs |
 |---|---|---|
-| API | `dotnet test --project tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj` | The local server, `psql` 15 or later on `PATH`, and the test user-secrets store, which `create-dev-env.mjs` fills. Each run creates and drops its own `fieldservice_test_<run>` database |
+| API | `dotnet test --project tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj` | The local server, `psql` 15 or later on `PATH`, and the test user-secrets store, which `create-dev-env.mjs` fills. Each run creates and drops its own `fieldservice_test_<run>` database. The test host creates its own signing keys and webhook secret per run and seeds no demo data, so the API's user-secrets store plays no part |
 | API, domain only | `dotnet test --project tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj --filter-namespace FieldService.Api.Tests.Domain` | Nothing: no database |
 | Technician app | `dotnet test --project tests/FieldService.Mobile.Tests/FieldService.Mobile.Tests.csproj` | No device: the tests build the app's plain `net10.0` target |
 | Notification service | `npm test --prefix src/fieldservice-notifications` | Runs the suites in `tests/notification-tests` |
@@ -470,6 +491,10 @@ It fails when a tracked path must never be committed, and when a tracked file ho
 | "A compatible .NET SDK was not found" (requested 10.0.402) | No 10.0.4xx SDK at or above 10.0.402 is installed, for example after a cask upgrade removed SDK 10 | Install `dotnet-sdk-10.0.4xx-osx-arm64.pkg` from `https://builds.dotnet.microsoft.com/dotnet/Sdk/<version>/`. Never run `brew upgrade --cask dotnet-sdk` or a bare `brew upgrade` after .NET 11 is released |
 | `npm error code EBADENGINE` | Node is older than 26.12.0 | Install Node 26.12.0 |
 | The API stops at startup with "pending migrations" | The database is behind the model | Task `db: migrate` |
+| The API stops at startup with `config.invalid` and `must be set` for `Auth:AccessTokenKey`, `Auth:SocketTicketKey`, `Notifications:WebhookSecret` or `Seed:DemoPassword` | The user-secrets store `fieldservice-api` lacks the key | Run `node infrastructure/scripts/create-dev-env.mjs` without flags. It fills the missing keys and keeps every existing value; `start-dev.mjs --check` then confirms the store |
+| The API stops at startup with `config.invalid` and `must not be one of the published test keys`, `must not be a patterned key …`, `must be standard base64 …` or `must differ from …` | A key was typed by hand, or copied from documentation, a test or another key | Run `create-dev-env.mjs` without flags: it takes each value from `infrastructure/.env` first and writes it back into the store. If `infrastructure/.env` holds the same value, replace every secret with `--force` and follow the steps it prints |
+| The API stops at startup with `config.invalid` for `Cors:AllowedOrigins` | An origin with a path or a trailing `/`, or `*` | Write each origin as `scheme://host:port`, for example `http://localhost:5173` |
+| Sign-in shows "The email or password is incorrect." (401 `auth.invalid-credentials`) for every demo account, with the password that `--show-demo-password` prints | The database was seeded with an earlier demo password, for example before a `--force` run | Reset the local database with the task `db: reset` and restart the API, which seeds the demo data with the current password |
 | `28P01 password authentication failed` (Windows or Compose) | The role passwords differ from the user-secrets store | Run `create-dev-env.mjs --bootstrap` again. For Compose, run `down -v`, then `up -d --wait db` |
 | `3D000 database "fieldservice" does not exist` | The bootstrap has not run | `create-dev-env.mjs --bootstrap` |
 | `42501 permission denied` during a migration | The migration ran with the app connection | `dotnet ef` must use `ConnectionStrings:Migrations`, the migrator role |
