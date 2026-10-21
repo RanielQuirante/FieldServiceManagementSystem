@@ -33,16 +33,45 @@ public sealed class User
         UserRole role,
         DateTimeOffset now)
     {
+        var at = UtcInstant.Truncate(now);
         return new User
         {
-            Id = Guid.CreateVersion7(now),
-            Email = email.ToLowerInvariant(),
-            DisplayName = displayName,
+            Id = Guid.CreateVersion7(at),
+            Email = DomainText.Required(email, nameof(email)).ToLowerInvariant(),
+            DisplayName = DomainText.Required(displayName, nameof(displayName)),
             PasswordHash = passwordHash,
             Role = role,
             IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now,
+            CreatedAt = at,
+            UpdatedAt = at,
         };
+    }
+
+    public void ReplacePasswordHash(string passwordHash, DateTimeOffset now)
+    {
+        PasswordHash = passwordHash;
+        UpdatedAt = UtcInstant.Truncate(now);
+    }
+
+    public void Deactivate(DateTimeOffset now)
+    {
+        if (!IsActive)
+        {
+            return;
+        }
+
+        IsActive = false;
+        UpdatedAt = UtcInstant.Truncate(now);
+    }
+
+    public void Activate(DateTimeOffset now)
+    {
+        if (IsActive)
+        {
+            return;
+        }
+
+        IsActive = true;
+        UpdatedAt = UtcInstant.Truncate(now);
     }
 }

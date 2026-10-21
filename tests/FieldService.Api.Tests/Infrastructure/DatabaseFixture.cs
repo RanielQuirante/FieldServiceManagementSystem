@@ -127,6 +127,7 @@ public sealed partial class DatabaseFixture : IAsyncLifetime
         await using var connection = await OpenMigratorConnectionAsync(cancellationToken);
         await respawner.ResetAsync(connection);
         Factory.LogSink.Clear();
+        Factory.Events.Clear();
     }
 
     public FieldServiceDbContext CreateAppDbContext()

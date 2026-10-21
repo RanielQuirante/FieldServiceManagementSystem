@@ -10,6 +10,7 @@ FieldService keeps its data in PostgreSQL 17.11. One database holds one schema, 
 - [Naming conventions](#naming-conventions)
 - [Tables](#tables)
 - [Reference data](#reference-data)
+- [Demo data](#demo-data)
 
 ## Server and database
 
@@ -1012,3 +1013,283 @@ Every reference id is a valid UUIDv7 whose timestamp is 2026-10-19T00:00:00Z (`0
 | Electrical panel inspection | 01 | 02 | `01a15175-3c00-7000-8000-000305010200` | Line to neutral | V |
 | Electrical panel inspection | 02 | 01 | `01a15175-3c00-7000-8000-000305020100` | Load current | A |
 | Electrical panel inspection | 03 | 01 | `01a15175-3c00-7000-8000-000305030100` | Hottest breaker | °F |
+
+## Demo data
+
+The demo data seeder writes one fixed data set: a dispatcher, six technicians, 20 jobs with 49 history entries, and three inspections. It gives the web dashboard and the technician app realistic content in development and in the Compose demo. Production and the API tests never contain it, and sessions and refresh tokens are never seeded.
+
+### When the seeder runs
+
+`Persistence/Seeding/DemoDataSeeder.cs` holds the seeder and `Persistence/Seeding/DemoData.cs` the data. The API runs the seeder at startup, after its check for pending migrations and before it starts listening, as `fieldservice_app` like every other API query. It writes only when all of these hold:
+
+| Condition | Rule |
+|---|---|
+| Enabled | `Seed:DemoData` is `true`, as in Development and in the Compose stack |
+| Environment | Not Production. Production refuses `Seed:DemoData=true` at startup, and the API tests build their own data |
+| Password | `Seed:DemoPassword` holds 12 or more characters. Every demo account uses it; the value comes from the local configuration, never from the repository (see [configuration.md](configuration.md)) |
+| Empty database | `users` has no rows. On a database that has users the seeder writes nothing. It never extends or repairs a seeded database, so it keeps no markers |
+| One run at a time | One transaction covers the whole run and begins with `SELECT pg_advisory_xact_lock(20261019)`, so two API instances cannot seed at once and a failure leaves no partial data |
+
+A skipped run logs one Information event naming the reason. A completed run logs one Information event with row counts only, never names, email addresses, phone numbers or addresses.
+
+### How the rows are written
+
+The seeder replays each job's history and the inspection saves in time order through the domain methods that the API commands use. Each call receives its event's time, so every seeded row passes the same domain rules and the same constraints as live data: the transitions of each job are valid, every assignee is an active technician on shift, notes appear exactly on `PutOnHold` and `Cancelled` entries, and every inspection answer belongs to the job's checklist template. Ids are UUIDv7 values created from the event's time, and each password hash is computed from `Seed:DemoPassword` with its own salt.
+
+| Domain step | Rows |
+|---|---|
+| User and technician creation | 7 users, 6 technicians |
+| Job creation | 20 jobs with their numbers and creation times; 20 `Created` entries |
+| Assignment | 16 `Assigned` entries; `assigned_technician_id` and `assigned_at` |
+| Starting and putting on hold | 7 `Started` and 3 `PutOnHold` entries; `started_at`. No job is resumed |
+| Inspection saves | 3 inspections, 22 answers and 6 readings; each save also moves the job's `updated_at` |
+| Submission | JOB-1039 and JOB-1043 completed, each with its inspection submitted in the same step; 2 `Completed` entries; `completed_at` |
+| Cancellation | JOB-1036 cancelled; 1 `Cancelled` entry; `cancelled_at` |
+
+The seeder sets the job numbers JOB-1036 to JOB-1055 explicitly. After the inserts, in the same transaction, it runs `SELECT fieldservice.advance_job_number()`, which moves the `jobs.number` identity past JOB-1055, so the first job created afterwards is JOB-1056. The numbers do not follow creation order: JOB-1039 and JOB-1051 were created on the seeding day, after JOB-1048 and JOB-1053. The lists order jobs by time and use the number only as a tie-breaker.
+
+| Table | Rows after the seed |
+|---|---|
+| `users` | 7 |
+| `technicians` | 6 |
+| `jobs` | 20 |
+| `job_history` | 49 |
+| `inspections` | 3 |
+| `inspection_answers` | 22 |
+| `inspection_readings` | 6 |
+| `user_sessions`, `refresh_tokens` | 0 |
+
+The checklist tables keep their 58 reference rows; the seeder only reads them.
+
+### Dates relative to the seeding day
+
+The data describes a working Monday at 10:42 in the morning. The seeder places it on the day it runs, with the API's clock and local time zone:
+
+- `D` is the local date when the seeder runs; `D-1` is the day before and `D+1` the day after.
+- `Δ` is the whole number of hours, rounded down, that have passed between 10:42 local time on `D` and the moment the seeder runs. It is negative before 10:42.
+- Each seeded time is its listed local time on its own day, converted to UTC with the local time zone, plus `Δ` hours. One anchor serves the whole run.
+- A listed time that a daylight-saving change skips is converted with the UTC offset of the day before, so it moves forward by the length of the skipped interval. A listed time that occurs twice, when the clocks go back, is read as standard time, the later of the two. Every listed time falls between 06:58 and 17:00, outside the hours in which time zones usually change their clocks.
+
+Before it writes anything, the seeder checks that the history entries, inspection saves and submission of each job follow one another strictly in time. If a time zone's rules ever broke that order, the seeder would write nothing and the API would stop at startup with a message naming the job and the two steps; started again at another time of day, it seeds normally. The API tests check every daylight-saving change from October 2026 to September 2027 in New York, Berlin, Sydney and Santiago, for seeds between 02:42 and 19:41 on each day from four days before a change to three days after it, and the order holds in all of them.
+
+The tables below give times as `D`, `D-1` and so on, on the 24-hour local clock before the `Δ` shift. As a result:
+
+- The newest event, JOB-1049 started, is 0 to 59 minutes old when the seeder finishes. Two events on the same side of a daylight-saving change are as far apart as their listed times.
+- A seed run between 10:42 and 11:41 local shows the listed clock times exactly, also around a daylight-saving change.
+- The figures that count the seeding day, such as the jobs completed today, hold when the seed runs between 02:42 and 19:41 local and the screens are read the same day. Outside that range, a completion or a scheduled start leaves the seeding day. On the day the clocks go forward, a seed run before 03:42 also moves the completion of JOB-1039 onto the day before, so the seeding day shows one completed job instead of two.
+- When a daylight-saving change falls between a listed time and the moment `Δ` moves it to, the screens show that event earlier or later than its listed time plus `Δ` by the size of the change, one hour in most time zones. The order of events stays as listed.
+- Seeded times are fixed when the seed runs. A demo on a later day shows the data as of the seeding day; a database reset places it on the current day again (see [Resetting the demo data](#resetting-the-demo-data)).
+- In containers the local time zone is UTC unless `TZ` is set. Relative times still hold, and only the displayed hours shift.
+
+### Users
+
+Every account is active, uses `Seed:DemoPassword`, was created at D-30 09:00, and has not signed in yet (`last_signed_in_at` is NULL). The `example` domain is reserved for documentation, so no address reaches a real mailbox.
+
+| Name | Email | Role | Trade | Phone | Shift |
+|---|---|---|---|---|---|
+| Dana Whitfield | `dana.whitfield@fieldservice.example` | Administrator, shown as Dispatcher | — | — | — |
+| Marco Reyes | `marco.reyes@fieldservice.example` | Technician | `Hvac` (HVAC) | (555) 014-2231 | On shift |
+| Aisha Karim | `aisha.karim@fieldservice.example` | Technician | `Electrical` (Electrical) | (555) 014-7810 | On shift |
+| Tom Becker | `tom.becker@fieldservice.example` | Technician | `Plumbing` (Plumbing) | (555) 014-3392 | On shift |
+| Lena Park | `lena.park@fieldservice.example` | Technician | `FireSafety` (Fire safety) | (555) 014-5521 | On shift |
+| Priya Natarajan | `priya.natarajan@fieldservice.example` | Technician | `Electrical` (Electrical) | (555) 014-6604 | On shift |
+| Samuel Osei | `samuel.osei@fieldservice.example` | Technician | `Hvac` (HVAC) | (555) 014-9148 | Off shift |
+
+Samuel Osei is off shift, so he cannot be assigned; the other five technicians can.
+
+### Jobs
+
+Dana Whitfield created every job. The Scheduled column gives the day with the local start and end times, and Updated is `updated_at`, which follows from the history and the inspection saves.
+
+| Job | Title | Customer | Site | Priority | Checklist template | Status | Technician | Scheduled | Updated |
+|---|---|---|---|---|---|---|---|---|---|
+| JOB-1036 | Office AC filter replacement | Summit Coworking | 12 Summit Plaza, Floor 4 | Low | Rooftop HVAC service | Cancelled | Marco Reyes | D-3 14:00–15:00 | D-3 09:20 |
+| JOB-1037 | Annual boiler service | Harborview Apartments | 600 Bayfront Avenue | Normal | Boiler service | OnHold | Tom Becker | D-3 13:00–15:00 | D-3 13:50 |
+| JOB-1038 | Hot water pressure relief valve dripping | St. Anne's Care Home | 75 Willow Lane | High | Boiler service | OnHold | Tom Becker | D-3 15:30–17:00 | D-3 16:25 |
+| JOB-1039 | Boiler pressure drop | Lakeside Dental | 9 Lakeside Court | High | Boiler service | Completed | Tom Becker | D 07:00–08:30 | D 08:52 |
+| JOB-1040 | Dock leveler outlet not working | Northgate Logistics Warehouse | 42 Industrial Parkway, Dock 4 | Normal | General electrical inspection | Assigned | Aisha Karim | D+1 13:00–14:30 | D-3 14:25 |
+| JOB-1041 | Kitchen outlets tripping the GFCI | Elm Street Bakery | 88 Elm Street | High | General electrical inspection | Assigned | Aisha Karim | D+2 07:00–08:30 | D-2 09:35 |
+| JOB-1042 | Rooftop HVAC unit not cooling | Brightwater Medical Clinic | 214 Harbor Road, Suite 3 | High | Rooftop HVAC service | InProgress | Marco Reyes | D 09:00–11:00 | D 09:50 |
+| JOB-1043 | Parking lot lighting repair | Riverside Shopping Center | 500 Riverside Boulevard | Normal | General electrical inspection | Completed | Aisha Karim | D 07:30–09:30 | D 09:58 |
+| JOB-1044 | Water heater leaking at base | Maple Grove Townhomes | 19 Maple Grove Court, Unit 12 | High | Boiler service | OnHold | Tom Becker | D 08:00–10:00 | D 10:31 |
+| JOB-1045 | Quarterly fire extinguisher inspection | Cedar Ridge Elementary School | 1180 Cedar Ridge Drive | Normal | Fire extinguisher inspection | Assigned | Lena Park | D 11:30–13:00 | D 08:40 |
+| JOB-1046 | Exam room lights flickering | Brightwater Medical Clinic | 214 Harbor Road, Suite 3 | Normal | General electrical inspection | Assigned | Priya Natarajan | D+1 09:00–10:30 | D-1 12:15 |
+| JOB-1047 | Walk-in freezer temperature alarm | Elm Street Bakery | 88 Elm Street | Urgent | Rooftop HVAC service | Assigned | Marco Reyes | D 13:30–15:00 | D 10:05 |
+| JOB-1048 | Backflow preventer annual test | Harborview Apartments | 600 Bayfront Avenue | Normal | Boiler service | Assigned | Tom Becker | D+1 08:00–09:30 | D-1 16:40 |
+| JOB-1049 | Standby generator load test | St. Anne's Care Home | 75 Willow Lane | Normal | General electrical inspection | InProgress | Priya Natarajan | D 10:00–12:00 | D 10:42 |
+| JOB-1050 | Emergency lighting test | Northgate Logistics Warehouse | 42 Industrial Parkway, Dock 4 | Low | General electrical inspection | Unassigned | — | D+2 09:00–11:00 | D-1 15:55 |
+| JOB-1051 | Replace faulty breaker panel | Pinecrest Public Library | 300 Pinecrest Road | High | Electrical panel inspection | Unassigned | — | D 15:30–17:00 | D 10:20 |
+| JOB-1052 | Fire alarm panel trouble signal | Cedar Ridge Elementary School | 1180 Cedar Ridge Drive | Urgent | Fire extinguisher inspection | Unassigned | — | D 14:00–15:30 | D 08:31 |
+| JOB-1053 | Rooftop unit preventive maintenance | Harborview Apartments | 600 Bayfront Avenue | Low | Rooftop HVAC service | Assigned | Marco Reyes | D+1 13:00–15:00 | D-1 16:20 |
+| JOB-1054 | Leaking rooftop drain | Harborview Apartments | 600 Bayfront Avenue | Normal | Boiler service | Unassigned | — | D+3 10:00–12:00 | D-1 11:05 |
+| JOB-1055 | Tenant fit-out electrical inspection | Summit Coworking | 12 Summit Plaza, Floor 4 | Normal | General electrical inspection | Assigned | Aisha Karim | D 13:00–14:30 | D-1 10:45 |
+
+| Status | Jobs | Count |
+|---|---|---|
+| Unassigned | JOB-1050, JOB-1051, JOB-1052, JOB-1054 | 4 |
+| Assigned | JOB-1040, JOB-1041, JOB-1045, JOB-1046, JOB-1047, JOB-1048, JOB-1053, JOB-1055 | 8 |
+| InProgress | JOB-1042, JOB-1049 | 2 |
+| OnHold | JOB-1037, JOB-1038, JOB-1044 | 3 |
+| Completed | JOB-1039, JOB-1043 | 2 |
+| Cancelled | JOB-1036 | 1 |
+
+17 jobs are open (Unassigned, Assigned, InProgress or OnHold), 13 of them with a technician. Both Completed jobs were completed on the seeding day. JOB-1036, the only Cancelled job, was cancelled on D-3 and keeps its technician, Marco Reyes, so it stays visible to him; no job is cancelled on the seeding day.
+
+| Technician | Open jobs | Current or next job |
+|---|---|---|
+| Marco Reyes | 3: JOB-1042, JOB-1047, JOB-1053 | Current JOB-1042, InProgress |
+| Aisha Karim | 3: JOB-1040, JOB-1041, JOB-1055 | Next JOB-1055 at D 13:00 |
+| Tom Becker | 4: JOB-1037, JOB-1038, JOB-1044, JOB-1048 | Current JOB-1044, OnHold |
+| Lena Park | 1: JOB-1045 | Next JOB-1045 at D 11:30 |
+| Priya Natarajan | 2: JOB-1046, JOB-1049 | Current JOB-1049, InProgress, scheduled to end at D 12:00 |
+| Samuel Osei | 0 | None |
+
+A technician's current job is the InProgress job, or else the OnHold job, with the latest `updated_at`; the next job is the Assigned job with the earliest scheduled start, then the lowest number.
+
+| Job | Description |
+|---|---|
+| JOB-1036 | Replace the filters on the office split units on Floor 4. |
+| JOB-1037 | Annual service of the central heating boiler before the heating season. |
+| JOB-1038 | The pressure relief valve on the laundry room water heater drips continuously. |
+| JOB-1039 | Boiler pressure falls overnight and the heating cuts out before the practice opens. |
+| JOB-1040 | The power outlet for the dock leveler at Dock 4 has no power. The breaker has not tripped. |
+| JOB-1041 | The GFCI outlets behind the prep counter trip when the mixers start. Work must be finished before the bakery opens. |
+| JOB-1042 | Rooftop unit RTU-2 runs but is not cooling. The waiting room is at 81°F. The customer reports the problem started on Saturday afternoon. |
+| JOB-1043 | Several light poles in the north parking lot stay dark after sunset. |
+| JOB-1044 | Water is pooling around the base of the gas water heater in the utility closet. |
+| JOB-1045 | Quarterly inspection of the portable fire extinguishers in the main building and the gym. |
+| JOB-1046 | The ceiling lights in the exam rooms flicker after they have been on for a few minutes. |
+| JOB-1047 | The walk-in freezer alarm keeps sounding and the display reads above the set point. Staff moved the stock to the reach-in freezers. |
+| JOB-1048 | Annual test of the backflow preventer on the domestic water supply, with the test report for the water utility. |
+| JOB-1049 | Monthly load test of the standby generator with the care home running on generator power. |
+| JOB-1050 | Annual 90-minute discharge test of the emergency lighting across the warehouse. |
+| JOB-1051 | Main breaker panel trips under load. Several 20 A breakers are warm to the touch. The library closes to the public at 5 PM. |
+| JOB-1052 | The fire alarm control panel shows a trouble signal on one zone. The school is on fire watch until it is cleared. |
+| JOB-1053 | Seasonal preventive maintenance on the rooftop units before the heating season. |
+| JOB-1054 | Water drips from the top-floor hallway ceiling below the rooftop drain after rain. |
+| JOB-1055 | Inspection of the new office circuits on Floor 4 before the tenant moves in. |
+
+The optional text columns are NULL on every job except these three:
+
+| Job | Site access notes | Contact name | Contact phone | Equipment |
+|---|---|---|---|---|
+| JOB-1042 | Roof access through the east stairwell. Ask reception for the roof key. | Nina Alvarez | (555) 014-6620 | RTU-2, 10-ton packaged rooftop unit |
+| JOB-1047 | NULL | NULL | (555) 014-4417 | NULL |
+| JOB-1051 | Main electrical room, basement level. Building supervisor will meet you at the loading door. | Owen Mitchell | (555) 014-3307 | NULL |
+
+JOB-1047 has a contact phone and no contact name, so its call action is labelled with the customer, "Call Elm Street Bakery", and dials (555) 014-4417.
+
+### History
+
+49 entries: Created 20, Assigned 16, Started 7, PutOnHold 3, Completed 2, Cancelled 1, and no Resumed. Dana Whitfield creates, assigns and cancels; the assigned technician starts, puts on hold and completes. An `Assigned` entry stores the assignee in `technician_id`. The notes of the `PutOnHold` and `Cancelled` entries are stored as written below, without quotation marks.
+
+| Job | Time | Action | Actor | Assignee | Note |
+|---|---|---|---|---|---|
+| JOB-1036 | D-4 09:40 | Created | Dana Whitfield | | |
+| JOB-1036 | D-4 09:45 | Assigned | Dana Whitfield | Marco Reyes | |
+| JOB-1036 | D-3 09:20 | Cancelled | Dana Whitfield | | Building management replaced the filters under its own maintenance contract. |
+| JOB-1037 | D-4 10:15 | Created | Dana Whitfield | | |
+| JOB-1037 | D-4 10:20 | Assigned | Dana Whitfield | Tom Becker | |
+| JOB-1037 | D-3 13:05 | Started | Tom Becker | | |
+| JOB-1037 | D-3 13:50 | PutOnHold | Tom Becker | | Waiting for the gas utility to restore supply to the boiler room. |
+| JOB-1038 | D-3 11:30 | Created | Dana Whitfield | | |
+| JOB-1038 | D-3 11:35 | Assigned | Dana Whitfield | Tom Becker | |
+| JOB-1038 | D-3 15:40 | Started | Tom Becker | | |
+| JOB-1038 | D-3 16:25 | PutOnHold | Tom Becker | | Waiting for the care home to approve a hot water shutdown. |
+| JOB-1039 | D 06:58 | Created | Dana Whitfield | | |
+| JOB-1039 | D 07:00 | Assigned | Dana Whitfield | Tom Becker | |
+| JOB-1039 | D 07:05 | Started | Tom Becker | | |
+| JOB-1039 | D 08:52 | Completed | Tom Becker | | |
+| JOB-1040 | D-3 14:20 | Created | Dana Whitfield | | |
+| JOB-1040 | D-3 14:25 | Assigned | Dana Whitfield | Aisha Karim | |
+| JOB-1041 | D-2 09:30 | Created | Dana Whitfield | | |
+| JOB-1041 | D-2 09:35 | Assigned | Dana Whitfield | Aisha Karim | |
+| JOB-1042 | D 08:14 | Created | Dana Whitfield | | |
+| JOB-1042 | D 08:20 | Assigned | Dana Whitfield | Marco Reyes | |
+| JOB-1042 | D 09:12 | Started | Marco Reyes | | |
+| JOB-1043 | D-2 10:05 | Created | Dana Whitfield | | |
+| JOB-1043 | D-2 10:10 | Assigned | Dana Whitfield | Aisha Karim | |
+| JOB-1043 | D 07:34 | Started | Aisha Karim | | |
+| JOB-1043 | D 09:58 | Completed | Aisha Karim | | |
+| JOB-1044 | D-1 11:20 | Created | Dana Whitfield | | |
+| JOB-1044 | D-1 11:25 | Assigned | Dana Whitfield | Tom Becker | |
+| JOB-1044 | D 08:06 | Started | Tom Becker | | |
+| JOB-1044 | D 10:31 | PutOnHold | Tom Becker | | Waiting for replacement gas valve |
+| JOB-1045 | D-1 11:40 | Created | Dana Whitfield | | |
+| JOB-1045 | D 08:40 | Assigned | Dana Whitfield | Lena Park | |
+| JOB-1046 | D-1 12:10 | Created | Dana Whitfield | | |
+| JOB-1046 | D-1 12:15 | Assigned | Dana Whitfield | Priya Natarajan | |
+| JOB-1047 | D 08:47 | Created | Dana Whitfield | | |
+| JOB-1047 | D 10:05 | Assigned | Dana Whitfield | Marco Reyes | |
+| JOB-1048 | D-1 16:30 | Created | Dana Whitfield | | |
+| JOB-1048 | D-1 16:40 | Assigned | Dana Whitfield | Tom Becker | |
+| JOB-1049 | D-1 13:20 | Created | Dana Whitfield | | |
+| JOB-1049 | D-1 13:25 | Assigned | Dana Whitfield | Priya Natarajan | |
+| JOB-1049 | D 10:42 | Started | Priya Natarajan | | |
+| JOB-1050 | D-1 15:55 | Created | Dana Whitfield | | |
+| JOB-1051 | D 10:20 | Created | Dana Whitfield | | |
+| JOB-1052 | D 08:31 | Created | Dana Whitfield | | |
+| JOB-1053 | D-1 16:05 | Created | Dana Whitfield | | |
+| JOB-1053 | D-1 16:20 | Assigned | Dana Whitfield | Marco Reyes | |
+| JOB-1054 | D-1 11:05 | Created | Dana Whitfield | | |
+| JOB-1055 | D-1 10:40 | Created | Dana Whitfield | | |
+| JOB-1055 | D-1 10:45 | Assigned | Dana Whitfield | Aisha Karim | |
+
+No two entries share an instant, so the tie-breaks of the timelines and of the live activity never decide an order.
+
+### Inspections
+
+| Job | Checklist template | Technician | First save | Last change | Submitted | Answered | Pass, Fail, N/A | Technician notes |
+|---|---|---|---|---|---|---|---|---|
+| JOB-1039 | Boiler service | Tom Becker | D 07:48 | D 08:52 | D 08:52 | 8 of 8 | 7, 0, 1 | Pressure drop traced to a weeping fitting on the return line. Fitting tightened, system refilled to 18 psi and holding. |
+| JOB-1042 | Rooftop HVAC service | Marco Reyes | D 09:31 | D 09:50 | NULL (draft) | 6 of 10 | 4, 1, 1 | NULL |
+| JOB-1043 | General electrical inspection | Aisha Karim | D 08:20 | D 09:58 | D 09:58 | 8 of 8 | 7, 0, 1 | Replaced the failed lamp drivers and the corroded pole-base connectors. Every pole tested on the photocell and all lot lights are working. |
+
+The first save is `created_at`, and the last change is `updated_at`: the last save of a draft, or the submission. Each inspection's technician is the job's assignee, every save falls while the job is InProgress, and each save also moves the job's `updated_at`, which is why JOB-1042 was last updated at D 09:50. A submitted inspection's `submitted_at` equals the job's `completed_at`.
+
+| Job | Item | Result | Note | Readings | Answered at |
+|---|---|---|---|---|---|
+| JOB-1039 | 01 Isolate gas and electrical supply | Pass | — | — | D 07:48 |
+| JOB-1039 | 02 Inspect valves and fittings for leaks | Pass | Tightened a weeping fitting on the return line | — | D 07:48 |
+| JOB-1039 | 03 Check system pressure | Pass | — | System pressure 18.00 psi | D 07:48 |
+| JOB-1039 | 04 Test pressure relief valve | Pass | — | — | D 07:48 |
+| JOB-1039 | 05 Inspect expansion tank | Pass | Recharged to 12 psi | — | D 08:49 |
+| JOB-1039 | 06 Check burner flame and combustion | Pass | — | — | D 08:49 |
+| JOB-1039 | 07 Test low-water cutoff | NotApplicable | Not fitted on this model | — | D 08:49 |
+| JOB-1039 | 08 Restore supply and confirm operation | Pass | — | — | D 08:49 |
+| JOB-1042 | 01 Lock out and tag out unit power | Pass | — | — | D 09:31 |
+| JOB-1042 | 02 Replace return air filters | Pass | — | — | D 09:31 |
+| JOB-1042 | 03 Check refrigerant pressures | Pass | — | Suction 118.00 psi; Discharge 285.00 psi | D 09:31 |
+| JOB-1042 | 04 Clean condenser coil | Pass | — | — | D 09:50 |
+| JOB-1042 | 05 Inspect condenser fan motor and bearings | Fail | Bearing noise at start-up. Recommend motor replacement within 30 days. | — | D 09:50 |
+| JOB-1042 | 06 Check belts and pulleys | NotApplicable | Direct-drive unit | — | D 09:50 |
+| JOB-1043 | 01 Measure supply voltage | Pass | — | Supply voltage 277.00 V | D 08:20 |
+| JOB-1043 | 02 Isolate and lock out the circuits being worked on | Pass | — | — | D 08:20 |
+| JOB-1043 | 03 Inspect wiring, terminations and enclosures | Pass | Replaced corroded connectors in the pole bases | — | D 08:20 |
+| JOB-1043 | 04 Test insulation resistance | Pass | — | Insulation resistance 250.00 MΩ | D 08:20 |
+| JOB-1043 | 05 Test ground continuity | Pass | — | Ground resistance 0.40 Ω | D 09:55 |
+| JOB-1043 | 06 Check fixtures, switches and receptacles | Pass | — | — | D 09:55 |
+| JOB-1043 | 07 Label circuits and update the panel directory | NotApplicable | No circuit changes were made | — | D 09:55 |
+| JOB-1043 | 08 Restore power and confirm normal operation | Pass | — | — | D 09:55 |
+
+The two submitted inspections are complete: every item is answered, every Pass answer has all the readings of its item, and no NotApplicable answer has a reading. JOB-1042 is a draft at 6 of 10, with items 07 to 10 open for the technician to finish; submitting the job then completes it.
+
+### Figures on the seeding day
+
+With the seed run at 10:42 (`Δ` 0) and the screens read the same day, the rows give these figures. The API computes each of them from the data.
+
+| Where | Figure |
+|---|---|
+| Job list, by `updated_at` descending, 12 jobs per page | Page 1: JOB-1049, JOB-1044, JOB-1051, JOB-1047, JOB-1043, JOB-1042, JOB-1039, JOB-1045 and JOB-1052, then JOB-1048, JOB-1053 and JOB-1050 from D-1. Page 2: JOB-1046, JOB-1054, JOB-1055, JOB-1041, JOB-1038, JOB-1040, JOB-1037, JOB-1036 |
+| Status counts | 20 jobs: Unassigned 4, Assigned 8, InProgress 2, OnHold 3, Completed 2, Cancelled 1 |
+| Dashboard | 17 open jobs, 4 of them without a technician and 2 of those scheduled on the seeding day; 13 open jobs with a technician; 5 of 6 technicians on shift; InProgress across 2 technicians; the next Assigned job starts at 11:30 (JOB-1045); OnHold since D-3 13:50 (JOB-1037); 2 jobs completed on the seeding day, the last at 09:58; 0 cancelled on the seeding day |
+| Jobs without a technician, by scheduled start | JOB-1052 (Urgent, D 14:00), JOB-1051 (High, D 15:30), JOB-1050 (Low, D+2 09:00), JOB-1054 (Normal, D+3 10:00) |
+| Live activity, the 6 newest entries of the day | 10:42 Priya Natarajan started JOB-1049; 10:31 Tom Becker put JOB-1044 on hold; 10:20 Dana Whitfield created JOB-1051; 10:05 Dana Whitfield assigned JOB-1047 to Marco Reyes; 09:58 Aisha Karim completed JOB-1043; 09:12 Marco Reyes started JOB-1042 |
+| Marco Reyes in the technician app | Active: JOB-1042 and JOB-1047 on the seeding day, JOB-1053 the next day. Completed: JOB-1036, because cancelled jobs stay visible to their technician |
+| Assigning JOB-1051 (Electrical panel inspection) | Electrical technicians first: Priya Natarajan with 2 open jobs and Aisha Karim with 3; Samuel Osei is off shift and cannot be chosen |
+| Time on site | JOB-1039 1 h 47 min (07:05 to 08:52); JOB-1043 2 h 24 min (07:34 to 09:58) |
+| Next job number | JOB-1056 |
+
+### Resetting the demo data
+
+The seeder never rewrites a seeded database. To bring the demo data back, for example before a demo or a screenshot session or after local runs changed seeded jobs, drop and migrate the database and start the API again: the VS Code task `db: reset` for the local server, or `docker compose -f infrastructure/docker-compose.yml down -v` followed by the migration step for the Compose stack. [development.md](development.md#resets) lists the steps.

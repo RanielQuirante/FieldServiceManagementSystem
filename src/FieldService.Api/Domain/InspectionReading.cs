@@ -14,7 +14,7 @@ public sealed class InspectionReading
 
     public decimal Value { get; private set; }
 
-    public static InspectionReading Create(
+    internal static InspectionReading Create(
         Guid inspectionId,
         Guid checklistItemId,
         Guid readingFieldId,
@@ -27,5 +27,10 @@ public sealed class InspectionReading
             ReadingFieldId = readingFieldId,
             Value = value,
         };
+    }
+
+    internal void ChangeValue(decimal value)
+    {
+        Value = value;
     }
 }

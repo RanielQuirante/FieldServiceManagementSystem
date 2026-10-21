@@ -20,20 +20,45 @@ public sealed class InspectionAnswer
 
     public IReadOnlyList<InspectionReading> Readings => _readings;
 
-    public static InspectionAnswer Create(
-        Guid inspectionId,
-        Guid checklistItemId,
-        InspectionResult result,
-        string? note,
-        DateTimeOffset answeredAt)
+    internal static InspectionAnswer Create(Guid inspectionId, ChecklistAnswer answer, DateTimeOffset answeredAt)
     {
-        return new InspectionAnswer
+        var created = new InspectionAnswer
         {
             InspectionId = inspectionId,
-            ChecklistItemId = checklistItemId,
-            Result = result,
-            Note = note,
+            ChecklistItemId = answer.ChecklistItemId,
+            Result = answer.Result,
+            Note = DomainText.Optional(answer.Note),
             AnsweredAt = answeredAt,
         };
+        created._readings.AddRange(answer.Readings.Select(reading =>
+            InspectionReading.Create(inspectionId, answer.ChecklistItemId, reading.ReadingFieldId, reading.Value)));
+        return created;
+    }
+
+    internal bool Matches(ChecklistAnswer answer) =>
+        Result == answer.Result
+        && Note == DomainText.Optional(answer.Note)
+        && _readings.Count == answer.Readings.Count
+        && answer.Readings.All(reading => _readings.Exists(saved =>
+            saved.ReadingFieldId == reading.ReadingFieldId && saved.Value == reading.Value));
+
+    internal void Replace(ChecklistAnswer answer, DateTimeOffset answeredAt)
+    {
+        Result = answer.Result;
+        Note = DomainText.Optional(answer.Note);
+        AnsweredAt = answeredAt;
+        _readings.RemoveAll(saved => !answer.Readings.Any(reading => reading.ReadingFieldId == saved.ReadingFieldId));
+        foreach (var reading in answer.Readings)
+        {
+            var saved = _readings.Find(existing => existing.ReadingFieldId == reading.ReadingFieldId);
+            if (saved is null)
+            {
+                _readings.Add(InspectionReading.Create(InspectionId, ChecklistItemId, reading.ReadingFieldId, reading.Value));
+            }
+            else
+            {
+                saved.ChangeValue(reading.Value);
+            }
+        }
     }
 }

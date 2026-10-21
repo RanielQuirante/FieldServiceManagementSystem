@@ -1,3 +1,4 @@
+using FieldService.Api.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -21,6 +22,7 @@ public static class PersistenceRegistration
         services.AddDbContext<FieldServiceDbContext>((provider, options) =>
             options.UseFieldServiceDatabase(
                 provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString ?? string.Empty));
+        services.AddDemoDataSeeding(configuration);
 
         return services;
     }
@@ -44,5 +46,7 @@ public static class PersistenceRegistration
         {
             await PendingMigrationsCheck.RunAsync(app.Services, cancellationToken);
         }
+
+        await DemoDataSeeder.RunAsync(app.Services, cancellationToken);
     }
 }

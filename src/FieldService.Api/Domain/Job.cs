@@ -60,25 +60,196 @@ public sealed class Job
 
     public static Job Create(JobDetails details, Guid createdByUserId, DateTimeOffset now)
     {
-        return new Job
+        var at = UtcInstant.Truncate(now);
+        var scheduledStart = UtcInstant.Truncate(details.ScheduledStart);
+        var scheduledEnd = UtcInstant.Truncate(details.ScheduledEnd);
+        if (scheduledEnd <= scheduledStart)
         {
-            Id = Guid.CreateVersion7(now),
-            Title = details.Title,
-            Description = details.Description,
+            throw new ArgumentException("The scheduled end must be after the scheduled start.", nameof(details));
+        }
+
+        var job = new Job
+        {
+            Id = Guid.CreateVersion7(at),
+            Title = DomainText.Required(details.Title, nameof(details.Title)),
+            Description = DomainText.Required(details.Description, nameof(details.Description)),
             Priority = details.Priority,
-            CustomerName = details.CustomerName,
-            SiteAddress = details.SiteAddress,
-            SiteAccessNotes = details.SiteAccessNotes,
-            ContactName = details.ContactName,
-            ContactPhone = details.ContactPhone,
-            Equipment = details.Equipment,
-            ScheduledStart = details.ScheduledStart,
-            ScheduledEnd = details.ScheduledEnd,
+            CustomerName = DomainText.Required(details.CustomerName, nameof(details.CustomerName)),
+            SiteAddress = DomainText.Required(details.SiteAddress, nameof(details.SiteAddress)),
+            SiteAccessNotes = DomainText.Optional(details.SiteAccessNotes),
+            ContactName = DomainText.Optional(details.ContactName),
+            ContactPhone = DomainText.Optional(details.ContactPhone),
+            Equipment = DomainText.Optional(details.Equipment),
+            ScheduledStart = scheduledStart,
+            ScheduledEnd = scheduledEnd,
             ChecklistTemplateId = details.ChecklistTemplateId,
             Status = JobStatus.Unassigned,
             CreatedByUserId = createdByUserId,
-            CreatedAt = now,
-            UpdatedAt = now,
+            CreatedAt = at,
+            UpdatedAt = at,
         };
+        job._history.Add(JobHistoryEntry.Create(
+            job.Id,
+            JobHistoryAction.Created,
+            fromStatus: null,
+            JobStatus.Unassigned,
+            createdByUserId,
+            technicianId: null,
+            note: null,
+            at));
+        return job;
+    }
+
+    public bool IsAssignedTo(Guid technicianId) => AssignedTechnicianId == technicianId;
+
+    public DomainError? AssignTo(Technician technician, JobActor actor, DateTimeOffset now)
+    {
+        var transition = JobTransitions.Find(JobCommand.Assign, this, JobStatus.Assigned, actor);
+        if (transition is null)
+        {
+            return actor.Role == UserRole.Administrator
+                ? DomainErrors.NotAssignable(this)
+                : DomainErrors.InvalidTransition(this, JobStatus.Assigned);
+        }
+
+        if (Status == JobStatus.Assigned && IsAssignedTo(technician.UserId))
+        {
+            return null;
+        }
+
+        if (!technician.IsAvailableForAssignment)
+        {
+            return DomainErrors.TechnicianUnavailable();
+        }
+
+        var at = UtcInstant.Truncate(now);
+        AssignedTechnicianId = technician.UserId;
+        AssignedAt = at;
+        Record(transition, actor, technician.UserId, note: null, at);
+        return null;
+    }
+
+    public DomainError? ChangeStatus(JobStatus target, string? note, JobActor actor, DateTimeOffset now)
+    {
+        var transition = JobTransitions.Find(JobCommand.ChangeStatus, this, target, actor);
+        if (transition is null)
+        {
+            return DomainErrors.InvalidTransition(this, target);
+        }
+
+        var storedNote = DomainText.Optional(note);
+        if (transition.RequiresNote && !IsValidNote(storedNote))
+        {
+            return DomainErrors.Field(
+                "note",
+                $"Enter a note of at most {JobTransitions.MaxNoteLength} characters to put the job on hold.");
+        }
+
+        var at = UtcInstant.Truncate(now);
+        if (transition.Action == JobHistoryAction.Started)
+        {
+            StartedAt ??= at;
+        }
+
+        Record(transition, actor, technicianId: null, transition.RequiresNote ? storedNote : null, at);
+        return null;
+    }
+
+    public DomainError? Submit(
+        Inspection? inspection,
+        InspectionChecklist checklist,
+        string? technicianNotes,
+        JobActor actor,
+        DateTimeOffset now)
+    {
+        var transition = JobTransitions.Find(JobCommand.Submit, this, JobStatus.Completed, actor);
+        if (transition is null)
+        {
+            return DomainErrors.InvalidTransition(this, JobStatus.Completed);
+        }
+
+        EnsureChecklistOfThisJob(checklist);
+        if (inspection is not null && inspection.JobId != Id)
+        {
+            throw new ArgumentException("The inspection belongs to another job.", nameof(inspection));
+        }
+
+        if (inspection is { IsSubmitted: true })
+        {
+            return DomainErrors.InspectionSubmitted();
+        }
+
+        var completeness = InspectionCompleteness.Of(checklist, inspection);
+        if (inspection is null || !completeness.IsComplete)
+        {
+            return DomainErrors.InspectionIncomplete(completeness);
+        }
+
+        var storedNotes = DomainText.Optional(technicianNotes);
+        if (storedNotes is { Length: > Inspection.MaxTechnicianNotesLength })
+        {
+            return DomainErrors.Field(
+                "technicianNotes",
+                $"Enter completion notes of at most {Inspection.MaxTechnicianNotesLength} characters.");
+        }
+
+        var at = UtcInstant.Truncate(now);
+        CompletedAt = at;
+        Record(transition, actor, technicianId: null, note: null, at);
+        inspection.MarkSubmitted(storedNotes, at);
+        return null;
+    }
+
+    public DomainError? Cancel(string? reason, JobActor actor, DateTimeOffset now)
+    {
+        var transition = JobTransitions.Find(JobCommand.Cancel, this, JobStatus.Cancelled, actor);
+        if (transition is null)
+        {
+            return DomainErrors.InvalidTransition(this, JobStatus.Cancelled);
+        }
+
+        var storedReason = DomainText.Optional(reason);
+        if (!IsValidNote(storedReason))
+        {
+            return DomainErrors.Field(
+                "reason",
+                $"Enter a reason of at most {JobTransitions.MaxNoteLength} characters to cancel the job.");
+        }
+
+        var at = UtcInstant.Truncate(now);
+        CancelledAt = at;
+        Record(transition, actor, technicianId: null, storedReason, at);
+        return null;
+    }
+
+    internal void TouchForInspection(DateTimeOffset at)
+    {
+        UpdatedAt = at;
+    }
+
+    internal void EnsureChecklistOfThisJob(InspectionChecklist checklist)
+    {
+        if (checklist.TemplateId != ChecklistTemplateId)
+        {
+            throw new ArgumentException("The checklist is not the job's checklist template.", nameof(checklist));
+        }
+    }
+
+    private static bool IsValidNote(string? note) => note is { Length: > 0 and <= JobTransitions.MaxNoteLength };
+
+    private void Record(JobTransition transition, JobActor actor, Guid? technicianId, string? note, DateTimeOffset at)
+    {
+        var fromStatus = Status;
+        Status = transition.To;
+        UpdatedAt = at;
+        _history.Add(JobHistoryEntry.Create(
+            Id,
+            transition.Action,
+            fromStatus,
+            transition.To,
+            actor.UserId,
+            technicianId,
+            note,
+            at));
     }
 }

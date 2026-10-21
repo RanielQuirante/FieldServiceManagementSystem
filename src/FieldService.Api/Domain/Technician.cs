@@ -16,14 +16,21 @@ public sealed class Technician
 
     public User User { get; private set; } = null!;
 
+    public bool IsAvailableForAssignment => IsOnShift && User.IsActive;
+
     public static Technician Create(User user, Trade trade, string phoneNumber, bool isOnShift)
     {
+        if (user.Role != UserRole.Technician)
+        {
+            throw new ArgumentException("Only a user with the Technician role has a technician profile.", nameof(user));
+        }
+
         return new Technician
         {
             UserId = user.Id,
             User = user,
             Trade = trade,
-            PhoneNumber = phoneNumber,
+            PhoneNumber = DomainText.Required(phoneNumber, nameof(phoneNumber)),
             IsOnShift = isOnShift,
         };
     }
