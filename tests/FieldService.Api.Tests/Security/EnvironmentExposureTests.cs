@@ -68,6 +68,24 @@ public sealed class EnvironmentExposureTests(DatabaseFixture fixture) : Database
         Assert.Equal(_swaggerPaths.ToDictionary(path => path, _ => HttpStatusCode.NotFound), answers);
     }
 
+    [Theory]
+    [InlineData("Development", "attacker.example", HttpStatusCode.BadRequest)]
+    [InlineData("Development", "localhost", HttpStatusCode.OK)]
+    [InlineData("Development", "10.0.2.2", HttpStatusCode.OK)]
+    [InlineData("Production", "attacker.example", HttpStatusCode.BadRequest)]
+    [InlineData("Production", "localhost", HttpStatusCode.OK)]
+    public async Task AHostHeaderOutsideAllowedHostsGets400(string environment, string host, HttpStatusCode expected)
+    {
+        await using var factory = Fixture.CreateFactory(factory => EndpointInventoryTests.ConfigureEnvironment(factory, environment));
+        using var http = SecurityHeadersTests.ClientFor(factory, $"http://{host}");
+
+        using var health = await ForwardedHeadersTests.SendFromAsync(http, HttpMethod.Get, "/health/live", "127.0.0.1", []);
+        using var api = await ForwardedHeadersTests.SendFromAsync(http, HttpMethod.Get, "/api/jobs", "127.0.0.1", []);
+
+        Assert.Equal(expected, health.StatusCode);
+        Assert.Equal(expected == HttpStatusCode.OK ? HttpStatusCode.Unauthorized : HttpStatusCode.BadRequest, api.StatusCode);
+    }
+
     private static async Task AssertNotFoundProblemAsync(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

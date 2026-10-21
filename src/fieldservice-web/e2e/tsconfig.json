@@ -2,8 +2,10 @@
   "extends": "@tsconfig/node26/tsconfig.json",
   "include": ["./**/*"],
   "compilerOptions": {
+    "lib": ["es2025", "ESNext.Collection", "ESNext.Temporal", "DOM"],
     "strict": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.e2e.tsbuildinfo"
   }
 }

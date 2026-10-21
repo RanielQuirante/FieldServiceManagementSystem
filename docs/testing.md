@@ -196,7 +196,7 @@ npm run build
 
 ## End-to-end tests
 
-The Playwright suite drives the built dashboard in Chromium against a running stack. Tests find elements by role, label and visible text only.
+The Playwright suite drives the dashboard in Chromium against a running stack. Tests find elements by role, label and visible text only.
 
 | Project | Stack under test | Base URL |
 |---|---|---|
@@ -208,15 +208,22 @@ The Playwright suite drives the built dashboard in Chromium against a running st
 | `npm run test:e2e:host` | The `host` project, without tests tagged `@compose-only` or `@quarantine` |
 | `npm run test:e2e` | The `compose` project, without tests tagged `@quarantine` |
 
-- Install the browser and start the stack as [development.md](development.md#tests) describes. A run against the Vite dev server is useful for debugging, but only a run against `vite preview` checks the production headers.
+- Install the browser once and start the stack as [development.md](development.md#tests) describes. A run against the Vite dev server is useful for debugging, but only a run against `vite preview` checks the production headers: the header test in `security.spec.ts` fails against the dev server, which sends none of them.
 - The demo account password comes from `src/fieldservice-web/e2e/.env`, which `create-dev-env.mjs` writes; a value already set in `E2E_DEMO_PASSWORD` takes precedence, so no password is typed or prompted for. `E2E_BASE_URL` overrides the base URL of both projects.
+- Before the first test, a global setup waits up to 60 seconds for the dashboard at `/` and for `GET /api/checklist-templates` without a token to answer 401 through the proxy, so a run against a stopped API fails at once. It also gives the run its id, `E2E_RUN_ID` unless that variable is set.
+- After the last test, a global teardown searches every file under `logs/api` and `logs/notifications` (or under `E2E_LOGS_DIR`) for the access tokens and refresh cookies seen during the run, the demo password and the personal details of the demo data. A match fails the run and names the file, the line and the kind of value, never the value. A folder with no log file also fails the run.
+- Automatic checks fail a test on any Content Security Policy violation, any request to another origin, any uncaught page error, and any console error that the test does not declare as expected. A budget check keeps a run to at most 7 sign-ins and 25 session refreshes in any 60 seconds, below the API's rate limits.
+- Tests create their own jobs, with titles that start with `E2E <run id>`, and only read the demo jobs, so no run needs a freshly seeded database. Every run adds jobs to the development database; the VS Code task `db: reset` restores the demo data.
+- `accessibility.spec.ts` runs the axe checks for the WCAG 2.2 AA tags on each route and state at 1280 and 375 px, and checks reflow at 320 px, reduced motion, forced colours and creating a job by keyboard alone.
 - Tests run one at a time against one shared stack. Under CI a failed test is retried once, and a test that passes only on the retry fails the run.
-- The suite has no specs yet; they are written together with the dashboard features they cover. Until the first spec exists, a run reports "No tests found" and exits with code 1. To check the configuration alone, list the tests of each project:
+
+The specs have their own TypeScript project. To type-check them and list the tests of each project without a running stack:
 
 ```
 cd src/fieldservice-web
-npx playwright test --list --project=host --pass-with-no-tests --reporter=list
-npx playwright test --list --project=compose --pass-with-no-tests --reporter=list
+npx tsc -p e2e/tsconfig.json
+npx playwright test --list --project=host --reporter=list
+npx playwright test --list --project=compose --reporter=list
 ```
 
 The `compose` project needs Docker Desktop and the application images of the Compose `full` profile; the Compose file defines only the database service so far. The CI workflow has no end-to-end job yet.

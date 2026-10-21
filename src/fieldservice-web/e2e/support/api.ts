@@ -1,0 +1,279 @@
+import process from 'node:process'
+
+import type { APIRequestContext, APIResponse } from '@playwright/test'
+
+import { recordAuthCall } from './budget.ts'
+
+export type SessionClient = 'Web' | 'Mobile'
+
+export type JobStatus =
+  'Unassigned' | 'Assigned' | 'InProgress' | 'OnHold' | 'Completed' | 'Cancelled'
+
+export type JobPriority = 'Low' | 'Normal' | 'High' | 'Urgent'
+
+export interface SessionUser {
+  readonly id: string
+  readonly displayName: string
+  readonly role: 'Administrator' | 'Technician'
+}
+
+export interface SessionResponse {
+  readonly accessToken: string
+  readonly accessTokenExpiresAt: string
+  readonly user: SessionUser
+  readonly refreshToken: string | null
+}
+
+export interface PersonReference {
+  readonly id: string
+  readonly displayName: string
+}
+
+export interface TechnicianReference extends PersonReference {
+  readonly trade: string
+}
+
+export interface ChecklistTemplate {
+  readonly id: string
+  readonly name: string
+  readonly trade: string
+  readonly itemCount: number
+}
+
+export interface JobSummary {
+  readonly id: string
+  readonly number: number
+  readonly title: string
+  readonly priority: JobPriority
+  readonly status: JobStatus
+  readonly customerName: string
+  readonly siteAddress: string
+  readonly scheduledStart: string
+  readonly scheduledEnd: string
+  readonly assignedTechnician: TechnicianReference | null
+  readonly updatedAt: string
+  readonly version: number
+}
+
+export interface JobHistoryEntry {
+  readonly id: string
+  readonly action: string
+  readonly toStatus: JobStatus
+  readonly actor: PersonReference
+  readonly occurredAt: string
+}
+
+export interface JobDetails extends JobSummary {
+  readonly description: string
+  readonly siteAccessNotes: string | null
+  readonly contactName: string | null
+  readonly contactPhone: string | null
+  readonly equipment: string | null
+  readonly checklistTemplate: { readonly id: string; readonly name: string; readonly trade: string }
+  readonly createdBy: PersonReference
+  readonly createdAt: string
+  readonly assignedAt: string | null
+  readonly history: readonly JobHistoryEntry[]
+}
+
+export interface StatusCount {
+  readonly status: JobStatus
+  readonly count: number
+}
+
+export interface JobList {
+  readonly items: readonly JobSummary[]
+  readonly page: number
+  readonly pageSize: number
+  readonly totalCount: number
+  readonly statusCounts: readonly StatusCount[]
+}
+
+export interface CreateJobBody {
+  readonly title: string
+  readonly description: string
+  readonly priority: JobPriority
+  readonly customerName: string
+  readonly siteAddress: string
+  readonly siteAccessNotes?: string
+  readonly contactName?: string
+  readonly contactPhone?: string
+  readonly equipment?: string
+  readonly scheduledStart: string
+  readonly scheduledEnd: string
+  readonly checklistTemplateId: string
+}
+
+export interface Problem {
+  readonly status: number
+  readonly code: string
+  readonly title: string
+  readonly errors?: Readonly<Record<string, readonly string[]>>
+}
+
+export const demoAccounts = {
+  administrator: 'dana.whitfield@fieldservice.example',
+  technician: 'marco.reyes@fieldservice.example',
+} as const
+
+export const refreshCookieName = 'fs_refresh'
+
+export const csrfHeader = { 'X-FieldService-Csrf': '1' } as const
+
+export type SentinelSink = (label: string, value: string | null | undefined) => void
+
+export function demoPassword(): string {
+  const value = process.env.E2E_DEMO_PASSWORD
+  if (value === undefined || value.length === 0) {
+    throw new Error(
+      'E2E_DEMO_PASSWORD is not set. Locally, playwright.config.ts loads it from the e2e env file written by create-dev-env.mjs.',
+    )
+  }
+  return value
+}
+
+export function refreshCookieFrom(setCookieHeaders: readonly string[]): string | null {
+  for (const header of setCookieHeaders) {
+    const match = new RegExp(`(?:^|\\n)${refreshCookieName}=([^;\\n]*)`).exec(header)
+    if (match?.[1] !== undefined && match[1].length > 0) {
+      return match[1]
+    }
+  }
+  return null
+}
+
+export function setCookieHeadersOf(response: APIResponse): string[] {
+  return response
+    .headersArray()
+    .filter((header) => header.name.toLowerCase() === 'set-cookie')
+    .map((header) => header.value)
+}
+
+async function recordSession(response: APIResponse, sink: SentinelSink): Promise<void> {
+  sink('refresh cookie', refreshCookieFrom(setCookieHeadersOf(response)))
+  if (!response.ok()) {
+    return
+  }
+  const session = (await response.json()) as SessionResponse
+  sink('access token', session.accessToken)
+  sink('refresh token', session.refreshToken)
+}
+
+function spendBudget(call: 'sign-in' | 'refresh'): void {
+  const violation = recordAuthCall(call)
+  if (violation !== null) {
+    throw new Error(violation)
+  }
+}
+
+export async function signIn(
+  request: APIRequestContext,
+  email: string,
+  client: SessionClient,
+  sink: SentinelSink,
+): Promise<APIResponse> {
+  spendBudget('sign-in')
+  const response = await request.post('/api/auth/sign-in', {
+    data: { email, password: demoPassword(), client },
+  })
+  await recordSession(response, sink)
+  return response
+}
+
+export async function refreshWithCookie(
+  request: APIRequestContext,
+  sink: SentinelSink,
+  headers: Readonly<Record<string, string>> = csrfHeader,
+): Promise<APIResponse> {
+  spendBudget('refresh')
+  const response = await request.post('/api/auth/refresh', { headers: { ...headers } })
+  await recordSession(response, sink)
+  return response
+}
+
+export async function readSession(
+  response: APIResponse,
+  purpose: string,
+): Promise<SessionResponse> {
+  if (!response.ok()) {
+    const problem = await readProblem(response)
+    throw new Error(`${purpose} failed with ${problem.status} ${problem.code}.`)
+  }
+  return (await response.json()) as SessionResponse
+}
+
+export async function readProblem(response: APIResponse): Promise<Problem> {
+  const body = (await response.json()) as Partial<Problem>
+  return {
+    status: response.status(),
+    code: body.code ?? '',
+    title: body.title ?? '',
+    ...(body.errors !== undefined ? { errors: body.errors } : {}),
+  }
+}
+
+export interface AccessTokens {
+  current(): string
+  renew(): Promise<string>
+}
+
+export class AdminApi {
+  constructor(
+    private readonly request: APIRequestContext,
+    private readonly tokens: AccessTokens,
+  ) {}
+
+  async send(method: 'GET' | 'POST', path: string, data?: unknown): Promise<APIResponse> {
+    const attempt = (token: string): Promise<APIResponse> =>
+      this.request.fetch(path, {
+        method,
+        headers: { Authorization: `Bearer ${token}` },
+        ...(data !== undefined ? { data } : {}),
+      })
+    const response = await attempt(this.tokens.current())
+    if (response.status() !== 401) {
+      return response
+    }
+    return attempt(await this.tokens.renew())
+  }
+
+  private async read<T>(method: 'GET' | 'POST', path: string, data?: unknown): Promise<T> {
+    const response = await this.send(method, path, data)
+    if (!response.ok()) {
+      const problem = await readProblem(response)
+      throw new Error(
+        `${method} ${path.split('?')[0]} failed with ${problem.status} ${problem.code}.`,
+      )
+    }
+    return (await response.json()) as T
+  }
+
+  getJobs(query: Readonly<Record<string, string | number>> = {}): Promise<JobList> {
+    const search = new URLSearchParams(
+      Object.entries(query).map(([key, value]) => [key, String(value)]),
+    ).toString()
+    return this.read<JobList>('GET', search.length > 0 ? `/api/jobs?${search}` : '/api/jobs')
+  }
+
+  getJob(id: string): Promise<JobDetails> {
+    return this.read<JobDetails>('GET', `/api/jobs/${id}`)
+  }
+
+  async findJobByNumber(number: number): Promise<JobSummary> {
+    const list = await this.getJobs({ search: `JOB-${number}`, pageSize: 100 })
+    const match = list.items.find((job) => job.number === number)
+    if (match === undefined) {
+      throw new Error(`JOB-${number} is not in the job list.`)
+    }
+    return match
+  }
+
+  async checklistTemplates(): Promise<ChecklistTemplate[]> {
+    const body = await this.read<{ items: ChecklistTemplate[] }>('GET', '/api/checklist-templates')
+    return body.items
+  }
+
+  createJob(body: CreateJobBody): Promise<JobDetails> {
+    return this.read<JobDetails>('POST', '/api/jobs', body)
+  }
+}

@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +28,8 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
     private const string AnyMethod = "*";
 
     private const string DomainNamespace = "FieldService.Api.Domain";
+
+    private const string FeaturesNamespace = "FieldService.Api.Features";
 
     private const string HttpsOrigin = "https://fieldservice.example";
 
@@ -53,8 +57,8 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
         new("PUT", "/api/jobs/{jobId:guid}/inspection", Technician),
         new("GET", "/api/checklist-templates", Administrator),
         new("POST", "/api/client-errors", Administrator),
-        new(AnyMethod, "/health/live", Anonymous, Required: true),
-        new(AnyMethod, "/health/ready", Anonymous, Required: true),
+        new("GET,HEAD", "/health/live", Anonymous, Required: true),
+        new("GET,HEAD", "/health/ready", Anonymous, Required: true),
         new("GET", "/openapi/{documentName}.json", Anonymous, Required: true, Environments: _documentEnvironments),
     ];
 
@@ -77,10 +81,34 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
     public void NoEndpointParameterOrResultTypeComesFromTheDomainNamespace()
     {
         var inventory = ReadInventory(Fixture.Factory);
+        var services = ServicesOf(Fixture.Factory);
 
-        var violations = inventory.SelectMany(DomainTypeViolations).ToList();
+        var violations = inventory.SelectMany(endpoint => DomainTypeViolations(endpoint, services)).ToList();
 
         Assert.True(violations.Count == 0, Describe(ApiFactory.TestingEnvironment, inventory, violations));
+    }
+
+    [Fact]
+    public void TheDomainRuleReachesEveryRequestAndResponseRecordUnderFeatures()
+    {
+        var inventory = ReadInventory(Fixture.Factory);
+        var services = ServicesOf(Fixture.Factory);
+        var records = typeof(Program).Assembly
+            .GetTypes()
+            .Where(type => type.IsPublic && type.Namespace?.StartsWith(FeaturesNamespace, StringComparison.Ordinal) == true)
+            .Where(type => type.GetMethod("<Clone>$") is not null)
+            .Select(type => type.FullName!)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        var reached = inventory
+            .SelectMany(endpoint => ContractTypes(endpoint, services))
+            .Select(type => type.FullName!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.NotEmpty(records);
+        var unreached = records.Where(record => !reached.Contains(record)).ToList();
+        Assert.True(unreached.Count == 0, "Records under Features that no endpoint parameter or result reaches:\n" + string.Join("\n", unreached));
     }
 
     [Fact]
@@ -97,14 +125,26 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
             "GET /api/inventory-probe/default-policy: is not in the expected inventory for Testing",
             "GET /api/inventory-probe/anonymous: allows anonymous access but is not on the anonymous allowlist",
             "GET /api/inventory-probe/anonymous: is not in the expected inventory for Testing",
-            "GET /api/inventory-probe/domain-types: is not in the expected inventory for Testing",
-            $"GET /api/inventory-probe/domain-types: parameter status uses {typeof(JobStatus).FullName}",
-            $"GET /api/inventory-probe/domain-types: result type uses {typeof(JobPriority).FullName}",
+            "POST /api/inventory-probe/domain-entity-parameter: is not in the expected inventory for Testing",
+            $"POST /api/inventory-probe/domain-entity-parameter: parameter job uses {typeof(Job).FullName}",
+            "POST /api/inventory-probe/domain-entity-member: is not in the expected inventory for Testing",
+            $"POST /api/inventory-probe/domain-entity-member: parameter request uses {typeof(Technician).FullName}",
+            "GET /api/inventory-probe/domain-entity-result: is not in the expected inventory for Testing",
+            $"GET /api/inventory-probe/domain-entity-result: result type uses {typeof(Job).FullName}",
+            "GET /api/inventory-probe/domain-enumerations: is not in the expected inventory for Testing",
+            "POST /api/inventory-probe/domain-entity-in-body-member: is not in the expected inventory for Testing",
+            $"POST /api/inventory-probe/domain-entity-in-body-member: parameter request member ProbeAssignment.Assignee uses {typeof(Technician).FullName}",
+            "GET /api/inventory-probe/domain-entity-in-response-member: is not in the expected inventory for Testing",
+            $"GET /api/inventory-probe/domain-entity-in-response-member: result type member ProbeHistory.Entry uses {typeof(JobHistoryEntry).FullName}",
+            $"GET /api/inventory-probe/domain-entity-in-response-member: result type member ProbeJobResponse.Tags uses {typeof(ChecklistItem).FullName}",
+            "GET /api/inventory-probe/domain-enumerations-in-members: is not in the expected inventory for Testing",
         ];
 
-        var inventory = ReadInventory(factory);
-        var violations = FindViolations(inventory, ApiFactory.TestingEnvironment)
-            .Concat(inventory.SelectMany(DomainTypeViolations))
+        var services = ServicesOf(factory);
+        var probes = ReadInventory(factory).Where(IsProbe).ToList();
+        var violations = probes
+            .SelectMany(endpoint => EndpointViolations(endpoint, ExpectedFor(ApiFactory.TestingEnvironment))
+                .Concat(DomainTypeViolations(endpoint, services)))
             .ToList();
 
         Assert.Equal(expected.Order(StringComparer.Ordinal), violations.Order(StringComparer.Ordinal));
@@ -121,6 +161,8 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
             new("PUT", "/api/jobs/{jobId}/status", IsAnonymous: false, [Technician], UnnamedAuthorization: false),
             new("GET", "/api/technicians", IsAnonymous: false, [], UnnamedAuthorization: true),
             new("GET", "/openapi/{documentName}.json", IsAnonymous: true, [], UnnamedAuthorization: false),
+            new(AnyMethod, "/health/live", IsAnonymous: true, [], UnnamedAuthorization: false),
+            new("GET", "/health/ready", IsAnonymous: true, [], UnnamedAuthorization: false),
         ];
         string[] expected =
         [
@@ -134,8 +176,12 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
             "GET /api/technicians: has policies [] where [Administrator] is expected",
             "GET /openapi/{documentName}.json: allows anonymous access but is not on the anonymous allowlist",
             "GET /openapi/{documentName}.json: is not in the expected inventory for Staging",
-            "* /health/live: is required in Staging but is not mapped",
-            "* /health/ready: is required in Staging but is not mapped",
+            "* /health/live: allows anonymous access but is not on the anonymous allowlist",
+            "* /health/live: is not in the expected inventory for Staging",
+            "GET /health/ready: allows anonymous access but is not on the anonymous allowlist",
+            "GET /health/ready: is not in the expected inventory for Staging",
+            "GET,HEAD /health/live: is required in Staging but is not mapped",
+            "GET,HEAD /health/ready: is required in Staging but is not mapped",
         ];
 
         var violations = FindViolations(inventory, "Staging");
@@ -150,6 +196,7 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
         if (environment == "Production")
         {
             factory.Settings["Cors:AllowedOrigins:0"] = HttpsOrigin;
+            factory.Settings["AllowedHosts"] = factory.ClientOptions.BaseAddress.Host;
         }
     }
 
@@ -161,49 +208,9 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
 
     private static List<string> FindViolations(IReadOnlyList<ActualEndpoint> inventory, string environment)
     {
-        var expected = _expected.Where(entry => entry.AppliesTo(environment)).ToList();
-        var violations = new List<string>();
-        foreach (var endpoint in inventory)
-        {
-            var entry = expected.FirstOrDefault(candidate => candidate.Matches(endpoint));
-            if (!endpoint.IsAnonymous && endpoint.Policies.Length == 0)
-            {
-                violations.Add($"{endpoint}: has no explicit policy and is not on the anonymous allowlist");
-            }
-
-            if (!endpoint.IsAnonymous && endpoint.UnnamedAuthorization)
-            {
-                violations.Add($"{endpoint}: requires authorization without a named policy");
-            }
-
-            if (entry is null)
-            {
-                if (endpoint.IsAnonymous)
-                {
-                    violations.Add($"{endpoint}: allows anonymous access but is not on the anonymous allowlist");
-                }
-
-                violations.Add($"{endpoint}: is not in the expected inventory for {environment}");
-                continue;
-            }
-
-            if (entry.Access == Anonymous && !endpoint.IsAnonymous)
-            {
-                violations.Add($"{endpoint}: is on the anonymous allowlist but does not allow anonymous access");
-            }
-            else if (entry.Access != Anonymous && endpoint.IsAnonymous)
-            {
-                violations.Add(
-                    $"{endpoint}: allows anonymous access but is not on the anonymous allowlist; expected policy {entry.Access}");
-            }
-            else if (entry.Access != Anonymous && !endpoint.Policies.SequenceEqual([entry.Access]))
-            {
-                violations.Add(
-                    $"{endpoint}: has policies [{string.Join(", ", endpoint.Policies)}] where [{entry.Access}] is expected");
-            }
-        }
-
-        foreach (var entry in expected.Where(entry => entry.Required && !inventory.Any(entry.Matches)))
+        var expected = ExpectedFor(environment);
+        var violations = inventory.SelectMany(endpoint => EndpointViolations(endpoint, expected)).ToList();
+        foreach (var entry in expected.Entries.Where(entry => entry.Required && !inventory.Any(entry.Matches)))
         {
             violations.Add($"{entry.Method} {entry.Route}: is required in {environment} but is not mapped");
         }
@@ -211,7 +218,60 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
         return violations;
     }
 
-    private static IEnumerable<string> DomainTypeViolations(ActualEndpoint endpoint)
+    private static ExpectedInventory ExpectedFor(string environment)
+    {
+        return new ExpectedInventory(environment, [.. _expected.Where(entry => entry.AppliesTo(environment))]);
+    }
+
+    private static IEnumerable<string> EndpointViolations(ActualEndpoint endpoint, ExpectedInventory expected)
+    {
+        var entry = expected.Entries.FirstOrDefault(candidate => candidate.Matches(endpoint));
+        if (!endpoint.IsAnonymous && endpoint.Policies.Length == 0)
+        {
+            yield return $"{endpoint}: has no explicit policy and is not on the anonymous allowlist";
+        }
+
+        if (!endpoint.IsAnonymous && endpoint.UnnamedAuthorization)
+        {
+            yield return $"{endpoint}: requires authorization without a named policy";
+        }
+
+        if (entry is null)
+        {
+            if (endpoint.IsAnonymous)
+            {
+                yield return $"{endpoint}: allows anonymous access but is not on the anonymous allowlist";
+            }
+
+            yield return $"{endpoint}: is not in the expected inventory for {expected.Environment}";
+            yield break;
+        }
+
+        if (entry.Access == Anonymous && !endpoint.IsAnonymous)
+        {
+            yield return $"{endpoint}: is on the anonymous allowlist but does not allow anonymous access";
+        }
+        else if (entry.Access != Anonymous && endpoint.IsAnonymous)
+        {
+            yield return
+                $"{endpoint}: allows anonymous access but is not on the anonymous allowlist; expected policy {entry.Access}";
+        }
+        else if (entry.Access != Anonymous && !endpoint.Policies.SequenceEqual([entry.Access]))
+        {
+            yield return
+                $"{endpoint}: has policies [{string.Join(", ", endpoint.Policies)}] where [{entry.Access}] is expected";
+        }
+    }
+
+    private static bool IsProbe(ActualEndpoint endpoint)
+    {
+        return endpoint.Route.StartsWith(ProbePrefix, StringComparison.Ordinal);
+    }
+
+    private static IServiceProviderIsService ServicesOf(ApiFactory factory) =>
+        factory.Services.GetRequiredService<IServiceProviderIsService>();
+
+    private static IEnumerable<string> DomainTypeViolations(ActualEndpoint endpoint, IServiceProviderIsService services)
     {
         if (endpoint.Handler is null)
         {
@@ -220,25 +280,148 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
 
         foreach (var parameter in endpoint.Handler.GetParameters())
         {
-            var types = Flatten(parameter.ParameterType);
-            if (parameter.GetCustomAttribute<AsParametersAttribute>() is not null)
-            {
-                types = types.Concat(parameter.ParameterType
-                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                    .SelectMany(property => Flatten(property.PropertyType)));
-            }
-
-            foreach (var type in types.Where(IsDomainType).Distinct())
+            var types = ParameterRoots(parameter).ToList();
+            foreach (var type in types.Where(IsRefusedDomainType).Distinct())
             {
                 yield return $"{endpoint}: parameter {parameter.Name} uses {type.FullName}";
             }
+
+            if (services.IsService(parameter.ParameterType))
+            {
+                continue;
+            }
+
+            var visited = new HashSet<Type>();
+            foreach (var root in WalkRoots(parameter, types, services))
+            {
+                foreach (var member in MemberViolations(root, services, visited))
+                {
+                    yield return $"{endpoint}: parameter {parameter.Name} member {member}";
+                }
+            }
         }
 
-        foreach (var type in Flatten(endpoint.Handler.ReturnType).Where(IsDomainType).Distinct())
+        var results = Flatten(endpoint.Handler.ReturnType).ToList();
+        foreach (var type in results.Where(IsRefusedDomainType).Distinct())
         {
             yield return $"{endpoint}: result type uses {type.FullName}";
         }
+
+        var resultVisited = new HashSet<Type>();
+        foreach (var root in results.Where(type => IsWalkedRecord(type, services)).Distinct())
+        {
+            foreach (var member in MemberViolations(root, services, resultVisited))
+            {
+                yield return $"{endpoint}: result type member {member}";
+            }
+        }
     }
+
+    private static IEnumerable<Type> ContractTypes(ActualEndpoint endpoint, IServiceProviderIsService services)
+    {
+        if (endpoint.Handler is null)
+        {
+            return [];
+        }
+
+        var reached = new HashSet<Type>();
+        foreach (var parameter in endpoint.Handler.GetParameters().Where(parameter => !services.IsService(parameter.ParameterType)))
+        {
+            if (IsAsParameters(parameter))
+            {
+                reached.Add(parameter.ParameterType);
+            }
+
+            foreach (var root in WalkRoots(parameter, [.. ParameterRoots(parameter)], services))
+            {
+                Collect(root, services, reached);
+            }
+        }
+
+        foreach (var root in Flatten(endpoint.Handler.ReturnType).Where(type => IsWalkedRecord(type, services)))
+        {
+            Collect(root, services, reached);
+        }
+
+        return reached;
+    }
+
+    private static IEnumerable<Type> ParameterRoots(ParameterInfo parameter)
+    {
+        var types = Flatten(parameter.ParameterType);
+        return IsAsParameters(parameter)
+            ? types.Concat(parameter.ParameterType
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .SelectMany(property => Flatten(property.PropertyType)))
+            : types;
+    }
+
+    private static IEnumerable<Type> WalkRoots(ParameterInfo parameter, List<Type> roots, IServiceProviderIsService services) =>
+        roots
+            .Where(type => !(IsAsParameters(parameter) && type == parameter.ParameterType))
+            .Where(type => IsWalkedRecord(type, services))
+            .Distinct();
+
+    private static bool IsAsParameters(ParameterInfo parameter) =>
+        parameter.GetCustomAttribute<AsParametersAttribute>() is not null;
+
+    private static IEnumerable<string> MemberViolations(Type owner, IServiceProviderIsService services, HashSet<Type> visited)
+    {
+        if (!visited.Add(owner))
+        {
+            yield break;
+        }
+
+        foreach (var property in owner.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.GetIndexParameters().Length > 0)
+            {
+                continue;
+            }
+
+            foreach (var type in Flatten(property.PropertyType).Distinct())
+            {
+                if (IsRefusedDomainType(type))
+                {
+                    yield return $"{owner.Name}.{property.Name} uses {type.FullName}";
+                }
+                else if (IsWalkedRecord(type, services))
+                {
+                    foreach (var nested in MemberViolations(type, services, visited))
+                    {
+                        yield return nested;
+                    }
+                }
+            }
+        }
+    }
+
+    private static void Collect(Type owner, IServiceProviderIsService services, HashSet<Type> reached)
+    {
+        if (!reached.Add(owner))
+        {
+            return;
+        }
+
+        foreach (var property in owner.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            foreach (var type in Flatten(property.PropertyType).Where(type => IsWalkedRecord(type, services)))
+            {
+                Collect(type, services, reached);
+            }
+        }
+    }
+
+    private static bool IsWalkedRecord(Type type, IServiceProviderIsService services) =>
+        !type.IsEnum
+        && !type.IsPrimitive
+        && !type.HasElementType
+        && !type.IsGenericTypeDefinition
+        && !IsRefusedDomainType(type)
+        && type.Namespace is { } name
+        && !name.StartsWith(DomainNamespace, StringComparison.Ordinal)
+        && (type.Assembly == typeof(Program).Assembly || type.Assembly == typeof(EndpointInventoryTests).Assembly)
+        && !services.IsService(type);
 
     private static IEnumerable<Type> Flatten(Type type)
     {
@@ -260,9 +443,11 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
         }
     }
 
-    private static bool IsDomainType(Type type)
+    private static bool IsRefusedDomainType(Type type)
     {
-        return type.Namespace is { } name
+        return !type.HasElementType
+            && !type.IsEnum
+            && type.Namespace is { } name
             && (name == DomainNamespace || name.StartsWith(DomainNamespace + ".", StringComparison.Ordinal));
     }
 
@@ -291,8 +476,69 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
         endpoints.MapGet($"{ProbePrefix}no-policy", () => TypedResults.Ok());
         endpoints.MapGet($"{ProbePrefix}default-policy", () => TypedResults.Ok()).RequireAuthorization();
         endpoints.MapGet($"{ProbePrefix}anonymous", () => TypedResults.Ok()).AllowAnonymous();
-        endpoints.MapGet($"{ProbePrefix}domain-types", (JobStatus status) => TypedResults.Ok(JobPriority.High))
+        endpoints.MapPost(
+                $"{ProbePrefix}domain-entity-parameter",
+                ([FromBody] Job job, JobStatus status) => TypedResults.NoContent())
             .RequireAuthorization(Administrator);
+        endpoints.MapPost(
+                $"{ProbePrefix}domain-entity-member",
+                ([AsParameters] EntityProbeRequest request) => TypedResults.NoContent())
+            .RequireAuthorization(Administrator);
+        endpoints.MapGet(
+                $"{ProbePrefix}domain-entity-result",
+                Results<Ok<Job>, NotFound> (JobPriority priority) => TypedResults.NotFound())
+            .RequireAuthorization(Administrator);
+        endpoints.MapGet(
+                $"{ProbePrefix}domain-enumerations",
+                Results<Ok<JobPriority>, Ok<JobStatus?>, NotFound> (
+                    JobStatus status,
+                    JobPriority? priority,
+                    [AsParameters] EnumerationProbeRequest request) => TypedResults.NotFound())
+            .RequireAuthorization(Administrator);
+        endpoints.MapPost(
+                $"{ProbePrefix}domain-entity-in-body-member",
+                ([FromBody] ProbeCreateRequest request) => TypedResults.NoContent())
+            .RequireAuthorization(Administrator);
+        endpoints.MapGet(
+                $"{ProbePrefix}domain-entity-in-response-member",
+                Results<Ok<ProbeJobResponse>, NotFound> () => TypedResults.NotFound())
+            .RequireAuthorization(Administrator);
+        endpoints.MapGet(
+                $"{ProbePrefix}domain-enumerations-in-members",
+                Task<Results<Ok<ProbeEnumerationResponse>, NotFound>> () =>
+                    Task.FromResult<Results<Ok<ProbeEnumerationResponse>, NotFound>>(TypedResults.NotFound()))
+            .RequireAuthorization(Administrator);
+    }
+
+    public sealed record ProbeCreateRequest(string Title, ProbeAssignment Assignment, JobPriority Priority);
+
+    public sealed record ProbeAssignment(Technician? Assignee, Trade Trade);
+
+    public sealed record ProbeJobResponse(Guid Id, IReadOnlyList<ProbeHistory> History, Dictionary<string, ChecklistItem[]> Tags);
+
+    public sealed record ProbeHistory(JobHistoryEntry Entry, JobStatus Status, ProbeHistory? Previous);
+
+    public sealed record ProbeEnumerationResponse(
+        JobStatus Status,
+        JobPriority? Priority,
+        IReadOnlyList<UserRole> Roles,
+        ProbeEnumerationResponse? Parent);
+
+    public sealed record EntityProbeRequest
+    {
+        [FromBody]
+        public Technician? Technician { get; init; }
+
+        public Trade? Trade { get; init; }
+    }
+
+    public sealed record EnumerationProbeRequest
+    {
+        public UserRole Role { get; init; }
+
+        public SessionClient? Client { get; init; }
+
+        public JobHistoryAction[]? Actions { get; init; }
     }
 
     public sealed record ActualEndpoint(
@@ -369,6 +615,8 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
 
         public bool Matches(ActualEndpoint endpoint) => endpoint.Method == Method && endpoint.Route == Route;
     }
+
+    private sealed record ExpectedInventory(string Environment, ExpectedEndpoint[] Entries);
 
     private sealed class ProbeEndpointsStartupFilter(Action<IEndpointRouteBuilder> map) : IStartupFilter
     {
