@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, onMounted } from 'vue'
+import { createApp, defineComponent, h, onMounted, type App } from 'vue'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 
-import { reportError } from '@/features/diagnostics/error-reporter'
+import { reportError, type ErrorSource } from '@/features/diagnostics/error-reporter'
+import { ApiError } from '@/shared/api/api-error'
+import { errorToastBody, errorToastTitle, useToasts } from '@/shared/composables/use-toasts'
 
 import { installErrorHandling, type RemoveErrorHandling } from '../error-handling'
 
@@ -98,9 +100,74 @@ describe('installErrorHandling', () => {
       message: 'Request promise rejected',
       source: 'window.unhandledrejection',
       route: '/',
+      correlationId: null,
       stack: failure.stack,
       occurredAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
     })
+  })
+
+  const raiseThrough: Readonly<
+    Record<ErrorSource, (app: App, router: Router, failure: Error) => Promise<unknown>>
+  > = {
+    'app.errorHandler': async (app, _router, failure) =>
+      app.config.errorHandler?.(failure, null, 'mounted hook'),
+    'window.unhandledrejection': async (_app, _router, failure) =>
+      window.dispatchEvent(unhandledRejection(failure)),
+    'router.onError': (_app, router) => router.push('/broken').catch(() => undefined),
+  }
+
+  it.each(['app.errorHandler', 'window.unhandledrejection', 'router.onError'] as const)(
+    'shows the error toast for an error reported through %s',
+    async (source) => {
+      const failure = new Error('Route component failed to load')
+      const router = createTestRouter(failure)
+      const app = createApp(EmptyPage)
+      removeErrorHandling = installErrorHandling(app, router)
+
+      await raiseThrough[source](app, router, failure)
+
+      expect(reportError).toHaveBeenCalledWith(failure, source, expect.any(String))
+      expect(useToasts().toasts).toEqual([
+        expect.objectContaining({
+          kind: 'error',
+          title: errorToastTitle,
+          body: errorToastBody,
+          reference: null,
+          durationMs: null,
+        }),
+      ])
+    },
+  )
+
+  it('shows the correlation reference of a failed API call in the toast and the report', () => {
+    const correlationId = 'f0766650-82a1-49f8-b5cc-f3103d346544'
+    const failure = new ApiError({
+      status: 500,
+      code: 'server.error',
+      title: 'An unexpected error occurred.',
+      detail: null,
+      fieldErrors: {},
+      correlationId,
+      retryAfterSeconds: null,
+    })
+    const router = createTestRouter(new Error('unused'))
+    removeErrorHandling = installErrorHandling(createApp(EmptyPage), router)
+
+    window.dispatchEvent(unhandledRejection(failure))
+
+    expect(vi.mocked(reportError).mock.results[0]?.value).toMatchObject({ correlationId })
+    expect(useToasts().toasts).toEqual([expect.objectContaining({ reference: correlationId })])
+  })
+
+  it('shows one toast for the same failure reported twice', () => {
+    const router = createTestRouter(new Error('unused'))
+    removeErrorHandling = installErrorHandling(createApp(EmptyPage), router)
+
+    window.dispatchEvent(unhandledRejection(new Error('Late rejection')))
+    window.dispatchEvent(unhandledRejection(new Error('Late rejection')))
+
+    expect(reportError).toHaveBeenCalledTimes(2)
+    expect(useToasts().toasts).toHaveLength(1)
   })
 
   it('describes rejection reasons that are not Error objects', () => {
