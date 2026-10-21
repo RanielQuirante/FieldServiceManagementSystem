@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <defs>
+    <linearGradient id="primary" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1F3A" />
+      <stop offset="1" stop-color="#0F766E" />
+    </linearGradient>
+    <radialGradient id="gloss" gradientUnits="userSpaceOnUse" cx="10.8" cy="7.2" r="38.27">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.24" />
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+    <mask id="top-highlight">
+      <rect width="36" height="36" rx="11" fill="#FFFFFF" />
+      <rect y="1" width="36" height="36" rx="11" fill="#000000" />
+    </mask>
+  </defs>
+  <rect width="36" height="36" rx="11" fill="url(#primary)" />
+  <rect width="36" height="36" rx="11" fill="url(#gloss)" />
+  <rect width="36" height="36" rx="11" fill="#FFFFFF" fill-opacity="0.22" mask="url(#top-highlight)" />
+  <rect x="0.5" y="0.5" width="35" height="35" rx="10.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" />
+  <svg x="6" y="6" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" />
+    <circle cx="12" cy="10" r="3.25" fill="#FCD34D" stroke="none" />
+  </svg>
+</svg>

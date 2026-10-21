@@ -1,0 +1,445 @@
+:root {
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --color-fs-navy-950: #071426;
+  --color-fs-navy-900: #0b1f3a;
+  --color-fs-navy-800: #0b2a4a;
+  --color-fs-teal-900: #0f5f5f;
+  --color-fs-teal-800: #115e59;
+  --color-fs-teal-700: #0f766e;
+  --color-fs-glow: #5eead4;
+  --color-fs-amber-500: #f59e0b;
+  --color-fs-orange-500: #f97316;
+  --color-fs-amber-300: #fcd34d;
+  --color-fs-orange-700: #c2410c;
+  --color-fs-orange-800: #9a3412;
+  --color-fs-ink: #0b1f3a;
+  --color-fs-ink-2: #334a63;
+  --color-fs-muted: #5a6b80;
+  --color-fs-placeholder: #66768a;
+  --color-fs-line-input: #7c8ca1;
+  --color-fs-danger: #b42318;
+  --color-fs-danger-strong: #9b1c13;
+  --color-fs-danger-soft-from: #fef0ee;
+  --color-fs-danger-soft-to: #fde2de;
+  --color-fs-on-dark: #ffffff;
+  --color-fs-on-dark-2: rgb(255 255 255 / 0.92);
+  --color-fs-surface: #ffffff;
+
+  --color-fs-high: var(--color-fs-orange-700);
+  --color-fs-just-now: var(--color-fs-orange-800);
+  --color-fs-focus: var(--color-fs-teal-700);
+  --color-fs-focus-on-dark: var(--color-fs-amber-300);
+  --color-fs-disabled: #e9eef3;
+  --color-fs-disabled-text: var(--color-fs-line-input);
+  --color-fs-ring: rgb(11 31 58 / 0.05);
+  --color-fs-ring-mobile: rgb(11 31 58 / 0.06);
+  --color-fs-hairline: rgb(11 31 58 / 0.08);
+  --color-fs-hairline-soft: rgb(11 31 58 / 0.06);
+  --color-fs-track: rgb(11 31 58 / 0.06);
+  --color-fs-well: rgb(11 31 58 / 0.045);
+  --color-fs-flash: rgb(245 158 11 / 0.1);
+  --color-fs-overlay: rgb(7 20 38 / 0.55);
+  --color-fs-row-hover: rgb(15 118 110 / 0.04);
+  --color-fs-secondary-hover: rgb(255 255 255 / 0.92);
+  --color-fs-quiet-hover: rgb(15 118 110 / 0.08);
+
+  --color-fs-secondary-bg: rgb(255 255 255 / 0.86);
+  --color-fs-secondary-border: rgb(11 31 58 / 0.14);
+  --color-fs-danger-border: rgb(180 35 24 / 0.4);
+  --color-fs-chip-bg: rgb(255 255 255 / 0.8);
+  --color-fs-chip-border: rgb(11 31 58 / 0.1);
+  --color-fs-capsule-selected: rgb(11 31 58 / 0.08);
+  --color-fs-account-bg: rgb(255 255 255 / 0.6);
+  --color-fs-table-header-bg: rgb(244 247 251 / 0.72);
+  --color-fs-selected-bg: rgb(15 118 110 / 0.06);
+  --color-fs-live-pill-border: rgb(255 255 255 / 0.8);
+  --color-fs-toast-border: rgb(255 255 255 / 0.08);
+  --color-fs-reconnecting-border: rgb(245 158 11 / 0.4);
+  --color-fs-online-border: rgb(15 118 110 / 0.3);
+  --color-fs-error-border: rgb(180 35 24 / 0.35);
+  --color-fs-kpi-from: rgb(255 255 255 / 0.9);
+  --color-fs-neutral-tint: rgb(230 238 249 / 0.62);
+
+  --color-fs-unassigned: #334a63;
+  --color-fs-unassigned-from: #ffffff;
+  --color-fs-unassigned-to: #f1f5f9;
+  --color-fs-unassigned-tint: rgb(241 245 249 / 0.8);
+  --color-fs-assigned: #1d4ed8;
+  --color-fs-assigned-from: #eef4ff;
+  --color-fs-assigned-to: #e0eaff;
+  --color-fs-assigned-ring: rgb(29 78 216 / 0.18);
+  --color-fs-assigned-tint: rgb(224 234 255 / 0.62);
+  --color-fs-in-progress: #92400e;
+  --color-fs-in-progress-from: #fff7e6;
+  --color-fs-in-progress-to: #fdebc8;
+  --color-fs-in-progress-ring: rgb(217 119 6 / 0.24);
+  --color-fs-in-progress-tint: rgb(253 235 200 / 0.55);
+  --color-fs-on-hold: #6d28d9;
+  --color-fs-on-hold-from: #f5f1ff;
+  --color-fs-on-hold-to: #eae2fe;
+  --color-fs-on-hold-ring: rgb(109 40 217 / 0.18);
+  --color-fs-on-hold-tint: rgb(234 226 254 / 0.6);
+  --color-fs-completed: #115e59;
+  --color-fs-completed-from: #ecfaf6;
+  --color-fs-completed-to: #d3f1ea;
+  --color-fs-completed-ring: rgb(15 118 110 / 0.2);
+  --color-fs-completed-tint: rgb(211 241 234 / 0.6);
+  --color-fs-cancelled: #4b5563;
+  --color-fs-cancelled-from: #f4f5f7;
+  --color-fs-cancelled-to: #e7e9ed;
+  --color-fs-cancelled-ring: rgb(75 85 99 / 0.18);
+  --color-fs-cancelled-tint: rgb(231 233 237 / 0.7);
+  --color-fs-fail: #9b1c13;
+  --color-fs-fail-from: #fef0ee;
+  --color-fs-fail-to: #fde2de;
+  --color-fs-fail-ring: rgb(180 35 24 / 0.28);
+
+  --fs-gradient-chip-unassigned: linear-gradient(
+    135deg,
+    var(--color-fs-unassigned-from) 0%,
+    var(--color-fs-unassigned-to) 100%
+  );
+  --fs-gradient-chip-assigned: linear-gradient(
+    135deg,
+    var(--color-fs-assigned-from) 0%,
+    var(--color-fs-assigned-to) 100%
+  );
+  --fs-gradient-chip-in-progress: linear-gradient(
+    135deg,
+    var(--color-fs-in-progress-from) 0%,
+    var(--color-fs-in-progress-to) 100%
+  );
+  --fs-gradient-chip-on-hold: linear-gradient(
+    135deg,
+    var(--color-fs-on-hold-from) 0%,
+    var(--color-fs-on-hold-to) 100%
+  );
+  --fs-gradient-chip-completed: linear-gradient(
+    135deg,
+    var(--color-fs-completed-from) 0%,
+    var(--color-fs-completed-to) 100%
+  );
+  --fs-gradient-chip-cancelled: linear-gradient(
+    135deg,
+    var(--color-fs-cancelled-from) 0%,
+    var(--color-fs-cancelled-to) 100%
+  );
+  --fs-gradient-chip-fail: linear-gradient(
+    135deg,
+    var(--color-fs-fail-from) 0%,
+    var(--color-fs-fail-to) 100%
+  );
+
+  --fs-gradient-kpi-unassigned: linear-gradient(
+    135deg,
+    var(--color-fs-kpi-from) 0%,
+    var(--color-fs-unassigned-tint) 100%
+  );
+  --fs-gradient-kpi-assigned: linear-gradient(
+    135deg,
+    var(--color-fs-kpi-from) 0%,
+    var(--color-fs-assigned-tint) 100%
+  );
+  --fs-gradient-kpi-in-progress: linear-gradient(
+    135deg,
+    var(--color-fs-kpi-from) 0%,
+    var(--color-fs-in-progress-tint) 100%
+  );
+  --fs-gradient-kpi-on-hold: linear-gradient(
+    135deg,
+    var(--color-fs-kpi-from) 0%,
+    var(--color-fs-on-hold-tint) 100%
+  );
+  --fs-gradient-kpi-completed: linear-gradient(
+    135deg,
+    var(--color-fs-kpi-from) 0%,
+    var(--color-fs-completed-tint) 100%
+  );
+  --fs-gradient-kpi-cancelled: linear-gradient(
+    135deg,
+    var(--color-fs-kpi-from) 0%,
+    var(--color-fs-cancelled-tint) 100%
+  );
+  --fs-gradient-kpi-neutral: linear-gradient(
+    135deg,
+    var(--color-fs-kpi-from) 0%,
+    var(--color-fs-neutral-tint) 100%
+  );
+
+  --fs-gradient-primary: linear-gradient(135deg, #0b1f3a 0%, #0f766e 100%);
+  --fs-gradient-primary-pressed: linear-gradient(135deg, #071426 0%, #115e59 100%);
+  --fs-gradient-primary-on-dark: linear-gradient(180deg, #ffffff 0%, #eef4f7 100%);
+  --fs-gloss: linear-gradient(135deg, rgb(255 255 255 / 0.18) 0%, rgb(255 255 255 / 0) 60%);
+  --fs-gloss-logo: radial-gradient(
+    circle at 30% 20%,
+    rgb(255 255 255 / 0.24) 0%,
+    rgb(255 255 255 / 0) 60%
+  );
+  --fs-gloss-logo-on-dark: radial-gradient(
+    circle at 30% 20%,
+    rgb(255 255 255 / 0.2) 0%,
+    rgb(255 255 255 / 0) 60%
+  );
+  --fs-gradient-accent: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  --fs-gradient-hero: linear-gradient(140deg, #071426 0%, #0b2a4a 52%, #0f5f5f 100%);
+  --fs-glow-mobile: radial-gradient(
+    320px 240px at 88% -10%,
+    rgb(94 234 212 / 0.05) 0%,
+    rgb(94 234 212 / 0) 70%
+  );
+  --fs-glow-band: radial-gradient(
+    560px 280px at 82% -20%,
+    rgb(94 234 212 / 0.05) 0%,
+    rgb(94 234 212 / 0) 70%
+  );
+  --fs-glow-signin: radial-gradient(
+    720px 520px at 80% -10%,
+    rgb(94 234 212 / 0.05) 0%,
+    rgb(94 234 212 / 0) 70%
+  );
+  --fs-backdrop: linear-gradient(135deg, #f4f7fb 0%, #f3f6f4 50%, #eef5f4 100%);
+  --fs-gradient-pass: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+  --fs-gradient-toast: linear-gradient(135deg, rgb(11 31 58 / 0.96) 0%, rgb(11 42 74 / 0.96) 100%);
+  --fs-gradient-danger-soft: linear-gradient(135deg, #fef0ee 0%, #fde2de 100%);
+  --fs-gradient-error-banner: linear-gradient(
+    135deg,
+    rgb(254 240 238 / 0.92) 0%,
+    rgb(253 226 222 / 0.88) 100%
+  );
+  --fs-gradient-reconnecting-banner: linear-gradient(
+    135deg,
+    rgb(255 247 230 / 0.92) 0%,
+    rgb(255 237 213 / 0.88) 100%
+  );
+  --fs-gradient-online-banner: linear-gradient(
+    135deg,
+    rgb(236 250 246 / 0.92) 0%,
+    rgb(211 241 234 / 0.88) 100%
+  );
+  --fs-gradient-paused-tile: linear-gradient(135deg, #eef1f5 0%, #e2e7ed 100%);
+  --fs-tint-neutral: linear-gradient(135deg, #e6eef9 0%, #ddf2ee 100%);
+  --fs-flash-row: linear-gradient(90deg, rgb(245 158 11 / 0.14) 0%, rgb(249 115 22 / 0.06) 100%);
+  --fs-skeleton: linear-gradient(90deg, #e3e9f0 0%, #edf1f5 100%);
+
+  --fs-glass-g1-bg: rgb(255 255 255 / 0.72);
+  --fs-glass-g1-border: rgb(255 255 255 / 0.78);
+  --fs-glass-g1-filter: blur(var(--blur-fs-glass)) saturate(160%);
+  --fs-glass-sidebar-bg: rgb(255 255 255 / 0.64);
+  --fs-glass-sidebar-border: rgb(255 255 255 / 0.72);
+  --fs-glass-sidebar-filter: blur(var(--blur-fs-chrome)) saturate(160%);
+  --fs-glass-topbar-bg: rgb(255 255 255 / 0.6);
+  --fs-glass-topbar-border: rgb(255 255 255 / 0.72);
+  --fs-glass-topbar-filter: blur(var(--blur-fs-topbar)) saturate(160%);
+  --fs-glass-g3-bg: rgb(255 255 255 / 0.84);
+  --fs-glass-g3-border: rgb(255 255 255 / 0.9);
+  --fs-glass-g4-bg: rgb(255 255 255 / 0.08);
+  --fs-glass-g4-filter: blur(var(--blur-fs-dark));
+  --fs-glass-g4-control-bg: rgb(255 255 255 / 0.1);
+  --fs-glass-dock-bg: rgb(255 255 255 / 0.88);
+  --fs-glass-dock-border: rgb(255 255 255 / 0.95);
+  --fs-glass-sheet-bg: rgb(255 255 255 / 0.96);
+  --fs-glass-sheet-border: rgb(255 255 255 / 0.9);
+
+  --shadow-fs-e1: 0 1px 2px rgb(11 31 58 / 0.06);
+  --shadow-fs-glass:
+    0 0 0 1px rgb(11 31 58 / 0.05), 0 1px 2px rgb(11 31 58 / 0.05),
+    0 12px 32px -12px rgb(11 31 58 / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.95);
+  --shadow-fs-glass-mobile:
+    0 0 0 1px rgb(11 31 58 / 0.06), 0 1px 2px rgb(11 31 58 / 0.05),
+    0 10px 28px -12px rgb(11 31 58 / 0.18), inset 0 1px 0 #ffffff;
+  --shadow-fs-sidebar: 1px 0 0 rgb(11 31 58 / 0.06), 16px 0 40px -24px rgb(11 31 58 / 0.18);
+  --shadow-fs-topbar: 0 1px 0 rgb(11 31 58 / 0.06);
+  --shadow-fs-float: 0 2px 6px rgb(7 20 38 / 0.1), 0 20px 44px -12px rgb(7 20 38 / 0.3);
+  --shadow-fs-dialog:
+    0 2px 6px rgb(7 20 38 / 0.1), 0 20px 44px -12px rgb(7 20 38 / 0.3), inset 0 1px 0 #ffffff;
+  --shadow-fs-secondary:
+    0 1px 2px rgb(11 31 58 / 0.06), 0 6px 16px -8px rgb(11 31 58 / 0.16), inset 0 1px 0 #ffffff;
+  --shadow-fs-toast:
+    0 2px 6px rgb(7 20 38 / 0.2), 0 20px 44px -12px rgb(7 20 38 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --shadow-fs-segment: 0 1px 2px rgb(11 31 58 / 0.1), 0 4px 12px -4px rgb(11 31 58 / 0.2);
+  --shadow-fs-segment-on-dark: 0 1px 2px rgb(7 20 38 / 0.2), 0 6px 16px -6px rgb(7 20 38 / 0.45);
+  --shadow-fs-sheet: 0 -16px 48px -12px rgb(7 20 38 / 0.45), inset 0 1px 0 #ffffff;
+  --shadow-fs-dock: 0 -1px 0 rgb(11 31 58 / 0.06), 0 -12px 32px -16px rgb(11 31 58 / 0.24);
+  --shadow-fs-hero:
+    0 2px 6px rgb(7 20 38 / 0.18), 0 24px 48px -20px rgb(7 20 38 / 0.55),
+    inset 0 1px 0 rgb(255 255 255 / 0.1);
+  --shadow-fs-primary:
+    0 8px 20px -8px rgb(15 118 110 / 0.6), 0 1px 3px rgb(11 31 58 / 0.18),
+    inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -1px 0 rgb(0 0 0 / 0.18);
+  --shadow-fs-primary-mobile:
+    0 10px 24px -10px rgb(15 118 110 / 0.65), 0 2px 6px rgb(11 31 58 / 0.18),
+    inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -1px 0 rgb(0 0 0 / 0.18);
+  --shadow-fs-primary-on-dark:
+    0 8px 20px -8px rgb(0 0 0 / 0.55), inset 0 1px 0 #ffffff, inset 0 -1px 0 rgb(11 31 58 / 0.1);
+  --shadow-fs-accent: 0 4px 12px -4px rgb(249 115 22 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.4);
+  --shadow-fs-live-dot: 0 0 0 3px rgb(245 158 11 / 0.22), 0 0 10px rgb(249 115 22 / 0.55);
+  --shadow-fs-urgent-card: 0 1px 2px rgb(11 31 58 / 0.05), 0 12px 28px -12px rgb(249 115 22 / 0.4);
+  --shadow-fs-input: inset 0 1px 2px rgb(11 31 58 / 0.06);
+  --shadow-fs-input-focus: 0 0 0 4px rgb(15 118 110 / 0.18), inset 0 1px 2px rgb(11 31 58 / 0.06);
+  --shadow-fs-input-error: 0 0 0 4px rgb(180 35 24 / 0.12);
+  --shadow-fs-track: inset 0 1px 2px rgb(11 31 58 / 0.08);
+  --shadow-fs-g4: inset 0 0 0 1px rgb(255 255 255 / 0.14), inset 0 1px 0 rgb(255 255 255 / 0.12);
+  --shadow-fs-g4-track: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  --shadow-fs-g4-pill: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+  --shadow-fs-g4-live-pill: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+  --shadow-fs-g4-control:
+    inset 0 0 0 1px rgb(255 255 255 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.14);
+  --shadow-fs-g4-secondary:
+    inset 0 0 0 1px rgb(255 255 255 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.14);
+  --shadow-fs-live-pill: 0 0 0 1px rgb(11 31 58 / 0.06), 0 2px 8px -2px rgb(11 31 58 / 0.1);
+  --shadow-fs-logo:
+    0 6px 14px -4px rgb(15 118 110 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.22),
+    inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  --shadow-fs-logo-on-dark:
+    inset 0 0 0 1px rgb(255 255 255 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 12px 28px -12px rgb(0 0 0 / 0.55);
+  --shadow-fs-tile: inset 0 0 0 1px rgb(11 31 58 / 0.06), inset 0 1px 0 #ffffff;
+  --shadow-fs-tile-unassigned: inset 0 1px 0 #ffffff;
+  --shadow-fs-tile-assigned: inset 0 0 0 1px var(--color-fs-assigned-ring), inset 0 1px 0 #ffffff;
+  --shadow-fs-tile-in-progress:
+    inset 0 0 0 1px var(--color-fs-in-progress-ring), inset 0 1px 0 #ffffff;
+  --shadow-fs-tile-on-hold: inset 0 0 0 1px var(--color-fs-on-hold-ring), inset 0 1px 0 #ffffff;
+  --shadow-fs-tile-completed: inset 0 0 0 1px var(--color-fs-completed-ring), inset 0 1px 0 #ffffff;
+  --shadow-fs-tile-cancelled: inset 0 0 0 1px var(--color-fs-cancelled-ring), inset 0 1px 0 #ffffff;
+  --shadow-fs-tile-fail: inset 0 0 0 1px var(--color-fs-fail-ring), inset 0 1px 0 #ffffff;
+  --shadow-fs-chip-unassigned: inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-fs-chip-assigned:
+    inset 0 0 0 1px var(--color-fs-assigned-ring), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-fs-chip-in-progress:
+    inset 0 0 0 1px var(--color-fs-in-progress-ring), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-fs-chip-on-hold:
+    inset 0 0 0 1px var(--color-fs-on-hold-ring), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-fs-chip-completed:
+    inset 0 0 0 1px var(--color-fs-completed-ring), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-fs-chip-cancelled:
+    inset 0 0 0 1px var(--color-fs-cancelled-ring), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-fs-chip-fail:
+    inset 0 0 0 1px var(--color-fs-fail-ring), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-fs-avatar: inset 0 0 0 1px rgb(11 31 58 / 0.08), 0 1px 2px rgb(11 31 58 / 0.1);
+  --shadow-fs-avatar-self: 0 0 0 2px #ffffff, 0 4px 10px -2px rgb(15 118 110 / 0.45);
+  --shadow-fs-timeline-dot: inset 0 0 0 2.5px var(--color-fs-teal-700);
+  --shadow-fs-timeline-dot-current: 0 0 0 3px rgb(15 118 110 / 0.16);
+  --shadow-fs-accent-tile: inset 0 1px 0 rgb(255 255 255 / 0.4);
+  --shadow-fs-danger-tile: inset 0 1px 0 rgb(255 255 255 / 0.22);
+  --shadow-fs-paused-tile: inset 0 0 0 1px rgb(11 31 58 / 0.06);
+  --shadow-fs-reconnecting-banner:
+    0 8px 24px -12px rgb(249 115 22 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --shadow-fs-online-banner:
+    0 8px 24px -12px rgb(15 118 110 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --shadow-fs-error-banner:
+    0 8px 24px -12px rgb(180 35 24 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --shadow-fs-toast-dot: 0 0 0 4px rgb(245 158 11 / 0.18), 0 0 12px rgb(249 115 22 / 0.6);
+  --shadow-fs-selected: inset 0 0 0 1.5px var(--color-fs-teal-700);
+  --shadow-fs-option: inset 0 0 0 1px rgb(11 31 58 / 0.08);
+
+  --blur-fs-glass: 16px;
+  --blur-fs-chrome: 24px;
+  --blur-fs-topbar: 20px;
+  --blur-fs-dark: 12px;
+
+  --radius-fs-control-sm: 0.625rem;
+  --radius-fs-logo: 0.6875rem;
+  --radius-fs-control: 0.75rem;
+  --radius-fs-well: 0.875rem;
+  --radius-fs-logo-lg: 0.9375rem;
+  --radius-fs-banner: 1rem;
+  --radius-fs-toast: 1.125rem;
+  --radius-fs-card: 1.25rem;
+  --radius-fs-card-mobile: 1.375rem;
+  --radius-fs-hero: 1.5rem;
+  --radius-fs-sheet: 1.75rem;
+  --radius-fs-signin-hero: 2rem;
+  --radius-fs-pill: 999px;
+
+  --spacing-fs-2: 0.125rem;
+  --spacing-fs-4: 0.25rem;
+  --spacing-fs-6: 0.375rem;
+  --spacing-fs-8: 0.5rem;
+  --spacing-fs-10: 0.625rem;
+  --spacing-fs-12: 0.75rem;
+  --spacing-fs-14: 0.875rem;
+  --spacing-fs-16: 1rem;
+  --spacing-fs-20: 1.25rem;
+  --spacing-fs-24: 1.5rem;
+  --spacing-fs-28: 1.75rem;
+  --spacing-fs-32: 2rem;
+  --spacing-fs-40: 2.5rem;
+  --spacing-fs-48: 3rem;
+  --spacing-fs-56: 3.5rem;
+  --spacing-fs-64: 4rem;
+
+  --text-fs-signin-headline: clamp(1.75rem, 3vw, 2.5rem);
+  --text-fs-signin-headline--line-height: 1.15;
+  --text-fs-signin-headline--letter-spacing: -0.03em;
+  --text-fs-signin-headline--font-weight: 600;
+  --text-fs-hero: 2.125rem;
+  --text-fs-hero--line-height: 1.15;
+  --text-fs-hero--letter-spacing: -0.025em;
+  --text-fs-hero--font-weight: 600;
+  --text-fs-page-title: 1.875rem;
+  --text-fs-page-title--line-height: 1.15;
+  --text-fs-page-title--letter-spacing: -0.025em;
+  --text-fs-page-title--font-weight: 600;
+  --text-fs-kpi: 2.25rem;
+  --text-fs-kpi--line-height: 1;
+  --text-fs-kpi--letter-spacing: -0.02em;
+  --text-fs-kpi--font-weight: 600;
+  --text-fs-hero-stat: 1.75rem;
+  --text-fs-hero-stat--line-height: 1;
+  --text-fs-hero-stat--letter-spacing: -0.02em;
+  --text-fs-hero-stat--font-weight: 600;
+  --text-fs-section: 1.125rem;
+  --text-fs-section--line-height: 1.3;
+  --text-fs-section--letter-spacing: -0.01em;
+  --text-fs-section--font-weight: 600;
+  --text-fs-card-heading: 1rem;
+  --text-fs-card-heading--line-height: 1.35;
+  --text-fs-card-heading--letter-spacing: -0.01em;
+  --text-fs-card-heading--font-weight: 600;
+  --text-fs-body: 0.9375rem;
+  --text-fs-body--line-height: 1.5;
+  --text-fs-body--letter-spacing: 0;
+  --text-fs-body--font-weight: 400;
+  --text-fs-table: 0.875rem;
+  --text-fs-table--line-height: 1.45;
+  --text-fs-table--letter-spacing: 0;
+  --text-fs-table--font-weight: 400;
+  --text-fs-meta: 0.8125rem;
+  --text-fs-meta--line-height: 1.4;
+  --text-fs-meta--letter-spacing: 0;
+  --text-fs-meta--font-weight: 400;
+  --text-fs-label: 0.8125rem;
+  --text-fs-label--line-height: 1.3;
+  --text-fs-label--letter-spacing: 0;
+  --text-fs-label--font-weight: 600;
+  --text-fs-eyebrow: 0.75rem;
+  --text-fs-eyebrow--line-height: 1.2;
+  --text-fs-eyebrow--letter-spacing: 0.08em;
+  --text-fs-eyebrow--font-weight: 600;
+  --text-fs-table-header: 0.75rem;
+  --text-fs-table-header--line-height: 1.2;
+  --text-fs-table-header--letter-spacing: 0.06em;
+  --text-fs-table-header--font-weight: 600;
+  --text-fs-button: 0.875rem;
+  --text-fs-button--line-height: 1;
+  --text-fs-button--letter-spacing: 0;
+  --text-fs-button--font-weight: 600;
+  --text-fs-button-sm: 0.8125rem;
+  --text-fs-button-sm--line-height: 1;
+  --text-fs-button-sm--letter-spacing: 0;
+  --text-fs-button-sm--font-weight: 600;
+  --text-fs-mono: 0.8125rem;
+  --text-fs-mono--line-height: 1.3;
+  --text-fs-mono--letter-spacing: 0.01em;
+  --text-fs-mono--font-weight: 500;
+  --text-fs-mono-sm: 0.75rem;
+  --text-fs-mono-sm--line-height: 1.3;
+  --text-fs-mono-sm--letter-spacing: 0.01em;
+  --text-fs-mono-sm--font-weight: 500;
+
+  --fs-duration-hover: 150ms;
+  --fs-duration-sheet: 200ms;
+}
