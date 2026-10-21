@@ -1,9 +1,9 @@
-import { loadConfig } from '../../../src/fieldservice-notifications/src/config.ts'
-import { createLogger } from '../../../src/fieldservice-notifications/src/logging.ts'
+import { loadConfig } from '../../../src/FieldService.Notifications/src/config.ts'
+import { createLogger } from '../../../src/FieldService.Notifications/src/logging.ts'
 import {
   createNotificationServer,
   type NotificationServer,
-} from '../../../src/fieldservice-notifications/src/server.ts'
+} from '../../../src/FieldService.Notifications/src/server.ts'
 import { createFakeClock, type FakeClock } from './clock.ts'
 import { createTestEnvironment, type Environment } from './fixtures.ts'
 import { createMemoryLog, type MemoryLog } from './memory-log.ts'

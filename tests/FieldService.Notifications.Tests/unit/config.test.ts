@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { ConfigError, loadConfig } from '../../../src/fieldservice-notifications/src/config.ts'
+import { ConfigError, loadConfig } from '../../../src/FieldService.Notifications/src/config.ts'
 import {
   createRequiredEnvironment,
   createSocketTicketKey,

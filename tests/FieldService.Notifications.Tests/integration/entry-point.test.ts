@@ -13,7 +13,7 @@ import {
 import { findFreePort } from '../support/ports.ts'
 
 const serviceDirectory = fileURLToPath(
-  new URL('../../../src/fieldservice-notifications/', import.meta.url),
+  new URL('../../../src/FieldService.Notifications/', import.meta.url),
 )
 const mainModule = join(serviceDirectory, 'src', 'main.ts')
 const logFilePattern = /^notifications\.(\d{8})\.1\.log$/

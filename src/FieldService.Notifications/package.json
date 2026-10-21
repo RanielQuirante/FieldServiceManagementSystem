@@ -11,8 +11,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "lint": "eslint .",
-    "format:check": "prettier --check . ../../tests/notification-tests --ignore-path ../../.gitignore",
-    "test": "npm --prefix ../../tests/notification-tests test"
+    "format:check": "prettier --check . ../../tests/FieldService.Notifications.Tests --ignore-path ../../.gitignore",
+    "test": "npm --prefix ../../tests/FieldService.Notifications.Tests test"
   },
   "dependencies": {
     "jose": "^6.2.12",

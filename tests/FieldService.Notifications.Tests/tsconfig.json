@@ -17,6 +17,6 @@
     "integration/**/*.ts",
     "contracts/**/*.ts",
     "support/**/*.ts",
-    "../../src/fieldservice-notifications/src/**/*.ts"
+    "../../src/FieldService.Notifications/src/**/*.ts"
   ]
 }
