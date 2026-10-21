@@ -19,7 +19,7 @@ The dashboard uses one light theme: deep navy and teal gradients for the brand s
 
 ## Design tokens
 
-Every colour, gradient, shadow, radius, spacing step and type role is a CSS custom property in `src/fieldservice-web/src/app/styles/tokens.css`. Components use only these properties in scoped component styles; there is no CSS framework.
+Every colour, gradient, shadow, radius, spacing step and type role is a CSS custom property in `src/FieldService.Web/src/app/styles/tokens.css`. Components use only these properties in scoped component styles; there is no CSS framework.
 
 | Family | Count | Holds |
 |---|---|---|
@@ -44,18 +44,18 @@ Two test suites guard the tokens:
 
 | Family | Weights | Files |
 |---|---|---|
-| Geist | 400, 500, 600, 700 | `src/fieldservice-web/src/app/fonts/Geist-*.woff2` |
-| Geist Mono | 400, 500, 600 | `src/fieldservice-web/src/app/fonts/GeistMono-*.woff2` |
+| Geist | 400, 500, 600, 700 | `src/FieldService.Web/src/app/fonts/Geist-*.woff2` |
+| Geist Mono | 400, 500, 600 | `src/FieldService.Web/src/app/fonts/GeistMono-*.woff2` |
 
-Geist Mono sets job numbers, references and other tabular values. The fonts come from release `v1.8.1` of the Geist font project, are used unmodified, and are licensed under the SIL Open Font License 1.1; the licence text is `src/fieldservice-web/src/app/fonts/OFL.txt`, and the notices are in [third-party-notices.md](third-party-notices.md). The files are served from the dashboard's own origin with `font-display: swap`; the dashboard requests no font from another site.
+Geist Mono sets job numbers, references and other tabular values. The fonts come from release `v1.8.1` of the Geist font project, are used unmodified, and are licensed under the SIL Open Font License 1.1; the licence text is `src/FieldService.Web/src/app/fonts/OFL.txt`, and the notices are in [third-party-notices.md](third-party-notices.md). The files are served from the dashboard's own origin with `font-display: swap`; the dashboard requests no font from another site.
 
 ## Icons
 
-The 42 icons are stroke drawings on a 24-unit grid, kept as path data in `src/fieldservice-web/src/shared/ui/icons.ts` and drawn by `AppIcon`. Icons are decorative (`aria-hidden="true"`): the text beside them or the control around them carries the meaning. Eleven icons share path data with Lucide or Feather; their notices are in [third-party-notices.md](third-party-notices.md).
+The 42 icons are stroke drawings on a 24-unit grid, kept as path data in `src/FieldService.Web/src/shared/ui/icons.ts` and drawn by `AppIcon`. Icons are decorative (`aria-hidden="true"`): the text beside them or the control around them carries the meaning. Eleven icons share path data with Lucide or Feather; their notices are in [third-party-notices.md](third-party-notices.md).
 
 ## Shared components
 
-The components live in `src/fieldservice-web/src/shared/ui`.
+The components live in `src/FieldService.Web/src/shared/ui`.
 
 | Component | Role |
 |---|---|

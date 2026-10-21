@@ -13,7 +13,7 @@ logs/*
 .env
 .env.*
 !.env.example
-src/fieldservice-web/src/shared/api/schema.gen.ts
+src/FieldService.Web/src/shared/api/schema.gen.ts
 *.user
 .vs/
 .DS_Store

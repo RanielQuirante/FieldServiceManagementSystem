@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-10-20.
+Accepted, 2026-10-20. Amended 2026-10-22: the TypeScript project folders follow the `FieldService.<Name>` pattern of the .NET projects (`src/FieldService.Web`, `src/FieldService.Notifications`, `tests/FieldService.Notifications.Tests`); their npm package names stay lowercase.
 
 ## Context
 
@@ -18,15 +18,15 @@ The technician app's ViewModels need unit tests that run without a device or an 
   |---|---|
   | `src/FieldService.Api` | REST API, persistence and event dispatch |
   | `src/FieldService.Mobile` | Technician app for Android and Windows |
-  | `src/fieldservice-web` | Administrator dashboard |
-  | `src/fieldservice-notifications` | Real-time notification service |
+  | `src/FieldService.Web` | Administrator dashboard |
+  | `src/FieldService.Notifications` | Real-time notification service |
   | `tests/FieldService.Api.Tests` | API unit, integration, contract and security tests |
   | `tests/FieldService.Mobile.Tests` | Technician app ViewModel and contract tests |
-  | `tests/notification-tests` | Notification service unit, integration and contract tests |
+  | `tests/FieldService.Notifications.Tests` | Notification service unit, integration and contract tests |
 
 - There are no shared libraries and no shared contracts assembly. Each client depends on the API's published contract (ADR 0011), not on the API's types.
-- The dashboard keeps its unit tests next to the code and its end-to-end tests in `src/fieldservice-web/e2e`.
-- `tests/notification-tests` is a private npm package that imports the service's source by relative path.
+- The dashboard keeps its unit tests next to the code and its end-to-end tests in `src/FieldService.Web/e2e`.
+- `tests/FieldService.Notifications.Tests` is a private npm package that imports the service's source by relative path.
 - The technician app adds a plain `net10.0` target beside its platform targets, and its test project references that target (ADR 0015). A separate core library for the app was considered and rejected: it would split every feature across two projects only to avoid installing the MAUI workload, which building the app needs anyway.
 
 ## Consequences

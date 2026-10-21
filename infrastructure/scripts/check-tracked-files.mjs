@@ -34,7 +34,7 @@ const SOCKET_TICKET_VECTOR = 'docs/contracts/events/socket-ticket-test-vector.js
 
 const WEBHOOK_PREFIX = 'whsec_'
 
-const GENERATED_CLIENT = 'src/fieldservice-web/src/shared/api/schema.gen.ts'
+const GENERATED_CLIENT = 'src/FieldService.Web/src/shared/api/schema.gen.ts'
 
 const LOG_FOLDER = 'logs'
 

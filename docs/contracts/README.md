@@ -20,7 +20,7 @@ The decision behind this approach is [ADR 0011](../decisions/0011-openapi-snapsh
 1. Change the API: endpoints, request or response records, policies or problem types.
 2. Run the snapshot test with `FIELDSERVICE_UPDATE_CONTRACTS=1` set. It rewrites `openapi.v1.json`. With `CI` set, the test refuses to rewrite and fails instead.
 3. Review the diff of `openapi.v1.json` together with the code change. The contract change is approved before either client is changed to use it.
-4. Update the clients: the dashboard regenerates its types with `npm run generate:api` in `src/fieldservice-web`, and the technician app updates its DTO records until its drift tests pass.
+4. Update the clients: the dashboard regenerates its types with `npm run generate:api` in `src/FieldService.Web`, and the technician app updates its DTO records until its drift tests pass.
 5. Run the snapshot test again without the variable. It must pass with no difference.
 
 ### Rules

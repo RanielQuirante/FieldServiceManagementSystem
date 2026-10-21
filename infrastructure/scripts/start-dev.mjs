@@ -42,7 +42,7 @@ const SERVICES = Object.freeze({
   notifications: {
     port: 5090,
     hosts: ['127.0.0.1'],
-    folder: 'src/fieldservice-notifications',
+    folder: 'src/FieldService.Notifications',
     command: 'npm',
     args: ['run', 'dev'],
     env: {},
@@ -50,7 +50,7 @@ const SERVICES = Object.freeze({
   web: {
     port: 5173,
     hosts: ['127.0.0.1'],
-    folder: 'src/fieldservice-web',
+    folder: 'src/FieldService.Web',
     command: 'npm',
     args: ['run', 'dev'],
     env: {},
@@ -59,8 +59,8 @@ const SERVICES = Object.freeze({
 
 const NODE_MODULES = Object.freeze({
   api: [],
-  notifications: ['src/fieldservice-notifications', 'tests/notification-tests'],
-  web: ['src/fieldservice-web'],
+  notifications: ['src/FieldService.Notifications', 'tests/FieldService.Notifications.Tests'],
+  web: ['src/FieldService.Web'],
 })
 
 const LOG_FOLDERS = Object.freeze({
@@ -69,7 +69,7 @@ const LOG_FOLDERS = Object.freeze({
   web: [],
 })
 
-const NOTIFICATIONS_ENV_FILE = 'src/fieldservice-notifications/.env'
+const NOTIFICATIONS_ENV_FILE = 'src/FieldService.Notifications/.env'
 
 const NOTIFICATIONS_KEYS = Object.freeze([
   'HOST',

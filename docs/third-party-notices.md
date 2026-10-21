@@ -19,11 +19,11 @@ Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 ```
 
-The full licence text travels with the font files in `src/fieldservice-web/src/app/fonts/OFL.txt`. The technician app adds a second copy beside its own font files when it gains them. The fonts are used unmodified, and the licence names no Reserved Font Name.
+The full licence text travels with the font files in `src/FieldService.Web/src/app/fonts/OFL.txt`. The technician app adds a second copy beside its own font files when it gains them. The fonts are used unmodified, and the licence names no Reserved Font Name.
 
 ## Icons: Lucide and Feather
 
-The icons in `src/fieldservice-web/src/shared/ui/icons.ts` were drawn for FieldService. Eleven of them share path data with Lucide 1.59.0 or Feather 4.29.2: check, chevron-down, chevron-left, chevron-right, clipboard-check, log-out, message, minus, user-check, wifi-off and wrench. Other icons draw shapes common to many icon sets. Both notices therefore apply to the icon set, and the technician app draws the same path data under the same notices.
+The icons in `src/FieldService.Web/src/shared/ui/icons.ts` were drawn for FieldService. Eleven of them share path data with Lucide 1.59.0 or Feather 4.29.2: check, chevron-down, chevron-left, chevron-right, clipboard-check, log-out, message, minus, user-check, wifi-off and wrench. Other icons draw shapes common to many icon sets. Both notices therefore apply to the icon set, and the technician app draws the same path data under the same notices.
 
 ### Lucide (ISC License)
 

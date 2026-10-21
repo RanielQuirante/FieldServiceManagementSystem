@@ -85,53 +85,53 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: |
-            src/fieldservice-notifications/package-lock.json
-            tests/notification-tests/package-lock.json
+            src/FieldService.Notifications/package-lock.json
+            tests/FieldService.Notifications.Tests/package-lock.json
       - name: Install service dependencies
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm ci --ignore-scripts
       - name: Verify registry signatures of the service dependencies
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm audit signatures
       - name: Install test dependencies
-        working-directory: tests/notification-tests
+        working-directory: tests/FieldService.Notifications.Tests
         run: npm ci --ignore-scripts
       - name: Verify registry signatures of the test dependencies
-        working-directory: tests/notification-tests
+        working-directory: tests/FieldService.Notifications.Tests
         run: npm audit signatures
       - name: Lint
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm run lint
       - name: Check formatting of the service and its tests
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm run format:check
       - name: Type-check the service
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm run typecheck
       - name: Type-check the tests
-        working-directory: tests/notification-tests
+        working-directory: tests/FieldService.Notifications.Tests
         run: npm run typecheck
       - name: Build
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm run build
       - name: Test
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm test
       - name: Audit runtime dependencies
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm audit --omit=dev --audit-level=moderate
       - name: Audit all service dependencies
-        working-directory: src/fieldservice-notifications
+        working-directory: src/FieldService.Notifications
         run: npm audit --audit-level=high
       - name: Audit test dependencies
-        working-directory: tests/notification-tests
+        working-directory: tests/FieldService.Notifications.Tests
         run: npm audit --audit-level=high
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: notifications-test-results
-          path: tests/notification-tests/test-results
+          path: tests/FieldService.Notifications.Tests/test-results
           retention-days: 7
           if-no-files-found: ignore
 
@@ -140,7 +140,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: src/fieldservice-web
+        working-directory: src/FieldService.Web
     steps:
       - uses: actions/checkout@v7
         with:
@@ -149,7 +149,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: src/fieldservice-web/package-lock.json
+          cache-dependency-path: src/FieldService.Web/package-lock.json
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Verify registry signatures
@@ -175,7 +175,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: web-coverage
-          path: src/fieldservice-web/coverage
+          path: src/FieldService.Web/coverage
           retention-days: 7
           if-no-files-found: ignore
 

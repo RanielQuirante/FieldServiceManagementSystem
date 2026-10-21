@@ -10,17 +10,17 @@ Setting up the workstation, including the local database and the local secrets, 
 |---|---|---|---|---|
 | API | `tests/FieldService.Api.Tests` | xUnit v3 on Microsoft.Testing.Platform | PostgreSQL 17, `psql` 15 or later on `PATH`, and the test settings below | `api` |
 | Technician app | `tests/FieldService.Mobile.Tests` | xUnit v3 on Microsoft.Testing.Platform | The .NET MAUI Android workload; no device, emulator, JDK or Android SDK | `mobile-android` |
-| Notification service | `tests/notification-tests` | Node's test runner (`node --test`) | Node 26.12.0, with both packages installed | `notifications` |
-| Web dashboard, unit | `src/fieldservice-web/src/**/__tests__/*.spec.ts` | Vitest with jsdom | Node 26.12.0 | `web` |
-| Web dashboard, end to end | `src/fieldservice-web/e2e` | Playwright with Chromium | A running stack | None yet |
+| Notification service | `tests/FieldService.Notifications.Tests` | Node's test runner (`node --test`) | Node 26.12.0, with both packages installed | `notifications` |
+| Web dashboard, unit | `src/FieldService.Web/src/**/__tests__/*.spec.ts` | Vitest with jsdom | Node 26.12.0 | `web` |
+| Web dashboard, end to end | `src/FieldService.Web/e2e` | Playwright with Chromium | A running stack | None yet |
 
 Before the first run, restore the local tools and install the three npm packages from their lock files:
 
 ```
 dotnet tool restore
-npm ci --ignore-scripts --prefix src/fieldservice-notifications
-npm ci --ignore-scripts --prefix tests/notification-tests
-npm ci --ignore-scripts --prefix src/fieldservice-web
+npm ci --ignore-scripts --prefix src/FieldService.Notifications
+npm ci --ignore-scripts --prefix tests/FieldService.Notifications.Tests
+npm ci --ignore-scripts --prefix src/FieldService.Web
 ```
 
 The API tests also need the local database and the test settings that `create-dev-env.mjs` writes; see [step 2 of the first-time setup](development.md#2-create-the-local-environment-and-bootstrap-the-database).
@@ -146,25 +146,25 @@ The `notifications` job runs these steps in this order, each in the folder named
 
 | Folder | Command |
 |---|---|
-| `src/fieldservice-notifications` | `npm ci --ignore-scripts` |
-| `tests/notification-tests` | `npm ci --ignore-scripts` |
-| `src/fieldservice-notifications` | `npm run lint` |
-| `src/fieldservice-notifications` | `npm run format:check` |
-| `src/fieldservice-notifications` | `npm run typecheck` |
-| `tests/notification-tests` | `npm run typecheck` |
-| `src/fieldservice-notifications` | `npm run build` |
-| `src/fieldservice-notifications` | `npm test` |
+| `src/FieldService.Notifications` | `npm ci --ignore-scripts` |
+| `tests/FieldService.Notifications.Tests` | `npm ci --ignore-scripts` |
+| `src/FieldService.Notifications` | `npm run lint` |
+| `src/FieldService.Notifications` | `npm run format:check` |
+| `src/FieldService.Notifications` | `npm run typecheck` |
+| `tests/FieldService.Notifications.Tests` | `npm run typecheck` |
+| `src/FieldService.Notifications` | `npm run build` |
+| `src/FieldService.Notifications` | `npm test` |
 
-From the repository root, `npm --prefix <folder> run <script>` runs the same script in that folder, for example `npm --prefix src/fieldservice-notifications test`. Between these steps the job also verifies the registry signatures of both packages and audits their dependencies.
+From the repository root, `npm --prefix <folder> run <script>` runs the same script in that folder, for example `npm --prefix src/FieldService.Notifications test`. Between these steps the job also verifies the registry signatures of both packages and audits their dependencies.
 
 - `npm test` in the service runs the test package's `test` script, `node --test` over `unit/`, `integration/` and `contracts/`.
-- `format:check` in the service also checks `tests/notification-tests`, which has no formatter configuration of its own.
+- `format:check` in the service also checks `tests/FieldService.Notifications.Tests`, which has no formatter configuration of its own.
 - The integration tests start the service on free ports chosen by the system, and the entry-point test writes its log files into a temporary folder under the system temp folder (`TMPDIR` on macOS and Linux) and removes it.
 
 Coverage is informational and is not collected in CI:
 
 ```
-npm --prefix tests/notification-tests run test:coverage
+npm --prefix tests/FieldService.Notifications.Tests run test:coverage
 ```
 
 | Folder | Covers |
@@ -174,10 +174,10 @@ npm --prefix tests/notification-tests run test:coverage
 
 ## Web dashboard unit tests
 
-The `web` job runs these steps in `src/fieldservice-web`:
+The `web` job runs these steps in `src/FieldService.Web`:
 
 ```
-cd src/fieldservice-web
+cd src/FieldService.Web
 npm ci --ignore-scripts
 npm run generate:api
 npm run lint
@@ -203,13 +203,13 @@ The Playwright suite drives the dashboard in Chromium against a running stack. T
 | `host` | The applications running on the workstation, with the dashboard served by `vite preview` (production security headers, the Content Security Policy included) or by the Vite dev server (no security headers) | `http://127.0.0.1:5173` |
 | `compose` | The Compose `full` profile, with nginx serving the built dashboard | `http://127.0.0.1:8081` |
 
-| Script, in `src/fieldservice-web` | Runs |
+| Script, in `src/FieldService.Web` | Runs |
 |---|---|
 | `npm run test:e2e:host` | The `host` project, without tests tagged `@compose-only` or `@quarantine` |
 | `npm run test:e2e` | The `compose` project, without tests tagged `@quarantine` |
 
 - Install the browser once and start the stack as [development.md](development.md#tests) describes. A run against the Vite dev server is useful for debugging, but only a run against `vite preview` checks the production headers: the header test in `security.spec.ts` fails against the dev server, which sends none of them.
-- The demo account password comes from `src/fieldservice-web/e2e/.env`, which `create-dev-env.mjs` writes; a value already set in `E2E_DEMO_PASSWORD` takes precedence, so no password is typed or prompted for. `E2E_BASE_URL` overrides the base URL of both projects.
+- The demo account password comes from `src/FieldService.Web/e2e/.env`, which `create-dev-env.mjs` writes; a value already set in `E2E_DEMO_PASSWORD` takes precedence, so no password is typed or prompted for. `E2E_BASE_URL` overrides the base URL of both projects.
 - Before the first test, a global setup waits up to 60 seconds for the dashboard at `/` and for `GET /api/checklist-templates` without a token to answer 401 through the proxy, so a run against a stopped API fails at once. It also gives the run its id, `E2E_RUN_ID` unless that variable is set.
 - After the last test, a global teardown searches every file under `logs/api` and `logs/notifications` (or under `E2E_LOGS_DIR`) for the access tokens and refresh cookies seen during the run, the demo password and the personal details of the demo data. A match fails the run and names the file, the line and the kind of value, never the value. A folder with no log file also fails the run.
 - Automatic checks fail a test on any Content Security Policy violation, any request to another origin, any uncaught page error, and any console error that the test does not declare as expected. A budget check keeps a run to at most 7 sign-ins and 25 session refreshes in any 60 seconds, below the API's rate limits.
@@ -220,7 +220,7 @@ The Playwright suite drives the dashboard in Chromium against a running stack. T
 The specs have their own TypeScript project. To type-check them and list the tests of each project without a running stack:
 
 ```
-cd src/fieldservice-web
+cd src/FieldService.Web
 npx tsc -p e2e/tsconfig.json
 npx playwright test --list --project=host --reporter=list
 npx playwright test --list --project=compose --reporter=list
@@ -246,8 +246,8 @@ Test results never belong in the repository.
 | Output | Location | In git |
 |---|---|---|
 | .NET test results and coverage | The `--results-directory` folder; CI uses `artifacts/test-results/<suite>` | `artifacts/` and `TestResults/` are ignored |
-| Web unit coverage | `src/fieldservice-web/coverage/` | Ignored |
-| Playwright reports, traces, screenshots and videos | `src/fieldservice-web/playwright-report/` and `src/fieldservice-web/test-results/` | Ignored |
+| Web unit coverage | `src/FieldService.Web/coverage/` | Ignored |
+| Playwright reports, traces, screenshots and videos | `src/FieldService.Web/playwright-report/` and `src/FieldService.Web/test-results/` | Ignored |
 | API log files written by tests | A folder per test host under `fieldservice-api-tests` in the system temp folder; the tests that write log files remove their folder | Outside the repository |
 
 `check-tracked-files.mjs` fails if a file in any of these folders is ever tracked.
@@ -262,15 +262,15 @@ A test that both passes and fails on the same code is a defect. While its cause 
 
 ## Verification summary
 
-Every command on this page was run on 2026-10-20 on macOS 26.5 (Apple Silicon) with .NET SDK 10.0.402, workload set 10.0.402, Node 26.12.0 and PostgreSQL 17.11, with the results and coverage folders pointed outside the repository.
+The workstation commands on this page were run on 2026-10-22 on macOS 26.5 (Apple Silicon) with .NET SDK 10.0.402, workload set 10.0.402, Node 26.12.0 and PostgreSQL 17.11, from the folders named above, with the results and coverage folders pointed outside the repository.
 
 | Suite | Result |
 |---|---|
-| API | 112 of 112 passed, in Debug and in the Release form with coverage, and with the admin connection taken from the environment; the quarantine step ran no test; the filter examples ran 16 and 21 tests |
-| Technician app | 29 of 29 passed, in Debug and in the Release form with coverage; the quarantine step ran no test; the Android Debug build succeeded with no warning |
-| Notification service | 93 of 93 passed, with and without coverage; lint, formatting, both type-checks and the build passed |
-| Web dashboard, unit | 6 of 6 passed, with and without coverage; creating the API client, lint, formatting, the type-check and the build passed |
-| Web dashboard, end to end | Both projects list 0 tests in 0 files; no spec exists yet |
+| API | 1021 of 1021 passed in Debug; both `dotnet format` checks passed |
+| Technician app | 29 of 29 passed in Debug; both `dotnet format` checks passed; the Android Debug build succeeded with no warning |
+| Notification service | 93 of 93 passed; lint, formatting, both type-checks and the build passed |
+| Web dashboard, unit | 588 of 588 passed in 18 files, with and without coverage; creating the API client, lint, formatting, the type-check with the end-to-end specs, and the build passed |
+| Web dashboard, end to end | The `host` project against `vite preview`: 19 of 19 passed in 5 files, with no Content Security Policy violation, 28 axe audits without a violation, and no match in the log search of 3 API and 3 notification service log files; both projects list 19 tests in 5 files |
 | Repository checks | Both scripts passed |
 
-Not run yet: the Windows commands, because no Windows host was available; the `compose` project and the Compose database, because no container runtime was available; and end-to-end runs, because no spec exists yet.
+Not run on that date: the Release forms with coverage and the quarantine steps of the CI jobs; the Windows commands, because no Windows host was available; and the `compose` project and the Compose database, because no container runtime was available.

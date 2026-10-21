@@ -10,11 +10,11 @@ FieldService is a field service management system. Administrators create service
 |---|---|---|---|
 | API | `src/FieldService.Api` | ASP.NET Core 10 Minimal APIs, Entity Framework Core 10 | Jobs, assignments, status changes, inspections, authentication and authorization; sends job events to the notification service |
 | Technician app | `src/FieldService.Mobile` | .NET MAUI 10, Android and Windows | Assigned jobs, status updates and inspections in the field |
-| Administrator dashboard | `src/fieldservice-web` | Vue 3, TypeScript, Vite | Job creation and assignment, job list and details, dashboard, technicians |
-| Notification service | `src/fieldservice-notifications` | Node.js, TypeScript, Socket.IO | Verifies signed job events from the API and broadcasts them to the dashboard |
+| Administrator dashboard | `src/FieldService.Web` | Vue 3, TypeScript, Vite | Job creation and assignment, job list and details, dashboard, technicians |
+| Notification service | `src/FieldService.Notifications` | Node.js, TypeScript, Socket.IO | Verifies signed job events from the API and broadcasts them to the dashboard |
 | Database | `infrastructure/postgres` | PostgreSQL 17 | The API's data, with separate roles for migrations and for the running API |
 
-Each application has its own test suite: `tests/FieldService.Api.Tests`, `tests/FieldService.Mobile.Tests` and `tests/notification-tests` for the API, the technician app and the notification service, and colocated unit tests plus Playwright end-to-end tests for the dashboard.
+Each application has its own test suite: `tests/FieldService.Api.Tests`, `tests/FieldService.Mobile.Tests` and `tests/FieldService.Notifications.Tests` for the API, the technician app and the notification service, and colocated unit tests plus Playwright end-to-end tests for the dashboard.
 
 ## Stack
 

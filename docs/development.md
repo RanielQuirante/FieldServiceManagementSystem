@@ -9,8 +9,8 @@ Run every command from the repository root unless a step says otherwise.
 | Application | Folder | Started with | Address |
 |---|---|---|---|
 | API | `src/FieldService.Api` | `dotnet watch`, or the VS Code `API` configuration; environment `Development` | http://localhost:5080 |
-| Notification service | `src/fieldservice-notifications` | `npm run dev` (Node with `--watch`, reading the package's `.env` file) | http://127.0.0.1:5090 |
-| Web dashboard | `src/fieldservice-web` | `npm run dev` (Vite dev server), or `vite preview` of the built app | http://localhost:5173 or http://127.0.0.1:5173 |
+| Notification service | `src/FieldService.Notifications` | `npm run dev` (Node with `--watch`, reading the package's `.env` file) | http://127.0.0.1:5090 |
+| Web dashboard | `src/FieldService.Web` | `npm run dev` (Vite dev server), or `vite preview` of the built app | http://localhost:5173 or http://127.0.0.1:5173 |
 | Technician app | `src/FieldService.Mobile` | Debug build on the Android emulator or on Windows | Calls the API at http://10.0.2.2:5080 (Android emulator) or http://localhost:5080 (Windows) |
 | PostgreSQL 17 | `infrastructure/` | The local server, or the Compose `db` service | 127.0.0.1:5432, or 127.0.0.1:5433 for Compose |
 
@@ -141,9 +141,9 @@ The technician app builds against the .NET MAUI workload from workload set 10.0.
 
 ```
 dotnet tool restore
-npm ci --ignore-scripts --prefix src/fieldservice-notifications
-npm ci --ignore-scripts --prefix tests/notification-tests
-npm ci --ignore-scripts --prefix src/fieldservice-web
+npm ci --ignore-scripts --prefix src/FieldService.Notifications
+npm ci --ignore-scripts --prefix tests/FieldService.Notifications.Tests
+npm ci --ignore-scripts --prefix src/FieldService.Web
 ```
 
 `dotnet tool restore` installs the pinned dotnet-ef. Each npm package has its own lock file and an `.npmrc` with `engine-strict=true` and `ignore-scripts=true`.
@@ -171,8 +171,8 @@ The script creates every local secret once and writes them where each applicatio
 | Output | Contents |
 |---|---|
 | `infrastructure/.env` | The ten Compose variables |
-| `src/fieldservice-notifications/.env` | The thirteen notification service variables, with the development values |
-| `src/fieldservice-web/e2e/.env` | `E2E_DEMO_PASSWORD` only, which Playwright reads |
+| `src/FieldService.Notifications/.env` | The thirteen notification service variables, with the development values |
+| `src/FieldService.Web/e2e/.env` | `E2E_DEMO_PASSWORD` only, which Playwright reads |
 | User-secrets store `fieldservice-api` | The two connection strings, both signing keys, the webhook secret and the demo password |
 | User-secrets store `fieldservice-api-tests` | The test admin connection and both database role passwords |
 | `logs/api/` and `logs/notifications/` | The log folders |
@@ -265,8 +265,8 @@ The compound launch configuration "Full stack" first runs the task `env: check` 
 | Configuration | What it runs |
 |---|---|
 | `API` | Builds the API with the task `build: api`, then debugs `src/FieldService.Api/bin/Debug/net10.0/FieldService.Api.dll` with the launch profile `http` (http://localhost:5080, environment `Development`). Its working directory is the project folder, so `Logs:Directory` (`../../logs/api`) resolves to the repository's `logs/api` |
-| `Notifications` | Debugs `src/fieldservice-notifications/src/main.ts` with Node's `--env-file-if-exists=.env`. Node runs the TypeScript directly; type stripping keeps line and column positions, so breakpoints work without source maps |
-| `Web dev server` | `npm run dev` in `src/fieldservice-web`, in a terminal |
+| `Notifications` | Debugs `src/FieldService.Notifications/src/main.ts` with Node's `--env-file-if-exists=.env`. Node runs the TypeScript directly; type stripping keeps line and column positions, so breakpoints work without source maps |
+| `Web dev server` | `npm run dev` in `src/FieldService.Web`, in a terminal |
 
 Two more configurations attach a browser debugger to the dashboard once the dev server runs: `Web in Chrome` and `Web in Edge`, both on http://localhost:5173.
 
@@ -276,14 +276,14 @@ The technician app needs no launch configuration: pick the target in the .NET MA
 
 | Command | Effect |
 |---|---|
-| `node infrastructure/scripts/start-dev.mjs` | Runs the checks, then starts `dotnet watch --project src/FieldService.Api` and `npm run dev` in `src/fieldservice-notifications` and `src/fieldservice-web`. Output lines are prefixed `[api]`, `[notifications]` and `[web]`. Ctrl+C stops all three; if one exits by itself, the script stops the others and exits 1 |
+| `node infrastructure/scripts/start-dev.mjs` | Runs the checks, then starts `dotnet watch --project src/FieldService.Api` and `npm run dev` in `src/FieldService.Notifications` and `src/FieldService.Web`. Output lines are prefixed `[api]`, `[notifications]` and `[web]`. Ctrl+C stops all three; if one exits by itself, the script stops the others and exits 1 |
 | `node infrastructure/scripts/start-dev.mjs --check` | Runs the checks only. It prints `start-dev: all checks passed for api, notifications, web` and exits 0, or lists each problem with its fix and exits 1 |
 | `node infrastructure/scripts/start-dev.mjs --only web` | Checks and starts a subset, for example the web dev server alone while the other services run elsewhere. `--only` takes a comma-separated list of `api`, `notifications` and `web` |
 
 The checks, each reported with its fix:
 
 - the `node` major version matches `.nvmrc`, and `dotnet --version` is 10.0.402 or a later 10.0.4xx patch;
-- `node_modules` exists in the web dashboard, the notification service and `tests/notification-tests`;
+- `node_modules` exists in the web dashboard, the notification service and `tests/FieldService.Notifications.Tests`;
 - the notification service's `.env` file and both user-secrets stores hold every required key; keys are checked by name, and no value is printed;
 - the database named in `ConnectionStrings:FieldService` accepts TCP connections;
 - ports 5080, 5090 and 5173 are free, except for a service that `--only` leaves out;
@@ -298,12 +298,12 @@ dotnet watch --project src/FieldService.Api
 ```
 
 ```
-cd src/fieldservice-notifications
+cd src/FieldService.Notifications
 npm run dev
 ```
 
 ```
-cd src/fieldservice-web
+cd src/FieldService.Web
 npm run dev
 ```
 
@@ -353,7 +353,7 @@ dotnet ef database update --project src/FieldService.Api
 `--force` and `--show-demo-password` are deliberate steps for a person at a terminal, and no task, script or CI step runs them:
 
 - `--force` replaces every secret, then prints the follow-up steps. It prints no value.
-- `--show-demo-password` prints the demo account password from `infrastructure/.env` and nothing else, for signing in by hand ([step 5](#5-check-that-it-runs)). Nothing automated needs it: the API and the tests read the user-secrets stores, the notification service reads its `.env` file, and Playwright reads `src/fieldservice-web/e2e/.env`.
+- `--show-demo-password` prints the demo account password from `infrastructure/.env` and nothing else, for signing in by hand ([step 5](#5-check-that-it-runs)). Nothing automated needs it: the API and the tests read the user-secrets stores, the notification service reads its `.env` file, and Playwright reads `src/FieldService.Web/e2e/.env`.
 
 ## Tests
 
@@ -362,28 +362,28 @@ dotnet ef database update --project src/FieldService.Api
 | API | `dotnet test --project tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj` | The local server, `psql` 15 or later on `PATH`, and the test user-secrets store, which `create-dev-env.mjs` fills. Each run creates and drops its own `fieldservice_test_<run>` database. The test host creates its own signing keys and webhook secret per run and seeds no demo data, so the API's user-secrets store plays no part |
 | API, domain only | `dotnet test --project tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj --filter-namespace FieldService.Api.Tests.Domain` | Nothing: no database |
 | Technician app | `dotnet test --project tests/FieldService.Mobile.Tests/FieldService.Mobile.Tests.csproj` | No device: the tests build the app's plain `net10.0` target |
-| Notification service | `npm test --prefix src/fieldservice-notifications` | Runs the suites in `tests/notification-tests` |
-| Web dashboard | `npm test --prefix src/fieldservice-web` | Vitest |
+| Notification service | `npm test --prefix src/FieldService.Notifications` | Runs the suites in `tests/FieldService.Notifications.Tests` |
+| Web dashboard | `npm test --prefix src/FieldService.Web` | Vitest |
 
 **End-to-end tests against the host stack.** With "Full stack" running, use the VS Code task `test: e2e (host)`, or run the following; `npx playwright install chromium` is needed once:
 
 ```
-cd src/fieldservice-web
+cd src/FieldService.Web
 npx playwright install chromium
 npm run test:e2e:host
 ```
 
-Playwright reads the demo password from `src/fieldservice-web/e2e/.env`, which `create-dev-env.mjs` wrote, so no password is typed, exported or prompted for. A value already set in `E2E_DEMO_PASSWORD` takes precedence over the file.
+Playwright reads the demo password from `src/FieldService.Web/e2e/.env`, which `create-dev-env.mjs` wrote, so no password is typed, exported or prompted for. A value already set in `E2E_DEMO_PASSWORD` takes precedence over the file.
 
 **Production headers before containers.** To run the same tests under the production Content Security Policy, stop the "Web dev server" configuration and serve the built app with `vite preview` on the same address, then run `npm run test:e2e:host` from a second terminal:
 
 ```
-cd src/fieldservice-web
+cd src/FieldService.Web
 npm run build
 npm run preview
 ```
 
-**End-to-end tests against Compose.** `npm run test:e2e` in `src/fieldservice-web`, or the task `test: e2e (compose)`, runs the Playwright `compose` project against the nginx web image of the Compose `full` profile on http://127.0.0.1:8081.
+**End-to-end tests against Compose.** `npm run test:e2e` in `src/FieldService.Web`, or the task `test: e2e (compose)`, runs the Playwright `compose` project against the nginx web image of the Compose `full` profile on http://127.0.0.1:8081.
 
 ## VS Code workspace
 
@@ -420,16 +420,16 @@ Only `.vscode/extensions.json`, `.vscode/launch.json` and `.vscode/tasks.json` a
 | `db: migration script` | `dotnet ef migrations script --idempotent --project src/FieldService.Api --output artifacts/migrations.sql` | Writes the idempotent SQL script into the ignored `artifacts/` folder |
 | `build: api` | `dotnet build src/FieldService.Api/FieldService.Api.csproj` | The default build task, and the pre-launch task of `API` |
 | `dev: api` | `dotnet watch --project src/FieldService.Api` | Background task, ready at `Now listening on` |
-| `dev: notifications` | `npm run dev` in `src/fieldservice-notifications` | Background task, ready at the `server.listening` log event |
-| `dev: web` | `npm run dev` in `src/fieldservice-web` | Background task, ready at Vite's `ready in` line |
+| `dev: notifications` | `npm run dev` in `src/FieldService.Notifications` | Background task, ready at the `server.listening` log event |
+| `dev: web` | `npm run dev` in `src/FieldService.Web` | Background task, ready at Vite's `ready in` line |
 | `dev: full stack` | The three `dev:` tasks in parallel | File watching and hot reload, without debuggers |
 | `test: api` | `dotnet test --project tests/FieldService.Api.Tests/FieldService.Api.Tests.csproj` | Needs the local server |
 | `test: api (domain only)` | The same, with `--filter-namespace FieldService.Api.Tests.Domain` | No database |
 | `test: mobile` | `dotnet test --project tests/FieldService.Mobile.Tests/FieldService.Mobile.Tests.csproj` | No device |
-| `test: notifications` | `npm test` in `src/fieldservice-notifications` | |
-| `test: web` | `npm test` in `src/fieldservice-web` | |
-| `test: e2e (host)` | `npm run test:e2e:host` in `src/fieldservice-web` | Against "Full stack" or `vite preview` on 127.0.0.1:5173 |
-| `test: e2e (compose)` | `npm run test:e2e` in `src/fieldservice-web` | Against the Compose `full` profile on 127.0.0.1:8081 |
+| `test: notifications` | `npm test` in `src/FieldService.Notifications` | |
+| `test: web` | `npm test` in `src/FieldService.Web` | |
+| `test: e2e (host)` | `npm run test:e2e:host` in `src/FieldService.Web` | Against "Full stack" or `vite preview` on 127.0.0.1:5173 |
+| `test: e2e (compose)` | `npm run test:e2e` in `src/FieldService.Web` | Against the Compose `full` profile on 127.0.0.1:8081 |
 | `check: comments` | `node infrastructure/scripts/check-no-comments.mjs` | See [Scripts](#scripts) |
 | `check: tracked files` | `node infrastructure/scripts/check-tracked-files.mjs` | See [Scripts](#scripts) |
 | `compose: backend up` | `docker compose -f infrastructure/docker-compose.yml --profile backend up -d --build --wait` | Starts the services of the `backend` profile and the database |
@@ -507,6 +507,6 @@ It fails when a tracked path must never be committed, and when a tracked file ho
 | Emulator: "Cleartext HTTP traffic not permitted" | A Release build, or a host other than `10.0.2.2` | Use a Debug build with `http://10.0.2.2:5080` |
 | Android build `XA0030` | A JDK newer than 21 | Point `JAVA_HOME` at JDK 21 |
 | `NETSDK1147` (workload missing) | The .NET MAUI workload is not installed | `dotnet workload install maui-android --version 10.0.402`, plus `maui-windows` on Windows |
-| Playwright fails at sign-in with no password | `src/fieldservice-web/e2e/.env` is missing and `E2E_DEMO_PASSWORD` is unset | Run `create-dev-env.mjs` without `--force`; it writes the missing file from the existing demo password |
+| Playwright fails at sign-in with no password | `src/FieldService.Web/e2e/.env` is missing and `E2E_DEMO_PASSWORD` is unset | Run `create-dev-env.mjs` without `--force`; it writes the missing file from the existing demo password |
 | `check-tracked-files.mjs` reports `webhook-secret`, `jwt` or `private-key` | A tracked file holds a secret-shaped value that is not a published test value | Remove the value and build it at run time. If it was ever pushed, rotate the secret |
 | `check-no-comments.mjs` reports a regular-expression literal | A limit of the lexer | Use `new RegExp('…')` |

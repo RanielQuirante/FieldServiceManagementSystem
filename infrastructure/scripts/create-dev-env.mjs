@@ -44,9 +44,9 @@ const DATABASE_TARGETS = Object.freeze(['local', 'compose'])
 
 const COMPOSE_FILE = 'infrastructure/.env'
 
-const NOTIFICATIONS_FILE = 'src/fieldservice-notifications/.env'
+const NOTIFICATIONS_FILE = 'src/FieldService.Notifications/.env'
 
-const E2E_FILE = 'src/fieldservice-web/e2e/.env'
+const E2E_FILE = 'src/FieldService.Web/e2e/.env'
 
 const BOOTSTRAP_FILE = 'infrastructure/postgres/bootstrap.sql'
 

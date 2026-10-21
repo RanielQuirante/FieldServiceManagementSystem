@@ -12,7 +12,7 @@ This document lists every setting and environment variable of FieldService: the 
 | `NODE_ENV` | `development` | `test` | `production` | `test` for the Node tests; `production` for end-to-end runs | `production` |
 | Database | Local PostgreSQL 17 on 127.0.0.1:5432, database `fieldservice`; optionally the Compose `db` on 127.0.0.1:5433 | The same server, with one `fieldservice_test_<run>` database per run | Compose `db` | Compose `db` on the runner, 127.0.0.1:5433 | Managed PostgreSQL 17 with TLS |
 | Migrations applied by | `dotnet ef database update`, as `fieldservice_migrator` | The test fixture, as `fieldservice_migrator` | The `migrate` service | The test fixture; the `migrate` service for end-to-end runs | A release step, as `fieldservice_migrator` |
-| Secrets come from | API user-secrets store `fieldservice-api`; `src/fieldservice-notifications/.env`; `src/fieldservice-web/e2e/.env` for Playwright | Random values per run, in memory | `infrastructure/.env` | Throwaway values from `create-dev-env.mjs --ci` | The platform's secret store, as environment variables |
+| Secrets come from | API user-secrets store `fieldservice-api`; `src/FieldService.Notifications/.env`; `src/FieldService.Web/e2e/.env` for Playwright | Random values per run, in memory | `infrastructure/.env` | Throwaway values from `create-dev-env.mjs --ci` | The platform's secret store, as environment variables |
 | OpenAPI document | http://localhost:5080/openapi/v1.json | In process | Not mapped | In process | Not mapped |
 
 Staging runs the Production code paths: Secure cookies, JSON console logs and no OpenAPI document. It differs from Production in two ways only: it allows demo data, and it binds only to loopback.
@@ -26,9 +26,9 @@ Later sources override earlier ones.
 | API | `appsettings.json`, then `appsettings.{Environment}.json`, then user-secrets (Development only, id `fieldservice-api`), then environment variables, then the command line | User-secrets |
 | Design-time database context and migrations bundle | User-secrets `fieldservice-api` (optional), then environment variables | User-secrets |
 | API tests | The test host sets its configuration in memory. The test fixture reads environment variables first, then user-secrets `fieldservice-api-tests` | Test user-secrets |
-| Notification service | Built-in defaults, then `.env` (loaded only through `--env-file-if-exists=.env` by `npm run dev` and the VS Code launch configuration), then real environment variables, which always win. An empty value counts as unset | `src/fieldservice-notifications/.env` |
+| Notification service | Built-in defaults, then `.env` (loaded only through `--env-file-if-exists=.env` by `npm run dev` and the VS Code launch configuration), then real environment variables, which always win. An empty value counts as unset | `src/FieldService.Notifications/.env` |
 | Web dashboard | `vite.config.ts` reads two proxy targets from the environment. Nothing reaches the browser bundle: there are no `VITE_` variables, and Vite reads no env file | None |
-| End-to-end tests | `src/fieldservice-web/e2e/.env`, which `playwright.config.ts` loads only when the file exists and `E2E_DEMO_PASSWORD` is unset; then real environment variables, which always win | `src/fieldservice-web/e2e/.env` |
+| End-to-end tests | `src/FieldService.Web/e2e/.env`, which `playwright.config.ts` loads only when the file exists and `E2E_DEMO_PASSWORD` is unset; then real environment variables, which always win | `src/FieldService.Web/e2e/.env` |
 | Technician app | MSBuild properties at build time, embedded as assembly metadata | None |
 | Compose | `infrastructure/.env`, loaded from the Compose project folder `infrastructure/`; shell environment variables override it. Fixed values live in `docker-compose.yml` | `infrastructure/.env` |
 | `bootstrap.sql` | psql `\getenv` from the process environment | The environment that `create-dev-env.mjs`, the Compose `db` service or the test fixture sets |
@@ -207,7 +207,7 @@ The API validates its configuration after it builds the host and before it touch
 - The `db` service fixes its superuser and maintenance database at `postgres`. The bootstrap script creates `fieldservice`, owned by `fieldservice_migrator`.
 - The bootstrap script runs once, on an empty volume, with the two role passwords from the container's environment. After `create-dev-env.mjs --force`, reset the volume with `down -v`.
 
-## Notification service (`src/fieldservice-notifications`)
+## Notification service (`src/FieldService.Notifications`)
 
 `src/config.ts` validates the environment at startup and returns a frozen configuration. An empty value counts as unset. An invalid value stops the service with exit code 1 and the message `config.invalid: <variable> <rule>`, which names the variable and the rule, never the value.
 
@@ -231,15 +231,15 @@ The API validates its configuration after it builds the host and before it touch
 - `WEBHOOK_SECRETS` holds one secret normally and two during a rotation (see [Secrets](#secrets)).
 - The service logs the event `server.listening`, with `host` and `port`, once it accepts connections.
 
-## Web dashboard and end-to-end tests (`src/fieldservice-web`)
+## Web dashboard and end-to-end tests (`src/FieldService.Web`)
 
 | Variable | Read by | Purpose | Default | Secret |
 |---|---|---|---|---|
 | `API_PROXY_TARGET` | `vite.config.ts` | Target of the `/api` proxy of the dev server and of `vite preview` | `http://127.0.0.1:5080` | No |
 | `REALTIME_PROXY_TARGET` | `vite.config.ts` | Target of the `/socket.io` proxy, WebSocket included, of the dev server and of `vite preview` | `http://127.0.0.1:5090` | No |
 | `E2E_BASE_URL` | `playwright.config.ts` | Overrides the base URL of the Playwright project that runs | The project's own base URL: `compose` http://127.0.0.1:8081, `host` http://127.0.0.1:5173 | No |
-| `E2E_DEMO_PASSWORD` | Playwright tests | Demo account password for sign-in; one value serves the host stack and the Compose stack | Locally, `playwright.config.ts` loads it from `src/fieldservice-web/e2e/.env` when it is unset. CI exports it | Yes, local only |
-| `E2E_LOGS_DIR` | Playwright global teardown | The folder whose `api` and `notifications` logs are scanned for leaked secrets after a run | `../../logs`, the repository's `logs/` seen from `src/fieldservice-web` | No |
+| `E2E_DEMO_PASSWORD` | Playwright tests | Demo account password for sign-in; one value serves the host stack and the Compose stack | Locally, `playwright.config.ts` loads it from `src/FieldService.Web/e2e/.env` when it is unset. CI exports it | Yes, local only |
+| `E2E_LOGS_DIR` | Playwright global teardown | The folder whose `api` and `notifications` logs are scanned for leaked secrets after a run | `../../logs`, the repository's `logs/` seen from `src/FieldService.Web` | No |
 | `E2E_RUN_ID` | Playwright global setup | Marks every record a run creates | Created per run | No |
 | `CI` | `playwright.config.ts`, Vitest | Set by the CI runner. Turns on `forbidOnly`, one retry, failure on flaky tests and the CI reporters | Unset locally | No |
 
@@ -304,7 +304,7 @@ Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantin
 | `Auth:AccessTokenKey` | 32 random bytes, standard base64 | API user-secrets | `infrastructure/.env` | Throwaway | Secret store | Replace it and restart the API; clients refresh their sessions silently |
 | `Auth:SocketTicketKey` and `SOCKET_TICKET_KEY` | 32 random bytes, standard base64 | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Replace it in both services together. Tickets last 60 seconds, and open sockets reconnect within the 900-second session cap |
 | `Notifications:WebhookSecret` and `WEBHOOK_SECRETS` | `whsec_` followed by standard base64 of 32 random bytes | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Without downtime: (1) the notification service gets the new and the old secret, newest first; (2) the API switches to the new secret; (3) the notification service drops the old one |
-| `Seed:DemoPassword` and `E2E_DEMO_PASSWORD` | 16 characters from `abcdefghjkmnpqrstuvwxyz23456789`, grouped `xxxx-xxxx-xxxx-xxxx` | API user-secrets and `src/fieldservice-web/e2e/.env` | `infrastructure/.env` | Throwaway (`E2E_DEMO_PASSWORD`) | None | `create-dev-env.mjs --force`, then reset the database, because existing password hashes are not rewritten |
+| `Seed:DemoPassword` and `E2E_DEMO_PASSWORD` | 16 characters from `abcdefghjkmnpqrstuvwxyz23456789`, grouped `xxxx-xxxx-xxxx-xxxx` | API user-secrets and `src/FieldService.Web/e2e/.env` | `infrastructure/.env` | Throwaway (`E2E_DEMO_PASSWORD`) | None | `create-dev-env.mjs --force`, then reset the database, because existing password hashes are not rewritten |
 
 - The values `create-dev-env.mjs` creates never contain `$`, `#`, quotes, spaces or `;`, so they are safe in env files, in Compose interpolation and inside connection strings.
 - Values come only from Node's `crypto.randomBytes`.
@@ -315,15 +315,15 @@ Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantin
 The two `.env.example` files list the variable names with empty values, in a stable order:
 
 - `infrastructure/.env.example`: `DB_HOST_PORT`, `NETWORK_SUBNET`, `WEB_IPV4_ADDRESS`, `POSTGRES_PASSWORD`, `FIELDSERVICE_MIGRATOR_PASSWORD`, `FIELDSERVICE_APP_PASSWORD`, `AUTH_ACCESS_TOKEN_KEY`, `AUTH_SOCKET_TICKET_KEY`, `NOTIFICATIONS_WEBHOOK_SECRET`, `SEED_DEMO_PASSWORD`.
-- `src/fieldservice-notifications/.env.example`: `HOST`, `PORT`, `NODE_ENV`, `LOG_LEVEL`, `LOG_DIR`, `LOG_PRETTY`, `WEBHOOK_SECRETS`, `WEBHOOK_TOLERANCE_SECONDS`, `SOCKET_TICKET_KEY`, `SOCKET_TICKET_ISSUER`, `SOCKET_TICKET_AUDIENCE`, `SOCKET_ALLOWED_ORIGINS`, `SOCKET_SESSION_MAX_SECONDS`.
+- `src/FieldService.Notifications/.env.example`: `HOST`, `PORT`, `NODE_ENV`, `LOG_LEVEL`, `LOG_DIR`, `LOG_PRETTY`, `WEBHOOK_SECRETS`, `WEBHOOK_TOLERANCE_SECONDS`, `SOCKET_TICKET_KEY`, `SOCKET_TICKET_ISSUER`, `SOCKET_TICKET_AUDIENCE`, `SOCKET_ALLOWED_ORIGINS`, `SOCKET_SESSION_MAX_SECONDS`.
 
 `create-dev-env.mjs` writes the real files, which git ignores, with mode 0600 on macOS and Linux:
 
 | File | Holds |
 |---|---|
 | `infrastructure/.env` | Every Compose variable. The three network settings stay empty, so the Compose defaults apply |
-| `src/fieldservice-notifications/.env` | Every notification service variable, with the development values of the table above; the two secrets are created |
-| `src/fieldservice-web/e2e/.env` | One line, `E2E_DEMO_PASSWORD`, the same value as `SEED_DEMO_PASSWORD` |
+| `src/FieldService.Notifications/.env` | Every notification service variable, with the development values of the table above; the two secrets are created |
+| `src/FieldService.Web/e2e/.env` | One line, `E2E_DEMO_PASSWORD`, the same value as `SEED_DEMO_PASSWORD` |
 
 The user-secrets stores live outside the repository, at `~/.microsoft/usersecrets/<id>/secrets.json` on macOS and Linux and `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json` on Windows:
 

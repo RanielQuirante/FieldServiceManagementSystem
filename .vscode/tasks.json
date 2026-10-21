@@ -95,7 +95,7 @@
       "label": "dev: notifications",
       "type": "shell",
       "command": "npm run dev",
-      "options": { "cwd": "${workspaceFolder}/src/fieldservice-notifications" },
+      "options": { "cwd": "${workspaceFolder}/src/FieldService.Notifications" },
       "isBackground": true,
       "problemMatcher": {
         "owner": "dev-notifications",
@@ -107,7 +107,7 @@
       "label": "dev: web",
       "type": "shell",
       "command": "npm run dev",
-      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "options": { "cwd": "${workspaceFolder}/src/FieldService.Web" },
       "isBackground": true,
       "problemMatcher": {
         "owner": "dev-web",
@@ -149,7 +149,7 @@
       "label": "test: notifications",
       "type": "shell",
       "command": "npm test",
-      "options": { "cwd": "${workspaceFolder}/src/fieldservice-notifications" },
+      "options": { "cwd": "${workspaceFolder}/src/FieldService.Notifications" },
       "group": "test",
       "problemMatcher": []
     },
@@ -157,7 +157,7 @@
       "label": "test: web",
       "type": "shell",
       "command": "npm test",
-      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "options": { "cwd": "${workspaceFolder}/src/FieldService.Web" },
       "group": "test",
       "problemMatcher": []
     },
@@ -165,7 +165,7 @@
       "label": "test: e2e (host)",
       "type": "shell",
       "command": "npm run test:e2e:host",
-      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "options": { "cwd": "${workspaceFolder}/src/FieldService.Web" },
       "group": "test",
       "problemMatcher": []
     },
@@ -173,7 +173,7 @@
       "label": "test: e2e (compose)",
       "type": "shell",
       "command": "npm run test:e2e",
-      "options": { "cwd": "${workspaceFolder}/src/fieldservice-web" },
+      "options": { "cwd": "${workspaceFolder}/src/FieldService.Web" },
       "group": "test",
       "problemMatcher": []
     },
