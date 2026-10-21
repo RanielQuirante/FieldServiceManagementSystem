@@ -30,7 +30,8 @@ public static class SerilogSetup
         logger
             .ReadFrom.Configuration(configuration)
             .ReadFrom.Services(services)
-            .Enrich.FromLogContext();
+            .Enrich.FromLogContext()
+            .Filter.ByExcluding(EntityFrameworkErrorFilter.IsExcluded);
 
         if (logs.UsesJsonConsole)
         {

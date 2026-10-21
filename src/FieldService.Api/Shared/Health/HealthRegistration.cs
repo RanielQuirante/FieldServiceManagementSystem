@@ -1,5 +1,6 @@
 using FieldService.Api.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Routing;
 
 namespace FieldService.Api.Shared.Health;
 
@@ -8,6 +9,8 @@ public static class HealthRegistration
     public const string LivePath = "/health/live";
 
     public const string ReadyPath = "/health/ready";
+
+    public static readonly IReadOnlyList<string> Methods = [HttpMethods.Get, HttpMethods.Head];
 
     private const string DatabaseCheckName = "database";
 
@@ -26,12 +29,16 @@ public static class HealthRegistration
         endpoints.MapHealthChecks(LivePath, new HealthCheckOptions
         {
             Predicate = static _ => false,
-        }).AllowAnonymous();
+        })
+            .WithMetadata(new HttpMethodMetadata(Methods))
+            .AllowAnonymous();
 
         endpoints.MapHealthChecks(ReadyPath, new HealthCheckOptions
         {
             Predicate = static registration => registration.Tags.Contains(ReadyTag),
-        }).AllowAnonymous();
+        })
+            .WithMetadata(new HttpMethodMetadata(Methods))
+            .AllowAnonymous();
 
         return endpoints;
     }

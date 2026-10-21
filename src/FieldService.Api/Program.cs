@@ -5,6 +5,8 @@ using FieldService.Api.Shared.Health;
 using FieldService.Api.Shared.Http;
 using FieldService.Api.Shared.Observability;
 using FieldService.Api.Shared.OpenApi;
+using FieldService.Api.Shared.Realtime;
+using FieldService.Api.Shared.Security;
 using Serilog;
 
 Log.Logger = SerilogSetup.CreateBootstrapLogger();
@@ -18,11 +20,17 @@ try
         .AddSingleton(TimeProvider.System)
         .AddHttpConventions(builder.Configuration)
         .AddErrorHandling()
+        .AddSecurity(builder.Configuration)
         .AddPersistence(builder.Configuration)
+        .AddRealtime(builder.Configuration)
         .AddHealth()
-        .AddApiDocument();
+        .AddApiDocument()
+        .AddValidation();
 
     var app = builder.Build();
+
+    app.ValidateConfiguration();
+    app.PrepareSecurity();
 
     app.UseForwardedHeaders();
     app.UseExceptionHandler();
@@ -34,6 +42,9 @@ try
         app.UseHsts();
     }
     app.UseCors(HttpRegistration.CorsPolicyName);
+    app.UseAuthentication();
+    app.UseRateLimiter();
+    app.UseAuthorization();
 
     app.MapHealthEndpoints();
     app.MapApiDocument();

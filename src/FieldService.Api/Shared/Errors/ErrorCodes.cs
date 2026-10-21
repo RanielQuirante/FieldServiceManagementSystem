@@ -50,6 +50,21 @@ public static class ErrorCodes
         _ => null,
     };
 
+    public static int StatusOf(string code) => code switch
+    {
+        ValidationFailed => StatusCodes.Status400BadRequest,
+        Unauthenticated or InvalidCredentials or SessionExpired => StatusCodes.Status401Unauthorized,
+        Forbidden or WrongApplication or CsrfRequired => StatusCodes.Status403Forbidden,
+        JobNotFound or ResourceNotFound => StatusCodes.Status404NotFound,
+        MethodNotAllowed => StatusCodes.Status405MethodNotAllowed,
+        ConcurrencyConflict or InspectionLocked => StatusCodes.Status409Conflict,
+        TooLarge => StatusCodes.Status413PayloadTooLarge,
+        UnsupportedMediaType => StatusCodes.Status415UnsupportedMediaType,
+        RateLimitExceeded => StatusCodes.Status429TooManyRequests,
+        ServerError => StatusCodes.Status500InternalServerError,
+        _ => throw new ArgumentOutOfRangeException(nameof(code), code, "The error code is not in the registry."),
+    };
+
     public static string? TitleOf(string code) => code switch
     {
         ValidationFailed => "One or more fields are invalid.",

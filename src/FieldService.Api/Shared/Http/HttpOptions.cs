@@ -2,6 +2,8 @@ namespace FieldService.Api.Shared.Http;
 
 public sealed class HttpOptions
 {
+    public string? AllowedHosts { get; set; }
+
     public CorsSection Cors { get; set; } = new();
 
     public ForwardedHeadersSection ForwardedHeaders { get; set; } = new();

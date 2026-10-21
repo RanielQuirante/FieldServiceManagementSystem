@@ -19,6 +19,12 @@ public static class ObservabilityRegistration
         return builder;
     }
 
+    public static WebApplication ValidateConfiguration(this WebApplication app)
+    {
+        app.Services.GetService<IStartupValidator>()?.Validate();
+        return app;
+    }
+
     public static IApplicationBuilder UseCorrelationId(this IApplicationBuilder app)
     {
         return app.UseMiddleware<CorrelationIdMiddleware>();

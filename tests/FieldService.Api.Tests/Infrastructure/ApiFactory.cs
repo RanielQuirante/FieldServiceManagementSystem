@@ -1,10 +1,12 @@
 using System.Security.Cryptography;
 using FieldService.Api.Persistence;
+using FieldService.Api.Shared.Realtime;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
 using Serilog.Core;
 
@@ -18,6 +20,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public ApiFactory(string connectionString)
     {
+        ClientOptions.HandleCookies = false;
+        ClientOptions.AllowAutoRedirect = false;
         LogsDirectory = Path.Combine(Path.GetTempPath(), "fieldservice-api-tests", Guid.NewGuid().ToString("N"));
         Settings = new Dictionary<string, string?>
         {
@@ -42,6 +46,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public CapturingLogSink LogSink { get; } = new();
 
+    public RecordingJobEventQueue Events { get; } = new();
+
     public Action<IServiceCollection>? TestServices { get; set; }
 
     public ApiClient CreateApiClient()
@@ -58,6 +64,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             services.AddSingleton<ILogEventSink>(LogSink);
             services.AddSingleton<IStartupFilter, TestClientIpStartupFilter>();
+            services.RemoveAll<IJobEventQueue>();
+            services.AddSingleton<IJobEventQueue>(Events);
             TestServices?.Invoke(services);
         });
     }

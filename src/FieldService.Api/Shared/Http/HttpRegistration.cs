@@ -1,10 +1,13 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FieldService.Api.Shared.Observability;
+using FieldService.Api.Shared.Security;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 namespace FieldService.Api.Shared.Http;
 
@@ -41,6 +44,7 @@ public static class HttpRegistration
             .Configure<IOptions<HttpOptions>>((options, http) => AddCorsPolicy(options, http.Value.Cors));
         services.AddOptions<ForwardedHeadersOptions>()
             .Configure<IOptions<HttpOptions>>((options, http) => ConfigureForwardedHeaders(options, http.Value.ForwardedHeaders));
+        services.AddRateLimits();
 
         return services;
     }
@@ -62,8 +66,8 @@ public static class HttpRegistration
         options.AddPolicy(CorsPolicyName, policy => policy
             .WithOrigins(cors.AllowedOrigins)
             .WithMethods(HttpMethods.Get, HttpMethods.Post, HttpMethods.Put)
-            .WithHeaders("Authorization", "Content-Type", "X-Correlation-ID", "X-FieldService-Csrf")
-            .WithExposedHeaders("X-Correlation-ID", "Location", "Retry-After")
+            .WithHeaders(HeaderNames.Authorization, HeaderNames.ContentType, CorrelationId.HeaderName, CsrfHeader.Name)
+            .WithExposedHeaders(CorrelationId.HeaderName, HeaderNames.Location, HeaderNames.RetryAfter)
             .AllowCredentials()
             .SetPreflightMaxAge(TimeSpan.FromSeconds(600)));
     }
