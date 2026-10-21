@@ -15,6 +15,7 @@ public static class OpenApiRegistration
             options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_1;
             options.AddDocumentTransformer<ApiDocumentTransformer>();
             options.AddSchemaTransformer<UtcInstantSchemaTransformer>();
+            options.AddSchemaTransformer<NullabilitySchemaTransformer>();
         });
 
         return services;

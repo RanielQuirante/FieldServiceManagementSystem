@@ -1,0 +1,847 @@
+# API reference
+
+This document describes the FieldService REST API: its conventions, its error model and every endpoint it serves today. The machine-readable contract is the OpenAPI 3.1 document `docs/contracts/openapi.v1.json`; how it is produced, tested and changed is described in [contracts/README.md](contracts/README.md). When this document and the snapshot disagree, the snapshot wins and this document is corrected.
+
+The examples use the demo data that the API seeds in Development (see [database.md](database.md)): Monday 19 October 2026, 10:42 AM in UTC−4, which is 14:42 UTC. Job, user and history ids are illustrative. Access tokens are shortened to `eyJhbGciOiJIUzI1NiIs…`; passwords and refresh tokens appear as placeholders such as `<password>`.
+
+## Contents
+
+- [Conventions](#conventions)
+- [Errors](#errors)
+- [Shared response objects](#shared-response-objects)
+- [Endpoint index](#endpoint-index)
+- [Auth](#auth)
+- [Jobs](#jobs)
+- [Checklist templates](#checklist-templates)
+- [Infrastructure endpoints](#infrastructure-endpoints)
+
+## Conventions
+
+### Paths, versioning and methods
+
+| Item | Rule |
+|---|---|
+| Base path | `/api`. Every business endpoint lives under it. This is version 1 of the contract. |
+| Other paths | `/health/live`, `/health/ready`, and `/openapi/v1.json` in the Development and Testing environments only |
+| Versioning | Changes under `/api` are additive only. A breaking change gets a decision record and a parallel `/api/v2` route group. |
+| Methods | GET reads. POST creates a resource (`/api/jobs`) or performs an action (the auth actions). There is no PATCH and no DELETE. |
+| Route ids | `{jobId}` must be a GUID. Any other value matches no route and returns 404 `resource.not-found`. |
+| Unknown input | Unknown query parameters and unknown JSON members are ignored. |
+
+### JSON
+
+| Rule | Value |
+|---|---|
+| Request media type | `Content-Type: application/json`, with an optional `charset=utf-8`, on every request that has a body. Anything else is 415. On an endpoint with a body, a request that sends another `Content-Type` gets 415 even when its body is empty. |
+| Response media type | `application/json; charset=utf-8` for success bodies, `application/problem+json` for errors |
+| Property names | camelCase |
+| Enumerations | Strings with the PascalCase member name, for example `InProgress`. Integer values are rejected, in bodies and in query strings. |
+| Numbers | JSON numbers only. A number sent as a string is a field error. |
+| Response members | Every member of a response record is always present. A missing value is `null`; an empty collection is `[]`. |
+| Request nulls | `null` for a required member is a field error. |
+| Duplicate members | A JSON object with the same member twice is a 400. |
+| Maximum depth | 32 |
+
+### Identifiers, numbers and enumerations
+
+- **Ids** are UUID strings in lower-case canonical form, for example `01a15415-3b40-79a4-859f-2cf627f64d02`. Clients treat them as opaque. A technician's id is their user id.
+- **Job numbers** are integers starting at 1001. Clients display them as `JOB-` followed by the number, for example `JOB-1042`.
+- **`version`** is an unsigned 32-bit integer. It is opaque: a client sends back the last value it read and never compares or increments it.
+- **Counts** are 32-bit integers of 0 or more.
+
+| Enumeration | Values | Notes |
+|---|---|---|
+| JobStatus | `Unassigned`, `Assigned`, `InProgress`, `OnHold`, `Completed`, `Cancelled` | `Completed` and `Cancelled` are terminal. |
+| JobPriority | `Low`, `Normal`, `High`, `Urgent` | |
+| UserRole | `Administrator`, `Technician` | The interface labels Administrator "Dispatcher". |
+| SessionClient | `Web`, `Mobile` | The `client` member of SignIn |
+| Trade | `Hvac`, `Electrical`, `Plumbing`, `FireSafety` | Interface labels: HVAC, Electrical, Plumbing, Fire safety |
+| JobHistoryAction | `Created`, `Assigned`, `Started`, `PutOnHold`, `Resumed`, `Completed`, `Cancelled` | |
+
+Clients accept enumeration values they do not know and render them neutrally. Adding a value is still a contract change.
+
+### Instants
+
+| Rule | Value |
+|---|---|
+| Wire format | RFC 3339 in UTC with exactly three fractional digits and `Z`, for example `2026-10-19T14:42:00.000Z` (the format of JavaScript's `Date.prototype.toISOString()`) |
+| Precision | Milliseconds. The API truncates every instant it stores to whole milliseconds. |
+| Request values | RFC 3339 with `Z` or a numeric offset, for example `2026-10-20T09:00:00-04:00`, with 0 to 7 fractional digits. A value without an offset is a field error. The API converts it to UTC and truncates it to milliseconds. |
+| Time zones | The API has no time zone. All display formatting is done by the clients. |
+
+### Strings
+
+- Length limits are counted in UTF-16 code units and match the database columns.
+- The API trims leading and trailing white space from request strings before storing them, except `password` and `refreshToken`, which are used exactly as sent.
+- An optional string that is empty after trimming is stored as `null`. A required string must contain a character that is not white space, except `password`, which may be white space only and is then checked like any other password.
+- **Control characters.** Single-line fields reject U+0000 to U+001F and U+007F to U+009F. Multi-line fields (`description`, `siteAccessNotes`) allow only line feed, carriage return and tab among them. Either violation is a field error keyed by the field.
+- Responses return strings as stored.
+
+### Collections, paging, sorting and filtering
+
+- Collections are wrapped in a named record: `{ "items": [ … ] }`.
+- Only GetJobs pages: `{ items, page, pageSize, totalCount, statusCounts }`. `page` is 1 to 10000 (default 1) and `pageSize` 1 to 100 (default 25). `totalCount` counts every item that matches the filters. A page past the end returns `items: []` with the real `totalCount`.
+- Sorting is fixed per endpoint, and every order ends in a unique key, so pages are stable.
+- Filters combine with AND. An omitted filter does not restrict.
+
+| Collection | Order |
+|---|---|
+| GetJobs `items` | `updatedAt` descending, then `id` descending |
+| GetChecklistTemplates `items` | `name` ascending |
+| `JobDetailsResponse.history` | `occurredAt` ascending; among equal instants a `Created` entry comes first; then `id` |
+
+### Query parameters
+
+- A parameter is sent at most once. A repeated parameter is a field error keyed by its name.
+- Enumeration parameters take the exact member name (`status=InProgress`). Integers, other spellings and lists are field errors.
+- GUID, integer and enumeration parameters with an empty value (`status=`) are field errors; leave the parameter out instead. An empty `search` means no search.
+- Every query error is keyed by the parameter's name, and its message never repeats the value sent.
+
+### Headers
+
+**Request headers**
+
+| Header | Rule |
+|---|---|
+| `Authorization` | `Bearer {accessToken}` on every `/api` endpoint except SignIn, RefreshSession and SignOut |
+| `X-Correlation-ID` | Optional. Accepted when it matches `^[A-Za-z0-9._-]{1,64}$` and occurs once; otherwise the request's W3C trace id (32 lower-case hex characters) is used. Clients send a new UUID for every request. |
+| `X-FieldService-Csrf` | Exactly `1`. Required on RefreshSession and SignOut when the `fs_refresh` cookie is the credential; otherwise 403 `auth.csrf-required`. Ignored everywhere else. |
+| `Content-Type` | `application/json` on every request with a body |
+| `Cookie` | The browser sends `fs_refresh` only to paths under `/api/auth`. |
+
+**Response headers**
+
+| Header | When | Value |
+|---|---|---|
+| `X-Correlation-ID` | Every response, errors and health included | The effective correlation id |
+| `Cache-Control` | Every `/api` response | `no-store` |
+| `X-Content-Type-Options` | Every response | `nosniff` |
+| `Referrer-Policy` | Every response | `no-referrer` |
+| `Content-Security-Policy` | Every `/api` and `/health` response | `default-src 'none'; frame-ancestors 'none'` |
+| `Strict-Transport-Security` | https requests outside Development | `max-age=31536000` |
+| `Server` | Never | |
+| `Location` | CreateJob's 201 | `/api/jobs/{id}`, a relative URI |
+| `Retry-After` | 429 | Whole seconds, at least 1 |
+| `WWW-Authenticate` | 401 from bearer authentication | `Bearer`, or `Bearer error="invalid_token"` when a token was sent; never an error description |
+| `Set-Cookie` | Web sign-in and a successful Web refresh; a Web sign-out, and a Web refresh that fails with `auth.session-expired`, when the request presented the cookie | See below |
+| `Allow` | 405 | The methods the route accepts |
+
+### The `fs_refresh` cookie
+
+| Attribute | Value |
+|---|---|
+| Value | The opaque refresh token: 32 random bytes in base64url without padding, 43 characters. Only its SHA-256 hash is stored. |
+| HttpOnly | Always |
+| Secure | Always outside Development. In Development it is set only when the request uses https. |
+| SameSite | `Strict` |
+| Path | `/api/auth` |
+| Domain | Not set |
+| Max-Age | Seconds until the session's idle expiry, never past its absolute expiry. Web sessions idle out after 60 minutes and end after 12 hours. |
+| Expires | Not sent when the cookie is set |
+| Clearing | A Web sign-out, and a Web refresh that returns 401 `auth.session-expired`, send an empty value with `Max-Age=0` and `Expires=Thu, 01 Jan 1970 00:00:00 GMT` when the request presented the cookie, which also requires `X-FieldService-Csrf: 1`. A request without the cookie gets no `Set-Cookie`. |
+| Untouched | A 403 `auth.csrf-required` leaves the cookie and its token as they were. |
+
+The technician app never uses the cookie: it sends its refresh token in the request body. Mobile sessions idle out after 7 days and end after 30 days.
+
+### Rate limits
+
+Every limit uses a fixed 60-second window and queues nothing; a rejected request gets 429 `rate-limit.exceeded` with `Retry-After`.
+
+| Policy | Applies to | Partition | Limit per window |
+|---|---|---|---|
+| `sign-in` | SignIn | Client IP address | 10 |
+| `refresh` | RefreshSession | Client IP address | 30 |
+| Global | Every `/api` request, including those under a named policy and those that end in 401 or 403 | The user when authenticated, otherwise the client IP address | 300 per user, 60 per anonymous address |
+| None | `/health/*` and `/openapi/v1.json` | | Not limited |
+
+The limiter runs after authentication and before authorization, so requests with no token or an invalid one count against the per-address limit.
+
+### Request size limits
+
+| Scope | Limit |
+|---|---|
+| Every endpoint | 1 MB |
+| SignIn, RefreshSession, SignOut | 16 KB |
+
+A larger body returns 413 `request.too-large`.
+
+### CORS
+
+Browsers reach the API from the same origin, through the development proxy or the web server, so CORS is normally unused. For deployments that call it cross-origin, one policy admits only the origins in `Cors:AllowedOrigins` (see [configuration.md](configuration.md)), with methods GET, POST and PUT, the request headers `Authorization`, `Content-Type`, `X-Correlation-ID` and `X-FieldService-Csrf`, the exposed headers `X-Correlation-ID`, `Location` and `Retry-After`, credentials allowed, and a preflight cache of 600 seconds.
+
+### Authentication, policies and ownership
+
+- **Access token.** A JWT signed with HS256, valid for 15 minutes. Claims: `iss` and `aud` (both `fieldservice-api`), `sub` (the user id), `role`, `sid` (the session id), `jti`, `iat`, `nbf` and `exp`. Clients do not parse it; they use `accessTokenExpiresAt`.
+- **Policies.** `Administrator`, `Technician` and `AdministratorOrTechnician`. Every endpoint not listed as anonymous requires an authenticated user.
+- **Anonymous endpoints.** SignIn, RefreshSession, SignOut, `/health/live`, `/health/ready`, and `/openapi/v1.json` where it is served.
+- **Ownership.** A technician reads only the jobs assigned to them. Any other job returns 404 `job.not-found`, the same response as a job that does not exist. Administrators read every job.
+
+## Errors
+
+### Problem Details
+
+Every non-2xx response from the API has an RFC 9457 body with media type `application/problem+json`:
+
+| Member | Type | Present | Content |
+|---|---|---|---|
+| `type` | string (URI) | Always | The RFC section for the status. Clients do not branch on it. |
+| `title` | string | Always | The title registered for `code` |
+| `status` | integer | Always | The HTTP status |
+| `detail` | string | When there is something specific to say | A human-readable explanation. For 500 it is generic outside Development. |
+| `instance` | string | Always | The request path without the query string |
+| `errors` | object | Only with `request.validation-failed` | Field errors |
+| `code` | string | Always | The stable error code. Clients branch on this. |
+| `correlationId` | string | Always | The correlation id, also returned in `X-Correlation-ID`. Clients show it as the error reference. |
+| `traceId` | string | Always | The W3C `traceparent` id |
+
+No exception type, message or stack trace is returned outside Development.
+
+### Field errors
+
+- `errors` maps a field path to a non-empty array of messages.
+- Keys are camelCase JSON paths without the `$.` prefix, for example `title` or `scheduledEnd`.
+- Malformed JSON with a path, such as a wrong type, an unknown enumeration value, an explicit `null` or a duplicate member, is keyed by that path (`$.priority` becomes `priority`).
+- The key `body` is used when the body is sent as `application/json` but is not JSON at all, is missing although required, or has the wrong root type.
+- Query parameters are keyed by their name (`status`, `pageSize`).
+- Cross-field rules are keyed by the field the user must change: `scheduledEnd` must be after `scheduledStart`.
+- Messages are English sentences for display and may change. Clients key only on the path and on `code`, and show a key they cannot map to an input as a form-level message.
+- Messages never repeat the submitted value.
+
+### Error codes
+
+| Code | HTTP | Title | Meaning | Client handling |
+|---|---|---|---|---|
+| `request.validation-failed` | 400 | One or more fields are invalid. | Field or query values break a rule, a referenced id does not exist, or the JSON is malformed. `errors` lists them. | Show each message on its input and unknown keys as a form message. Do not resend unchanged. |
+| `auth.unauthenticated` | 401 | Authentication is required. | No bearer token, or one that is malformed, expired or signed with another key | One single-flight refresh, then retry the request once. If the refresh fails, go to sign-in. |
+| `auth.invalid-credentials` | 401 | The email or password is incorrect. | Unknown email, wrong password or inactive account; the cases cannot be told apart | Show the title on the sign-in form. |
+| `auth.session-expired` | 401 | The session has expired. | The refresh credential is missing, unknown, revoked, expired, reused outside the grace rule or sent through the wrong channel, or the user is inactive | Clear the session and go to sign-in. |
+| `auth.forbidden` | 403 | This action is not allowed for your role. | Authenticated, but the endpoint's policy rejects the role | Show a not-allowed message. A correct client never triggers it. |
+| `auth.wrong-application` | 403 | This account uses the other FieldService app. | Correct password, wrong application for the role | Web: "Technicians sign in from the FieldService Tech app." Technician app: "Dispatchers sign in from FieldService Admin." |
+| `auth.csrf-required` | 403 | The request is missing the anti-forgery header. | A cookie-based refresh or sign-out without `X-FieldService-Csrf: 1` | A client defect: report it. |
+| `job.not-found` | 404 | The job was not found. | The job does not exist, or the technician is not assigned to it | Web: say the job no longer exists and go back to the list. Technician app: say the job is no longer assigned to you and reload the list. |
+| `resource.not-found` | 404 | The resource was not found. | No route matches, including a route id that is not a GUID | A client defect |
+| `request.method-not-allowed` | 405 | The method is not allowed for this resource. | The route exists but not for this method | A client defect |
+| `request.too-large` | 413 | The request body is too large. | The body exceeds the endpoint's limit | A client defect |
+| `request.unsupported-media-type` | 415 | The request body must be JSON. | A body without `application/json`, or, on an endpoint with a body, any other `Content-Type` even when the body is empty | A client defect |
+| `rate-limit.exceeded` | 429 | Too many requests. | A rate limit was hit | Wait for `Retry-After`. |
+| `server.error` | 500 | An unexpected error occurred. | An unhandled failure, logged once with its stack trace and correlation id | Show a generic error with the correlation reference. Offer Retry for reads only. |
+
+The full `type` value is `https://tools.ietf.org/html/` followed by the RFC section, for example `https://tools.ietf.org/html/rfc9110#section-15.5.1` for 400 and `https://tools.ietf.org/html/rfc6585#section-4` for 429. Codes are never renamed or reused; a client that meets an unknown code falls back to handling by status.
+
+### Errors every endpoint can return
+
+- Every endpoint that requires a token: 401 `auth.unauthenticated` and 403 `auth.forbidden`.
+- Every endpoint with a body: 413 and 415.
+- Every `/api` endpoint: 429 `rate-limit.exceeded` and 500 `server.error`.
+- Every path: 404 `resource.not-found` and 405 `request.method-not-allowed`.
+
+The endpoint sections below list only their specific errors.
+
+### Example
+
+CreateJob without a site address and with the end before the start:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more fields are invalid.",
+  "status": 400,
+  "instance": "/api/jobs",
+  "errors": {
+    "siteAddress": ["Enter the site address."],
+    "scheduledEnd": ["The scheduled end must be after the scheduled start."]
+  },
+  "code": "request.validation-failed",
+  "correlationId": "dd85f06c-7606-4dfc-a702-fa39647047d8",
+  "traceId": "00-eafe895eb8119e6e5d06463590b2ef81-37a0025aa1f2e29f-00"
+}
+```
+
+## Shared response objects
+
+### Reference objects
+
+| Schema | Members | Used in |
+|---|---|---|
+| `UserReference` | `id` uuid, `displayName` string | Job `createdBy`; history `actor` and `technician` |
+| `JobTechnicianReference` | `id` uuid, `displayName` string, `trade` Trade | `assignedTechnician` in job details and job lists |
+| `ChecklistTemplateReference` | `id` uuid, `name` string, `trade` Trade | Job details |
+
+### JobDetailsResponse
+
+Returned by CreateJob and GetJobById.
+
+| Member | Type | Null | Content |
+|---|---|---|---|
+| `id` | uuid | no | |
+| `number` | int64 | no | Shown as `JOB-{number}` |
+| `title` | string | no | Up to 120 characters |
+| `description` | string | no | Up to 2000 |
+| `priority` | JobPriority | no | |
+| `status` | JobStatus | no | |
+| `customerName` | string | no | Up to 120 |
+| `siteAddress` | string | no | Up to 300 |
+| `siteAccessNotes` | string | yes | Up to 500 |
+| `contactName` | string | yes | Up to 100 |
+| `contactPhone` | string | yes | Up to 32. Clients hide Call when it is null. |
+| `equipment` | string | yes | Up to 200 |
+| `scheduledStart` | date-time | no | |
+| `scheduledEnd` | date-time | no | Always after `scheduledStart` |
+| `checklistTemplate` | ChecklistTemplateReference | no | |
+| `assignedTechnician` | JobTechnicianReference | yes | Null while `Unassigned`; kept on a cancelled job that had one |
+| `createdBy` | UserReference | no | |
+| `createdAt` | date-time | no | |
+| `updatedAt` | date-time | no | Changes on every status change and assignment |
+| `assignedAt` | date-time | yes | Latest assignment |
+| `startedAt` | date-time | yes | First start |
+| `completedAt` | date-time | yes | Set exactly when `Completed` |
+| `cancelledAt` | date-time | yes | Set exactly when `Cancelled` |
+| `history` | JobHistoryEntryResponse[] | no | The complete history, oldest first |
+| `version` | uint32 | no | Send it back with the next command. |
+
+### JobHistoryEntryResponse
+
+| Member | Type | Null | Content |
+|---|---|---|---|
+| `id` | uuid | no | |
+| `action` | JobHistoryAction | no | |
+| `fromStatus` | JobStatus | yes | Null only for `Created` |
+| `toStatus` | JobStatus | no | |
+| `actor` | UserReference | no | Who acted |
+| `technician` | UserReference | yes | The assignee, only on `Assigned` |
+| `note` | string | yes | Up to 500. The reason for `PutOnHold` and `Cancelled`; null for every other action. |
+| `occurredAt` | date-time | no | |
+
+### JobSummaryResponse
+
+One row of GetJobs.
+
+| Member | Type | Null |
+|---|---|---|
+| `id` | uuid | no |
+| `number` | int64 | no |
+| `title` | string | no |
+| `priority` | JobPriority | no |
+| `status` | JobStatus | no |
+| `customerName` | string | no |
+| `siteAddress` | string | no |
+| `scheduledStart` | date-time | no |
+| `scheduledEnd` | date-time | no |
+| `assignedTechnician` | JobTechnicianReference | yes |
+| `updatedAt` | date-time | no |
+| `version` | uint32 | no |
+
+## Endpoint index
+
+| Feature | Operation | Method and route | Access | Rate limit | Body limit | Success |
+|---|---|---|---|---|---|---|
+| Auth | SignIn | `POST /api/auth/sign-in` | Anonymous | `sign-in` | 16 KB | 200 `SessionResponse` |
+| Auth | RefreshSession | `POST /api/auth/refresh` | Anonymous; refresh credential | `refresh` | 16 KB | 200 `SessionResponse` |
+| Auth | SignOut | `POST /api/auth/sign-out` | Anonymous; refresh credential | Global | 16 KB | 204 |
+| Jobs | CreateJob | `POST /api/jobs` | Administrator | Global | 1 MB | 201 `JobDetailsResponse`, `Location` |
+| Jobs | GetJobs | `GET /api/jobs?search&status&technicianId&priority&page&pageSize` | Administrator | Global | | 200 `GetJobsResponse` |
+| Jobs | GetJobById | `GET /api/jobs/{jobId}` | AdministratorOrTechnician, own jobs only for a technician | Global | | 200 `JobDetailsResponse` |
+| ChecklistTemplates | GetChecklistTemplates | `GET /api/checklist-templates` | Administrator | Global | | 200 `GetChecklistTemplatesResponse` |
+| Infrastructure | Liveness | `GET /health/live` | Anonymous | None | | 200 text |
+| Infrastructure | Readiness | `GET /health/ready` | Anonymous | None | | 200 or 503 text |
+| Infrastructure | OpenAPI document | `GET /openapi/v1.json` (Development and Testing) | Anonymous | None | | 200 JSON |
+
+OpenAPI tags equal the feature names, and operation ids equal the operation names. GET endpoints are safe and idempotent and read no body. Every response carries `X-Correlation-ID`, `Cache-Control: no-store` and the security headers listed above; the examples show only the first two.
+
+## Auth
+
+Route group `/api/auth`. Sessions belong to one client: `Web` for administrators in the dashboard, `Mobile` for technicians in the technician app.
+
+### SignIn: `POST /api/auth/sign-in`
+
+Exchanges an email address and password for an access token and a new session.
+
+| Item | Value |
+|---|---|
+| Access | Anonymous |
+| Rate limit | `sign-in`: 10 per client IP address per minute |
+| Body limit | 16 KB |
+| Success | 200 `SessionResponse`. Web also gets `Set-Cookie: fs_refresh`. |
+| Side effects | A session for the client with its first refresh token (hash only); the user's last sign-in time; the password hash upgraded when its parameters are outdated |
+| Idempotency | None: every success creates a new session. |
+
+Request body `SignInRequest`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `email` | string | yes | Up to 256 characters; single line; an email address. Trimmed and lower-cased before the lookup. |
+| `password` | string | yes | 1 to 256 characters, used exactly as sent; never logged or echoed |
+| `client` | SessionClient | yes | `Web` accepts only administrators; `Mobile` accepts only technicians. |
+
+Response `SessionResponse`:
+
+| Member | Type | Null | Content |
+|---|---|---|---|
+| `accessToken` | string | no | The JWT |
+| `accessTokenExpiresAt` | date-time | no | The token's `exp` |
+| `user` | SessionUser | no | `id` uuid, `displayName` string, `role` UserRole |
+| `refreshToken` | string | yes | Mobile: the 43-character refresh token. Web: always null, because the token travels only in the cookie. |
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `request.validation-failed` | A missing or malformed member |
+| 401 | `auth.invalid-credentials` | Unknown email, wrong password or inactive user. An unknown email is checked against a stand-in hash, so the response time does not reveal it. |
+| 403 | `auth.wrong-application` | The password is correct, but the role does not match `client`. No session is created. |
+| 429 | `rate-limit.exceeded` | More than 10 attempts in a minute from the address |
+
+Example, Web, in Development through the dashboard's development server:
+
+```http
+POST /api/auth/sign-in HTTP/1.1
+Host: localhost:5173
+Content-Type: application/json
+X-Correlation-ID: f0766650-82a1-49f8-b5cc-f3103d346544
+```
+
+```json
+{
+  "email": "dana.whitfield@fieldservice.example",
+  "password": "<password>",
+  "client": "Web"
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: f0766650-82a1-49f8-b5cc-f3103d346544
+Set-Cookie: fs_refresh=<refresh token>; max-age=3600; path=/api/auth; samesite=strict; httponly
+```
+
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs…",
+  "accessTokenExpiresAt": "2026-10-19T14:55:00.000Z",
+  "user": {
+    "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca",
+    "displayName": "Dana Whitfield",
+    "role": "Administrator"
+  },
+  "refreshToken": null
+}
+```
+
+Outside Development the cookie also carries `secure`. The shortened access token has the header `{"alg":"HS256","typ":"JWT"}` and the claims `sub` `01a0f6b1-2680-7152-92a5-bb4d3a6df7ca`, `role` `Administrator`, a `sid` naming the new session, a `jti`, `iat` and `nbf` at 14:40:00 UTC and `exp` at 14:55:00 UTC. The Mobile response has no `Set-Cookie` and carries the refresh token in `refreshToken`.
+
+### RefreshSession: `POST /api/auth/refresh`
+
+Rotates the refresh token and issues a new access token.
+
+| Item | Value |
+|---|---|
+| Access | Anonymous. The credential is the refresh token. |
+| Rate limit | `refresh`: 30 per client IP address per minute |
+| Body limit | 16 KB |
+| Success | 200 `SessionResponse`. Web also gets the rotated cookie; Mobile gets the rotated token in `refreshToken`. |
+
+The credential travels through one of two channels:
+
+| Channel | Request | Rules |
+|---|---|---|
+| Web | No body and no `Content-Type` (an empty JSON object sent as `application/json` is also accepted), the `fs_refresh` cookie and `X-FieldService-Csrf: 1` | A cookie without the header, or with another value, gets 403 `auth.csrf-required`. No cookie and no body token gets 401 `auth.session-expired`. Only a session created with `client: Web` is accepted. |
+| Mobile | Body `RefreshSessionRequest` with `refreshToken` | The cookie is ignored and no anti-forgery header is needed. Only a session created with `client: Mobile` is accepted. |
+
+A token presented through the wrong channel is treated as unknown.
+
+Request body `RefreshSessionRequest` (optional):
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `refreshToken` | string or null | no | Up to 64 characters. A value that does not decode to 32 bytes of base64url is rejected as unknown. |
+
+Rotation:
+
+- Concurrent refreshes of one session are serialized; each use consumes the token and issues a successor.
+- The session's idle expiry moves to now plus 60 minutes (Web) or 7 days (Mobile), never past its absolute expiry.
+- **Grace.** Presenting a token again less than 30 seconds after its rotation, while its successor is still unused, is treated as a retry after a lost response: the successor is revoked and a new one is issued (200).
+- **Reuse.** Any other consumed token revokes the whole session: 401 `auth.session-expired`, logged as a security warning.
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `request.validation-failed` | A body sent as `application/json` that is malformed or breaks the rules above. Any other `Content-Type` gets 415. |
+| 401 | `auth.session-expired` | No credential; an unknown, revoked or expired token; reuse outside the grace rule; the wrong channel; an inactive user. Web: when the request presented the cookie, the response also clears it. |
+| 403 | `auth.csrf-required` | Web channel without `X-FieldService-Csrf: 1`. The cookie and its token stay untouched. |
+| 429 | `rate-limit.exceeded` | |
+
+Example, Web:
+
+```http
+POST /api/auth/refresh HTTP/1.1
+Host: localhost:5173
+Cookie: fs_refresh=<refresh token>
+X-FieldService-Csrf: 1
+X-Correlation-ID: 8ce2212e-a8b0-4f11-a814-9428162f7bd0
+Content-Length: 0
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: 8ce2212e-a8b0-4f11-a814-9428162f7bd0
+Set-Cookie: fs_refresh=<rotated refresh token>; max-age=3600; path=/api/auth; samesite=strict; httponly
+```
+
+The body has the shape of the SignIn response, with a new access token and expiry. The technician app sends `{"refreshToken":"<refresh token>"}` and receives the rotated token in `refreshToken`.
+
+### SignOut: `POST /api/auth/sign-out`
+
+Revokes the session that the refresh credential belongs to.
+
+| Item | Value |
+|---|---|
+| Access | Anonymous. The credential is the refresh token, through the same channels as RefreshSession. |
+| Rate limit | Global: 60 per minute per anonymous address |
+| Body limit | 16 KB |
+| Request | Web: no body and no `Content-Type`, the `fs_refresh` cookie and `X-FieldService-Csrf: 1`. Mobile: `SignOutRequest { refreshToken }`, with the rules of `RefreshSessionRequest`. |
+| Success | 204 with no body. Web: a 204 clears `fs_refresh` when the request presented it; a request without the cookie gets no `Set-Cookie`. |
+| Idempotency | Always 204 when the credential is missing, unknown, expired or already revoked |
+| Errors | 400 for a malformed body; 403 `auth.csrf-required` for a cookie without the header, which leaves the cookie untouched; 429 |
+
+Access tokens already issued stay valid until they expire, at most 15 minutes later.
+
+```http
+POST /api/auth/sign-out HTTP/1.1
+Host: localhost:5173
+Cookie: fs_refresh=<refresh token>
+X-FieldService-Csrf: 1
+X-Correlation-ID: 5b0f7c51-7f6e-4e43-9d0a-2c1e8b7d4a90
+Content-Length: 0
+```
+
+```http
+HTTP/1.1 204 No Content
+Cache-Control: no-store
+X-Correlation-ID: 5b0f7c51-7f6e-4e43-9d0a-2c1e8b7d4a90
+Set-Cookie: fs_refresh=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0; path=/api/auth; samesite=strict; httponly
+```
+
+## Jobs
+
+Route group `/api/jobs`. Each operation sets its own policy.
+
+### CreateJob: `POST /api/jobs`
+
+The administrator creates a job. It starts `Unassigned`.
+
+| Item | Value |
+|---|---|
+| Access | Administrator |
+| Rate limit | Global |
+| Success | 201 Created, `Location: /api/jobs/{id}`, body `JobDetailsResponse` with status `Unassigned` |
+| Side effects | The next job number; one `Created` history entry with the same instant as `createdAt`; after the database commit, a `job.created` event with status `Unassigned`, for live updates once they are enabled |
+| Idempotency | None: repeating the request creates a second job. |
+
+Request body `CreateJobRequest`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `title` | string | yes | Up to 120 characters; single line |
+| `description` | string | yes | Up to 2000; multi-line |
+| `priority` | JobPriority | yes | |
+| `customerName` | string | yes | Up to 120; single line |
+| `siteAddress` | string | yes | Up to 300; single line |
+| `siteAccessNotes` | string or null | no | Up to 500; multi-line |
+| `contactName` | string or null | no | Up to 100; single line |
+| `contactPhone` | string or null | no | Up to 32 characters matching `^\+?[0-9 ().-]{3,31}$`: an optional leading `+`, then 3 to 31 digits, spaces, parentheses, dots or hyphens. `(555) 014-6620` passes; `*`, `#`, letters and a `+` after the first character do not. |
+| `equipment` | string or null | no | Up to 200; single line |
+| `scheduledStart` | date-time | yes | RFC 3339 with an offset |
+| `scheduledEnd` | date-time | yes | After `scheduledStart`, compared at millisecond precision (error key `scheduledEnd`) |
+| `checklistTemplateId` | uuid | yes | One of the checklist templates; otherwise 400 keyed `checklistTemplateId` |
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `request.validation-failed` | A field rule, or an unknown checklist template. Nothing is written and no event is queued. |
+
+Example, the dashboard's create form filled in:
+
+```http
+POST /api/jobs HTTP/1.1
+Host: localhost:5173
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+X-Correlation-ID: b2b49504-1cd6-4228-9a7b-85f907ad5a91
+```
+
+```json
+{
+  "title": "Exterior signage lights out",
+  "description": "Both pylon signs at the north entrance are dark after 6 PM. Timer and photocell suspected.",
+  "priority": "Normal",
+  "customerName": "Riverside Shopping Center",
+  "siteAddress": "500 Riverside Boulevard",
+  "siteAccessNotes": "Meet security at the north office",
+  "contactName": "Grace Liu",
+  "contactPhone": "(555) 014-8812",
+  "equipment": null,
+  "scheduledStart": "2026-10-20T09:00:00-04:00",
+  "scheduledEnd": "2026-10-20T11:00:00-04:00",
+  "checklistTemplateId": "01a15175-3c00-7000-8000-000101000000"
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json; charset=utf-8
+Location: /api/jobs/01a1549f-79e0-7c56-bc65-86a395b0ccdc
+Cache-Control: no-store
+X-Correlation-ID: b2b49504-1cd6-4228-9a7b-85f907ad5a91
+```
+
+```json
+{
+  "id": "01a1549f-79e0-7c56-bc65-86a395b0ccdc",
+  "number": 1056,
+  "title": "Exterior signage lights out",
+  "description": "Both pylon signs at the north entrance are dark after 6 PM. Timer and photocell suspected.",
+  "priority": "Normal",
+  "status": "Unassigned",
+  "customerName": "Riverside Shopping Center",
+  "siteAddress": "500 Riverside Boulevard",
+  "siteAccessNotes": "Meet security at the north office",
+  "contactName": "Grace Liu",
+  "contactPhone": "(555) 014-8812",
+  "equipment": null,
+  "scheduledStart": "2026-10-20T13:00:00.000Z",
+  "scheduledEnd": "2026-10-20T15:00:00.000Z",
+  "checklistTemplate": { "id": "01a15175-3c00-7000-8000-000101000000", "name": "General electrical inspection", "trade": "Electrical" },
+  "assignedTechnician": null,
+  "createdBy": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" },
+  "createdAt": "2026-10-19T14:45:00.000Z",
+  "updatedAt": "2026-10-19T14:45:00.000Z",
+  "assignedAt": null,
+  "startedAt": null,
+  "completedAt": null,
+  "cancelledAt": null,
+  "history": [
+    { "id": "01a1549f-79e0-71ae-8e7f-1896175a9d87", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:45:00.000Z" }
+  ],
+  "version": 48241
+}
+```
+
+After the demo data is seeded, the first job created gets number 1056.
+
+### GetJobs: `GET /api/jobs`
+
+The administrator's jobs table: search, filters, status counts and paging.
+
+| Item | Value |
+|---|---|
+| Access | Administrator |
+| Success | 200 `GetJobsResponse` |
+| Errors | 400 `request.validation-failed`, keyed by the parameter name |
+
+Query parameters:
+
+| Name | Type | Required | Rules |
+|---|---|---|---|
+| `search` | string | no | Trimmed. Empty or white space only means no search. At most 100 characters after trimming, with no control characters; otherwise 400 keyed `search`. A case-insensitive substring match against `JOB-{number}`, `title`, `customerName` and `siteAddress`, so `1042` and `job-1042` both find JOB-1042. `%`, `_` and `\` match literally. |
+| `status` | JobStatus | no | One status |
+| `technicianId` | uuid | no | Jobs assigned to this technician. An id with no jobs returns an empty page. |
+| `priority` | JobPriority | no | One priority |
+| `page` | int32 | no | 1 to 10000, default 1 |
+| `pageSize` | int32 | no | 1 to 100, default 25 |
+
+The rules for query values in [Query parameters](#query-parameters) apply: each parameter at most once, exact enumeration names, and no empty value except for `search`.
+
+Response `GetJobsResponse`:
+
+| Member | Type | Content |
+|---|---|---|
+| `items` | JobSummaryResponse[] | The page, ordered by `updatedAt` descending, then `id` descending |
+| `page` | int32 | The page returned |
+| `pageSize` | int32 | The page size applied |
+| `totalCount` | int32 | Every job that matches all the filters |
+| `statusCounts` | JobStatusCount[] | All six statuses in enumeration order, zeros included, counted with every filter except `status`. The status chips use them; "All" is their sum. |
+
+`JobStatusCount`: `status` (JobStatus) and `count` (int32).
+
+Example:
+
+```http
+GET /api/jobs?status=Unassigned&page=1&pageSize=25 HTTP/1.1
+Host: localhost:5173
+Authorization: Bearer {accessToken}
+X-Correlation-ID: 584a850a-e194-4a91-a626-6b0bcf5d172d
+```
+
+```json
+{
+  "items": [
+    { "id": "01a15488-9680-7989-92af-ed07fc34a890", "number": 1051, "title": "Replace faulty breaker panel", "priority": "High", "status": "Unassigned", "customerName": "Pinecrest Public Library", "siteAddress": "300 Pinecrest Road", "scheduledStart": "2026-10-19T19:30:00.000Z", "scheduledEnd": "2026-10-19T21:00:00.000Z", "assignedTechnician": null, "updatedAt": "2026-10-19T14:20:00.000Z", "version": 48101 },
+    { "id": "01a15424-cba0-7324-8dfe-aec14fd87c8b", "number": 1052, "title": "Fire alarm panel trouble signal", "priority": "Urgent", "status": "Unassigned", "customerName": "Cedar Ridge Elementary School", "siteAddress": "1180 Cedar Ridge Drive", "scheduledStart": "2026-10-19T18:00:00.000Z", "scheduledEnd": "2026-10-19T19:30:00.000Z", "assignedTechnician": null, "updatedAt": "2026-10-19T12:31:00.000Z", "version": 47861 },
+    { "id": "01a14ff4-b680-72b1-b5c0-7f2fe309d6f0", "number": 1050, "title": "Emergency lighting test", "priority": "Low", "status": "Unassigned", "customerName": "Northgate Logistics Warehouse", "siteAddress": "42 Industrial Parkway, Dock 4", "scheduledStart": "2026-10-21T13:00:00.000Z", "scheduledEnd": "2026-10-21T15:00:00.000Z", "assignedTechnician": null, "updatedAt": "2026-10-18T19:55:00.000Z", "version": 47188 },
+    { "id": "01a15062-9380-7aa7-8e25-c4fbbaea52ab", "number": 1054, "title": "Leaking rooftop drain", "priority": "Normal", "status": "Unassigned", "customerName": "Harborview Apartments", "siteAddress": "600 Bayfront Avenue", "scheduledStart": "2026-10-22T14:00:00.000Z", "scheduledEnd": "2026-10-22T16:00:00.000Z", "assignedTechnician": null, "updatedAt": "2026-10-18T15:05:00.000Z", "version": 47103 }
+  ],
+  "page": 1,
+  "pageSize": 25,
+  "totalCount": 4,
+  "statusCounts": [
+    { "status": "Unassigned", "count": 4 },
+    { "status": "Assigned", "count": 8 },
+    { "status": "InProgress", "count": 2 },
+    { "status": "OnHold", "count": 3 },
+    { "status": "Completed", "count": 2 },
+    { "status": "Cancelled", "count": 1 }
+  ]
+}
+```
+
+A bad query value, for example `GET /api/jobs?status=1&technicianId=abc`, returns:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more fields are invalid.",
+  "status": 400,
+  "instance": "/api/jobs",
+  "errors": {
+    "status": ["The value must be one of Unassigned, Assigned, InProgress, OnHold, Completed or Cancelled."],
+    "technicianId": ["The value must be a UUID."]
+  },
+  "code": "request.validation-failed",
+  "correlationId": "3c9f1f0e-5a4b-4f53-9d0a-6b2f7e1c8d45",
+  "traceId": "00-6f1d1c2b3a4e5f60718293a4b5c6d7e8-1a2b3c4d5e6f7081-00"
+}
+```
+
+### GetJobById: `GET /api/jobs/{jobId}`
+
+Job details for both clients.
+
+| Item | Value |
+|---|---|
+| Access | AdministratorOrTechnician. Administrators read any job. A technician reads only the jobs assigned to them, including completed and cancelled ones that are still assigned to them. |
+| Success | 200 `JobDetailsResponse` |
+| Errors | 404 `job.not-found`: the job does not exist, or a technician is not assigned to it. Both cases return the same response. |
+
+Example, the technician view of JOB-1042:
+
+```http
+GET /api/jobs/01a15415-3b40-79a4-859f-2cf627f64d02 HTTP/1.1
+Host: 10.0.2.2:5080
+Authorization: Bearer {accessToken}
+X-Correlation-ID: caa8b68d-452a-4513-8595-cb1ddf78a023
+```
+
+```json
+{
+  "id": "01a15415-3b40-79a4-859f-2cf627f64d02",
+  "number": 1042,
+  "title": "Rooftop HVAC unit not cooling",
+  "description": "Rooftop unit RTU-2 runs but is not cooling. The waiting room is at 81°F. The customer reports the problem started on Saturday afternoon.",
+  "priority": "High",
+  "status": "InProgress",
+  "customerName": "Brightwater Medical Clinic",
+  "siteAddress": "214 Harbor Road, Suite 3",
+  "siteAccessNotes": "Roof access through the east stairwell. Ask reception for the roof key.",
+  "contactName": "Nina Alvarez",
+  "contactPhone": "(555) 014-6620",
+  "equipment": "RTU-2, 10-ton packaged rooftop unit",
+  "scheduledStart": "2026-10-19T13:00:00.000Z",
+  "scheduledEnd": "2026-10-19T15:00:00.000Z",
+  "checklistTemplate": { "id": "01a15175-3c00-7000-8000-000102000000", "name": "Rooftop HVAC service", "trade": "Hvac" },
+  "assignedTechnician": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes", "trade": "Hvac" },
+  "createdBy": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" },
+  "createdAt": "2026-10-19T12:14:00.000Z",
+  "updatedAt": "2026-10-19T13:50:00.000Z",
+  "assignedAt": "2026-10-19T12:20:00.000Z",
+  "startedAt": "2026-10-19T13:12:00.000Z",
+  "completedAt": null,
+  "cancelledAt": null,
+  "history": [
+    { "id": "01a15415-3b40-77f2-9c94-972cf43879ed", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T12:14:00.000Z" },
+    { "id": "01a1541a-b980-77ba-b9a7-db809866381b", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "note": null, "occurredAt": "2026-10-19T12:20:00.000Z" },
+    { "id": "01a1544a-5500-71c6-b856-aa0a8dd0fb9c", "action": "Started", "fromStatus": "Assigned", "toStatus": "InProgress", "actor": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "technician": null, "note": null, "occurredAt": "2026-10-19T13:12:00.000Z" }
+  ],
+  "version": 48213
+}
+```
+
+Clients derive two display values from `history`: "In progress since 9:12 AM" is the latest entry whose `toStatus` equals the current status, and "Dana Whitfield assigned this job to you" is the latest `Assigned` entry.
+
+## Checklist templates
+
+### GetChecklistTemplates: `GET /api/checklist-templates`
+
+The create-job form's template list. The five templates are fixed reference data.
+
+| Item | Value |
+|---|---|
+| Access | Administrator |
+| Success | 200 `GetChecklistTemplatesResponse { items: ChecklistTemplateResponse[] }`, ordered by `name` |
+| Errors | Only the errors every endpoint can return |
+
+`ChecklistTemplateResponse`: `id` uuid, `name` string, `trade` Trade, `itemCount` int32.
+
+```http
+GET /api/checklist-templates HTTP/1.1
+Host: localhost:5173
+Authorization: Bearer {accessToken}
+X-Correlation-ID: 7f2a9d14-6c3b-4e58-b0a7-1d9e2c4f8a36
+```
+
+```json
+{
+  "items": [
+    { "id": "01a15175-3c00-7000-8000-000103000000", "name": "Boiler service", "trade": "Plumbing", "itemCount": 8 },
+    { "id": "01a15175-3c00-7000-8000-000105000000", "name": "Electrical panel inspection", "trade": "Electrical", "itemCount": 8 },
+    { "id": "01a15175-3c00-7000-8000-000104000000", "name": "Fire extinguisher inspection", "trade": "FireSafety", "itemCount": 7 },
+    { "id": "01a15175-3c00-7000-8000-000101000000", "name": "General electrical inspection", "trade": "Electrical", "itemCount": 8 },
+    { "id": "01a15175-3c00-7000-8000-000102000000", "name": "Rooftop HVAC service", "trade": "Hvac", "itemCount": 10 }
+  ]
+}
+```
+
+## Infrastructure endpoints
+
+### Health
+
+| Endpoint | Checks | Responses |
+|---|---|---|
+| `GET /health/live` | The process is running; no dependency is checked. | 200 `text/plain` `Healthy` |
+| `GET /health/ready` | The database is reachable. | 200 `text/plain` `Healthy`, or 503 `text/plain` `Unhealthy` |
+
+Both accept GET and HEAD; any other method gets 405. They are anonymous, outside rate limiting and absent from the OpenAPI document, and the development proxy and web server never forward them. Bodies carry the status word only.
+
+```http
+GET /health/ready HTTP/1.1
+Host: 127.0.0.1:5080
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Cache-Control: no-store, no-cache
+X-Correlation-ID: 4bf92f3577b34da6a3ce929d0e0e4736
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+Content-Security-Policy: default-src 'none'; frame-ancestors 'none'
+
+Healthy
+```
+
+### OpenAPI document: `GET /openapi/v1.json`
+
+| Item | Value |
+|---|---|
+| Content | The machine-readable contract, produced at run time from endpoint metadata and typed results |
+| Environments | Development and Testing only. Elsewhere the route is not mapped and returns 404. |
+| Access | Anonymous |
+| Rate limit | None |
+| Success | 200 `application/json`, OpenAPI 3.1 |
+
+The API serves no interactive explorer ([ADR 0017](decisions/0017-api-explorer-in-development.md)). To browse the API, open this document in an OpenAPI viewer, or read this reference.

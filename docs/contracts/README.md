@@ -39,7 +39,16 @@ The API writes UTC instants through a custom JSON converter, which fixes the wir
 - `DateTimeOffset` as `type: string`, `format: date-time`;
 - a nullable `DateTimeOffset` as `type: ["null", "string"]`, `format: date-time`.
 
-It changes only the document, never the wire format, and it is the only schema transformer. A contract test fails if any schema in the snapshot has a `format` without a `type`.
+It changes only the document, never the wire format. A contract test fails if any schema in the snapshot has a `format` without a `type`.
+
+### Nullability schema transformer
+
+The first snapshot with endpoints showed two nullability gaps in the generated document:
+
+- A required request member of a nullable value type, such as `Guid?`, `DateTimeOffset?` or a nullable enum, was documented as nullable. These members are nullable in C# only so that a missing member becomes a field error; the contract requires a value.
+- An enumeration schema first built from a nullable member listed `null` among its values. Every non-nullable use of `JobStatus`, `JobPriority` or `SessionClient` would then have read as nullable.
+
+A second narrow schema transformer in `src/FieldService.Api/Shared/OpenApi` closes both gaps. It removes `null` from every enumeration schema, so a nullable enum member is expressed as `oneOf` with `null` at the member, and it makes required members of nullable value types non-nullable. It changes only the document, never validation or the wire format. The snapshot test shows any change in its output after a package update.
 
 ## Event contracts
 
