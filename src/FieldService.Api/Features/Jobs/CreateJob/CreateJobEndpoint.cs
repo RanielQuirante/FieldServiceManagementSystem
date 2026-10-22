@@ -17,10 +17,11 @@ public static class CreateJobEndpoint
         jobs.MapPost(string.Empty, HandleAsync)
             .WithName("CreateJob")
             .WithSummary("Create a job")
-            .WithDescription("Creates an unassigned job with the next job number and a Created history entry. The response carries the job's details and version, and its Location header points to the job.")
-            .RequireAuthorization(Policies.Administrator);
+            .WithDescription("Creates a job with the next job number and a Created history entry. Without a technician the job starts Unassigned. With a technician, who must be active and on shift, it starts Assigned and also gets an Assigned history entry at the same instant. The response carries the job's details and version, and its Location header points to the job.")
+            .RequireAuthorization(Policies.Administrator)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
-    public static async Task<Results<Created<JobDetailsResponse>, ValidationProblem>> HandleAsync(
+    public static async Task<Results<Created<JobDetailsResponse>, ValidationProblem, ProblemHttpResult>> HandleAsync(
         CreateJobRequest request,
         HttpContext http,
         CurrentUser user,
@@ -29,12 +30,30 @@ public static class CreateJobEndpoint
         IJobEventQueue events,
         CancellationToken cancellationToken)
     {
+        var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
         var templateId = request.ChecklistTemplateId.GetValueOrDefault();
         if (!await db.ChecklistTemplates.AnyAsync(template => template.Id == templateId, cancellationToken))
         {
-            return Problems.FieldError(http, "checklistTemplateId", UnknownTemplateMessage);
+            errors["checklistTemplateId"] = [UnknownTemplateMessage];
         }
 
+        JobAssignee? assignee = null;
+        if (request.TechnicianId is { } technicianId)
+        {
+            assignee = await AssigneeQuery.FindAsync(db, technicianId, cancellationToken);
+            if (assignee is null)
+            {
+                errors[AssigneeQuery.Field] = [AssigneeQuery.UnknownMessage];
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return Problems.FieldErrors(http, errors);
+        }
+
+        var now = time.GetUtcNow();
+        var actor = JobActor.Administrator(user.Id);
         var job = Job.Create(
             new JobDetails(
                 request.Title,
@@ -50,13 +69,18 @@ public static class CreateJobEndpoint
                 request.ScheduledEnd.GetValueOrDefault(),
                 templateId),
             user.Id,
-            time.GetUtcNow());
+            now);
+        if (assignee is not null && job.AssignTo(assignee, actor, now) is { } error)
+        {
+            return error.IsFieldError ? Problems.FieldError(http, error) : Problems.Conflict(http, error);
+        }
+
         db.Jobs.Add(job);
         await db.SaveChangesAsync(cancellationToken);
 
         events.Enqueue(JobEvent.Created(job, CorrelationId.From(http)));
 
-        var details = await JobDetailsQuery.FindAsync(db, job.Id, JobActor.Administrator(user.Id), cancellationToken)
+        var details = await JobDetailsQuery.FindAsync(db, job.Id, actor, cancellationToken)
             ?? throw new InvalidOperationException("The created job could not be read back.");
         return TypedResults.Created($"/api/jobs/{job.Id}", details);
     }

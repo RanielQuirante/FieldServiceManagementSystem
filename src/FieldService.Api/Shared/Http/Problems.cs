@@ -37,6 +37,21 @@ public static class Problems
         return FieldError(http, field, error.Message);
     }
 
+    public static ProblemHttpResult Conflict(HttpContext http, DomainError error)
+    {
+        if (error.IsFieldError)
+        {
+            throw new ArgumentException("A domain error with a field is a field error, not a conflict.", nameof(error));
+        }
+
+        if (ErrorCodes.StatusOf(error.Code) != StatusCodes.Status409Conflict)
+        {
+            throw new ArgumentException("A domain error without a field must carry a 409 code of the registry.", nameof(error));
+        }
+
+        return Of(http, error.Code, error.Message);
+    }
+
     public static ValidationProblem FieldErrors(HttpContext http, IDictionary<string, string[]> errors)
     {
         var problem = new HttpValidationProblemDetails(errors)

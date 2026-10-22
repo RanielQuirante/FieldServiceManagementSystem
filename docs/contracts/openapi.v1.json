@@ -216,13 +216,148 @@
         }
       }
     },
+    "/api/technicians": {
+      "get": {
+        "tags": [
+          "Technicians"
+        ],
+        "summary": "List technicians",
+        "description": "Returns every technician, ordered by name, with trade, shift, whether they can be assigned now, their count of open jobs, their current job in progress or on hold, and their next assigned job.",
+        "operationId": "GetTechnicians",
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetTechniciansResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/technicians/me/jobs": {
+      "get": {
+        "tags": [
+          "Technicians"
+        ],
+        "summary": "List my jobs",
+        "description": "Returns the jobs assigned to the calling technician, and never another technician's. The active view, the default, holds Assigned, InProgress and OnHold jobs ordered by scheduled start, then job number. The completed view holds Completed and Cancelled jobs ordered by last update with the newest first, at most 50.",
+        "operationId": "GetAssignedJobs",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "pattern": "^(active|completed)$",
+              "type": "string",
+              "default": "active"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAssignedJobsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/jobs": {
       "post": {
         "tags": [
           "Jobs"
         ],
         "summary": "Create a job",
-        "description": "Creates an unassigned job with the next job number and a Created history entry. The response carries the job's details and version, and its Location header points to the job.",
+        "description": "Creates a job with the next job number and a Created history entry. Without a technician the job starts Unassigned. With a technician, who must be active and on shift, it starts Assigned and also gets an Assigned history entry at the same instant. The response carries the job's details and version, and its Location header points to the job.",
         "operationId": "CreateJob",
         "requestBody": {
           "content": {
@@ -281,6 +416,16 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -489,6 +634,114 @@
         ]
       }
     },
+    "/api/jobs/{jobId}/assignment": {
+      "put": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Assign a job to a technician",
+        "description": "Assigns an unassigned job, or reassigns an assigned job, to an active technician who is on shift, and adds an Assigned history entry. Send the version you last read; assigning the same technician again returns the job unchanged. The response carries the job's details and its new version.",
+        "operationId": "AssignJob",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/checklist-templates": {
       "get": {
         "tags": [
@@ -549,6 +802,104 @@
   },
   "components": {
     "schemas": {
+      "AssignedJobResponse": {
+        "required": [
+          "id",
+          "number",
+          "title",
+          "priority",
+          "status",
+          "customerName",
+          "siteAddress",
+          "scheduledStart",
+          "scheduledEnd",
+          "startedAt",
+          "completedAt",
+          "cancelledAt",
+          "updatedAt",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/JobPriority"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "siteAddress": {
+            "type": "string"
+          },
+          "scheduledStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scheduledEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "cancelledAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
+      },
+      "AssignJobRequest": {
+        "required": [
+          "technicianId",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "technicianId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
+      },
       "ChecklistTemplateReference": {
         "required": [
           "id",
@@ -674,6 +1025,27 @@
           "checklistTemplateId": {
             "type": "string",
             "format": "uuid"
+          },
+          "technicianId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "GetAssignedJobsResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssignedJobResponse"
+            }
           }
         }
       },
@@ -723,6 +1095,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/JobStatusCount"
+            }
+          }
+        }
+      },
+      "GetTechniciansResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TechnicianResponse"
             }
           }
         }
@@ -781,6 +1167,17 @@
           }
         }
       },
+      "JobAffordances": {
+        "required": [
+          "canAssign"
+        ],
+        "type": "object",
+        "properties": {
+          "canAssign": {
+            "type": "boolean"
+          }
+        }
+      },
       "JobDetailsResponse": {
         "required": [
           "id",
@@ -807,7 +1204,8 @@
           "completedAt",
           "cancelledAt",
           "history",
-          "version"
+          "version",
+          "affordances"
         ],
         "type": "object",
         "properties": {
@@ -930,6 +1328,9 @@
           "version": {
             "type": "integer",
             "format": "uint32"
+          },
+          "affordances": {
+            "$ref": "#/components/schemas/JobAffordances"
           }
         }
       },
@@ -1271,6 +1672,104 @@
           }
         }
       },
+      "TechnicianJobReference": {
+        "required": [
+          "id",
+          "number",
+          "status",
+          "scheduledStart",
+          "scheduledEnd"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "scheduledStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scheduledEnd": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TechnicianResponse": {
+        "required": [
+          "id",
+          "displayName",
+          "email",
+          "phoneNumber",
+          "trade",
+          "isActive",
+          "isOnShift",
+          "availableForAssignment",
+          "openJobCount",
+          "currentJob",
+          "nextJob"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phoneNumber": {
+            "type": "string"
+          },
+          "trade": {
+            "$ref": "#/components/schemas/Trade"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isOnShift": {
+            "type": "boolean"
+          },
+          "availableForAssignment": {
+            "type": "boolean"
+          },
+          "openJobCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "currentJob": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TechnicianJobReference"
+              }
+            ]
+          },
+          "nextJob": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TechnicianJobReference"
+              }
+            ]
+          }
+        }
+      },
       "Trade": {
         "enum": [
           "Hvac",
@@ -1313,6 +1812,9 @@
   "tags": [
     {
       "name": "Auth"
+    },
+    {
+      "name": "Technicians"
     },
     {
       "name": "Jobs"

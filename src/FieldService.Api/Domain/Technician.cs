@@ -16,7 +16,7 @@ public sealed class Technician
 
     public User User { get; private set; } = null!;
 
-    public bool IsAvailableForAssignment => IsOnShift && User.IsActive;
+    public static bool IsAvailable(bool isActive, bool isOnShift) => isActive && isOnShift;
 
     public static Technician Create(User user, Trade trade, string phoneNumber, bool isOnShift)
     {

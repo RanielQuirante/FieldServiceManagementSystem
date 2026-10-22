@@ -59,4 +59,6 @@ public sealed record CreateJobRequest
 
     [Required(ErrorMessage = "Choose a checklist template.")]
     public Guid? ChecklistTemplateId { get; init; }
+
+    public Guid? TechnicianId { get; init; }
 }

@@ -53,6 +53,8 @@ public static class JobDetailsQuery
             .ToListAsync(cancellationToken);
 
         var details = row.Job;
+        var affordances = new JobAffordances(
+            JobTransitions.Available(details, actor).Any(transition => transition.Command == JobCommand.Assign));
         return new JobDetailsResponse(
             details.Id,
             details.Number,
@@ -78,6 +80,7 @@ public static class JobDetailsQuery
             details.CompletedAt,
             details.CancelledAt,
             history,
-            details.Version);
+            details.Version,
+            affordances);
     }
 }

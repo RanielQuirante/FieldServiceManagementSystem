@@ -102,7 +102,10 @@ public sealed class Job
 
     public bool IsAssignedTo(Guid technicianId) => AssignedTechnicianId == technicianId;
 
-    public DomainError? AssignTo(Technician technician, JobActor actor, DateTimeOffset now)
+    public DomainError? AssignTo(Technician technician, JobActor actor, DateTimeOffset now) =>
+        AssignTo(JobAssignee.Of(technician), actor, now);
+
+    public DomainError? AssignTo(JobAssignee assignee, JobActor actor, DateTimeOffset now)
     {
         var transition = JobTransitions.Find(JobCommand.Assign, this, JobStatus.Assigned, actor);
         if (transition is null)
@@ -112,20 +115,20 @@ public sealed class Job
                 : DomainErrors.InvalidTransition(this, JobStatus.Assigned);
         }
 
-        if (Status == JobStatus.Assigned && IsAssignedTo(technician.UserId))
+        if (Status == JobStatus.Assigned && IsAssignedTo(assignee.TechnicianId))
         {
             return null;
         }
 
-        if (!technician.IsAvailableForAssignment)
+        if (!assignee.IsAvailableForAssignment)
         {
             return DomainErrors.TechnicianUnavailable();
         }
 
         var at = UtcInstant.Truncate(now);
-        AssignedTechnicianId = technician.UserId;
+        AssignedTechnicianId = assignee.TechnicianId;
         AssignedAt = at;
-        Record(transition, actor, technician.UserId, note: null, at);
+        Record(transition, actor, assignee.TechnicianId, note: null, at);
         return null;
     }
 

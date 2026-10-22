@@ -27,4 +27,5 @@ public sealed record JobDetailsResponse(
     DateTimeOffset? CompletedAt,
     DateTimeOffset? CancelledAt,
     IReadOnlyList<JobHistoryEntryResponse> History,
-    uint Version);
+    uint Version,
+    JobAffordances Affordances);
