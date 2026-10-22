@@ -45,6 +45,11 @@ function sentence(entry: JobHistoryEntry): string {
   }
 }
 
+function displayedNote(note: string | null): string | null {
+  const trimmed = note?.trim() ?? ''
+  return trimmed.length > 0 ? trimmed : null
+}
+
 const entries = computed<TimelineEntry[]>(() =>
   props.history.map((entry, index) => ({
     id: entry.id,
@@ -55,7 +60,7 @@ const entries = computed<TimelineEntry[]>(() =>
         : formatShortDate(entry.occurredAt, props.now),
     time: formatTime(entry.occurredAt),
     text: sentence(entry),
-    note: entry.note,
+    note: displayedNote(entry.note),
     newest: index === props.history.length - 1,
   })),
 )
@@ -97,7 +102,7 @@ const entries = computed<TimelineEntry[]>(() =>
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
-  align-items: center;
+  align-items: baseline;
 }
 
 .status-timeline__time {
@@ -114,8 +119,10 @@ const entries = computed<TimelineEntry[]>(() =>
 }
 
 .status-timeline__dot {
+  align-self: start;
   width: 10px;
   height: 10px;
+  margin-top: 4.8px;
   border-radius: var(--radius-fs-pill);
   background: var(--color-fs-surface);
   box-shadow: var(--shadow-fs-timeline-dot);
