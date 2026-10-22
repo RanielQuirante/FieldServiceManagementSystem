@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             xmlns:jobs="clr-namespace:FieldService.Mobile.Features.Jobs"
+             x:Class="FieldService.Mobile.Features.Jobs.UpdateStatusSheet"
+             x:DataType="jobs:JobDetailsViewModel">
+    <VerticalStackLayout Spacing="18">
+        <Border Style="{StaticResource FsWell}"
+                Padding="14,10">
+            <Grid ColumnDefinitions="*,Auto"
+                  ColumnSpacing="{StaticResource FsSpace12}">
+                <Label Text="Current status"
+                       Style="{StaticResource FsTextInfoSecondary}"
+                       VerticalOptions="Center" />
+                <controls:StatusChip Grid.Column="1"
+                                     Status="{Binding Status}"
+                                     VerticalOptions="Center" />
+            </Grid>
+        </Border>
+        <VerticalStackLayout Spacing="{StaticResource FsSpace10}">
+            <Label Text="Change to"
+                   Style="{StaticResource FsTextEyebrow}"
+                   Margin="0,0,0,2"
+                   SemanticProperties.HeadingLevel="Level3" />
+            <VerticalStackLayout Spacing="{StaticResource FsSpace10}"
+                                 BindableLayout.ItemsSource="{Binding StatusOptions}">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="jobs:StatusOption">
+                        <controls:OptionRow Title="{Binding Title}"
+                                            Helper="{Binding Helper}"
+                                            IconKey="{Binding IconKey}"
+                                            IconColorKey="{Binding IconColorKey}"
+                                            IsSelected="{Binding IsSelected}"
+                                            IsAvailable="{Binding IsAvailable}"
+                                            Command="{Binding SelectStatusOptionCommand, Source={RelativeSource AncestorType={x:Type jobs:JobDetailsViewModel}}, x:DataType=jobs:JobDetailsViewModel}"
+                                            CommandParameter="{Binding .}" />
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+        <controls:FormField IsVisible="{Binding ShowsHoldReason}"
+                            IsMultiline="True"
+                            Label="{x:Static jobs:JobDetailsViewModel.ReasonLabel}"
+                            HelpText="{x:Static jobs:JobDetailsViewModel.ReasonHelp}"
+                            Text="{Binding HoldReason}"
+                            ErrorText="{Binding HoldReasonError}"
+                            FocusRequest="{Binding HoldReasonFocusRequest}"
+                            IsReadOnly="{Binding IsReasonReadOnly}"
+                            MaxLength="{x:Static jobs:JobDetailsViewModel.ReasonMaxLength}"
+                            CountFrom="{x:Static jobs:JobDetailsViewModel.ReasonCountFrom}"
+                            Keyboard="Text" />
+        <controls:Banner Variant="Error"
+                         IsVisible="{Binding HasSheetFailure}"
+                         Title="{Binding SheetFailure.Title}"
+                         Message="{Binding SheetFailure.Message}"
+                         Reference="{Binding SheetFailure.Reference}" />
+        <VerticalStackLayout Spacing="{StaticResource FsSpace6}">
+            <controls:PrimaryButton Text="{Binding ConfirmText}"
+                                    BusyText="{Binding ConfirmBusyText}"
+                                    IconKey="{Binding ConfirmIconKey}"
+                                    IsBusy="{Binding IsUpdatingStatus}"
+                                    Command="{Binding ConfirmStatusCommand}" />
+            <Button Text="Cancel"
+                    Style="{StaticResource FsQuietButton}"
+                    Command="{Binding CloseStatusSheetCommand}" />
+        </VerticalStackLayout>
+    </VerticalStackLayout>
+</ContentView>

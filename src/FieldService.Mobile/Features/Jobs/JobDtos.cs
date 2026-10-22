@@ -118,4 +118,14 @@ public sealed record JobHistoryEntryResponse(
     public override string ToString() => $"{nameof(JobHistoryEntryResponse)} {Id}";
 }
 
-public sealed record JobAffordances(bool CanAssign);
+public sealed record JobAffordances(IReadOnlyList<AllowedStatusChange> AllowedStatusChanges, bool CanAssign)
+{
+    public IReadOnlyList<AllowedStatusChange> AllowedStatusChanges { get; init; } = AllowedStatusChanges ?? [];
+}
+
+public sealed record AllowedStatusChange(JobStatus Status, bool RequiresNote);
+
+public sealed record UpdateJobStatusRequest(JobStatus Status, string? Note, uint Version)
+{
+    public override string ToString() => $"{nameof(UpdateJobStatusRequest)} {Status}";
+}

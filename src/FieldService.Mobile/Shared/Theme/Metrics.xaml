@@ -50,6 +50,8 @@
     <x:Double x:Key="FsHeightRow">48</x:Double>
     <x:Double x:Key="FsHeightInput">52</x:Double>
     <x:Double x:Key="FsHeightInputContent">49</x:Double>
+    <x:Double x:Key="FsHeightEditorMinimum">105</x:Double>
+    <x:Double x:Key="FsHeightEditorMaximum">169</x:Double>
     <x:Double x:Key="FsHeightTrack">56</x:Double>
     <x:Double x:Key="FsHeightOptionRow">64</x:Double>
     <x:Double x:Key="FsHeightChip">32</x:Double>
@@ -87,6 +89,12 @@
     <Thickness x:Key="FsPaddingNone">0</Thickness>
     <Thickness x:Key="FsMarginPasswordToggle">0,0,0.5,0</Thickness>
     <Thickness x:Key="FsMarginInputContent">1.5</Thickness>
+    <Thickness x:Key="FsMarginEditor">16,2</Thickness>
+    <Thickness x:Key="FsMarginTimelineTime">0,2,0,0</Thickness>
+    <Thickness x:Key="FsMarginTimelineDot">0,5,0,0</Thickness>
+    <Thickness x:Key="FsMarginHeroReason">24,0,0,0</Thickness>
+    <Thickness x:Key="FsMarginSheetHandle">0,0,0,18</Thickness>
+    <Thickness x:Key="FsPaddingSheetHeader">16,0,16,9</Thickness>
     <Thickness x:Key="FsPaddingListContent">16,0,16,32</Thickness>
     <Thickness x:Key="FsPaddingDetailContent">16,20,16,24</Thickness>
     <Thickness x:Key="FsPaddingBanner">12,12,16,12</Thickness>

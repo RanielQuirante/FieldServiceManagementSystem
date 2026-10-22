@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.OptionRow"
+             x:Name="Root"
+             x:DataType="controls:OptionRow">
+    <ContentView.GestureRecognizers>
+        <TapGestureRecognizer Tapped="OnTapped" />
+    </ContentView.GestureRecognizers>
+    <Border x:Name="Surface"
+            BindingContext="{x:Reference Root}"
+            StrokeShape="RoundRectangle 16"
+            MinimumHeightRequest="{StaticResource FsHeightOptionRow}"
+            InputTransparent="True"
+            AutomationProperties.IsInAccessibleTree="False"
+            AutomationProperties.ExcludedWithChildren="True">
+        <Grid ColumnDefinitions="Auto,*,Auto"
+              ColumnSpacing="{StaticResource FsSpace14}">
+            <Grid Grid.Column="0"
+                  WidthRequest="22"
+                  HeightRequest="22"
+                  Margin="0,1,0,0"
+                  VerticalOptions="Start">
+                <Border x:Name="Ring"
+                        StrokeShape="RoundRectangle 11"
+                        StrokeThickness="2"
+                        Background="{StaticResource FsSurfaceBrush}"
+                        AutomationProperties.IsInAccessibleTree="False" />
+                <BoxView x:Name="Dot"
+                         WidthRequest="10"
+                         HeightRequest="10"
+                         CornerRadius="5"
+                         Color="{StaticResource FsTeal700}"
+                         IsVisible="{Binding ShowsDot}"
+                         HorizontalOptions="Center"
+                         VerticalOptions="Center"
+                         AutomationProperties.IsInAccessibleTree="False" />
+            </Grid>
+            <VerticalStackLayout Grid.Column="1"
+                                 Spacing="{StaticResource FsSpace2}">
+                <Label x:Name="TitleLabel"
+                       Text="{Binding Title}"
+                       Style="{StaticResource FsTextOptionTitle}" />
+                <Label Text="{Binding Helper}"
+                       IsVisible="{Binding HasHelper}"
+                       Style="{StaticResource FsTextInfoSecondary}" />
+            </VerticalStackLayout>
+            <controls:Icon x:Name="TrailingIcon"
+                           Grid.Column="2"
+                           Size="20"
+                           VerticalOptions="Start" />
+        </Grid>
+    </Border>
+</ContentView>

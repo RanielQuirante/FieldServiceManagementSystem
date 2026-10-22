@@ -15,7 +15,8 @@
                       SemanticProperties.Description="{Binding Description}">
                     <VerticalStackLayout Grid.Column="0"
                                          WidthRequest="{Binding TimeColumnWidth, Source={RelativeSource AncestorType={x:Type controls:Timeline}}, x:DataType=controls:Timeline}"
-                                         VerticalOptions="Center"
+                                         VerticalOptions="Start"
+                                         Margin="{StaticResource FsMarginTimelineTime}"
                                          AutomationProperties.ExcludedWithChildren="True">
                         <Label Text="{Binding Day}"
                                IsVisible="{Binding HasDay}"
@@ -26,7 +27,8 @@
                     <Grid Grid.Column="1"
                           WidthRequest="{StaticResource FsSizeTimelineDot}"
                           HeightRequest="{StaticResource FsSizeTimelineDot}"
-                          VerticalOptions="Center"
+                          VerticalOptions="Start"
+                          Margin="{StaticResource FsMarginTimelineDot}"
                           InputTransparent="True"
                           AutomationProperties.IsInAccessibleTree="False">
                         <Border Margin="-3"
@@ -52,7 +54,7 @@
                     </Grid>
                     <VerticalStackLayout Grid.Column="2"
                                          Spacing="{StaticResource FsSpace2}"
-                                         VerticalOptions="Center"
+                                         VerticalOptions="Start"
                                          AutomationProperties.ExcludedWithChildren="True">
                         <Label Text="{Binding Text}"
                                Style="{StaticResource FsTextTimeline}" />

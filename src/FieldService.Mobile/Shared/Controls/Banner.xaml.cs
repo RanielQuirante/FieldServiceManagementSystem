@@ -8,6 +8,7 @@ public enum BannerVariant
     Info,
     Offline,
     Error,
+    Conflict,
 }
 
 public partial class Banner : ContentView
@@ -138,7 +139,15 @@ public partial class Banner : ContentView
     {
         BannerVariant.Error => "FsIconAlertTriangle",
         BannerVariant.Offline => "FsIconWifiOff",
+        BannerVariant.Conflict => "FsIconRefresh",
         _ => "FsIconClock",
+    };
+
+    public static BannerLook LookFor(BannerVariant variant) => variant switch
+    {
+        BannerVariant.Error => new BannerLook("FsBannerErrorBrush", "FsDangerBannerStrokeBrush", "FsPaddingBanner", "FsShadowDanger", "FsDangerBrush", "FsTransparentBrush", "FsOnDark"),
+        BannerVariant.Conflict => new BannerLook("FsBannerWarningBrush", "FsWarningBannerStrokeBrush", "FsPaddingBanner", "FsShadowWarning", "FsAccentBrush", "FsTransparentBrush", "FsInk"),
+        _ => new BannerLook("FsGlassBrush", "FsGlassStrokeBrush", "FsPaddingBannerSurface", "FsShadowGlass", "FsBannerPausedTileBrush", "FsRingMobileBrush", "FsInk2"),
     };
 
     public static string Speak(string? title, string? message, string? reference)
@@ -175,14 +184,14 @@ public partial class Banner : ContentView
             return;
         }
 
-        var error = Variant == BannerVariant.Error;
-        Surface.SetDynamicResource(Border.BackgroundProperty, error ? "FsBannerErrorBrush" : "FsGlassBrush");
-        Surface.SetDynamicResource(Border.StrokeProperty, error ? "FsDangerBannerStrokeBrush" : "FsGlassStrokeBrush");
-        Surface.SetDynamicResource(Border.PaddingProperty, error ? "FsPaddingBanner" : "FsPaddingBannerSurface");
-        Surface.SetDynamicResource(Border.ShadowProperty, error ? "FsShadowDanger" : "FsShadowGlass");
-        Tile.SetDynamicResource(Border.BackgroundProperty, error ? "FsDangerBrush" : "FsBannerPausedTileBrush");
-        Tile.SetDynamicResource(Border.StrokeProperty, error ? "FsTransparentBrush" : "FsRingMobileBrush");
-        TileIcon.SetDynamicResource(Icon.ColorProperty, error ? "FsOnDark" : "FsInk2");
+        var look = LookFor(Variant);
+        Surface.SetDynamicResource(Border.BackgroundProperty, look.Surface);
+        Surface.SetDynamicResource(Border.StrokeProperty, look.Stroke);
+        Surface.SetDynamicResource(Border.PaddingProperty, look.Padding);
+        Surface.SetDynamicResource(Border.ShadowProperty, look.Shadow);
+        Tile.SetDynamicResource(Border.BackgroundProperty, look.Tile);
+        Tile.SetDynamicResource(Border.StrokeProperty, look.TileStroke);
+        TileIcon.SetDynamicResource(Icon.ColorProperty, look.TileIcon);
         TileIcon.SetDynamicResource(Icon.PathDataProperty, IconKey ?? DefaultIconKey(Variant));
     }
 
@@ -207,3 +216,5 @@ public partial class Banner : ContentView
         SemanticScreenReader.Default.Announce(SpokenText);
     }
 }
+
+public sealed record BannerLook(string Surface, string Stroke, string Padding, string Shadow, string Tile, string TileStroke, string TileIcon);

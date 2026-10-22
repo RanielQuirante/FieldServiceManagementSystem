@@ -2,21 +2,67 @@ using System.Windows.Input;
 
 namespace FieldService.Mobile.Shared.Controls;
 
-public partial class FormField : ContentView
+public partial class FormField : ContentView, IReleasesInput
 {
     public const string ShowPasswordDescription = "Show password";
     public const string HidePasswordDescription = "Hide password";
 
     private static readonly Thickness _leadingInset = new(16, 0, 0, 0);
 
-    public static readonly BindableProperty LabelProperty = BindableProperty.Create(nameof(Label), typeof(string), typeof(FormField));
+    private IKeepInViewHost? _viewHost;
+
+    public const string NoCharactersLeft = "No characters left";
+
+    public static readonly BindableProperty LabelProperty = BindableProperty.Create(
+        nameof(Label),
+        typeof(string),
+        typeof(FormField),
+        propertyChanged: (bindable, _, _) => ((FormField)bindable).UpdateDescription());
 
     public static readonly BindableProperty TextProperty = BindableProperty.Create(
         nameof(Text),
         typeof(string),
         typeof(FormField),
         string.Empty,
-        BindingMode.TwoWay);
+        BindingMode.TwoWay,
+        propertyChanged: (bindable, _, _) => ((FormField)bindable).UpdateCount());
+
+    public static readonly BindableProperty IsMultilineProperty = BindableProperty.Create(
+        nameof(IsMultiline),
+        typeof(bool),
+        typeof(FormField),
+        false,
+        propertyChanged: (bindable, _, newValue) => ((FormField)bindable).IsSingleLine = !(bool)newValue);
+
+    public static readonly BindableProperty IsSingleLineProperty = BindableProperty.Create(nameof(IsSingleLine), typeof(bool), typeof(FormField), true);
+
+    public static readonly BindableProperty HelpTextProperty = BindableProperty.Create(
+        nameof(HelpText),
+        typeof(string),
+        typeof(FormField),
+        propertyChanged: (bindable, _, newValue) =>
+        {
+            var field = (FormField)bindable;
+            field.HasHelpText = !string.IsNullOrWhiteSpace(newValue as string);
+            field.UpdateDescription();
+        });
+
+    public static readonly BindableProperty HasHelpTextProperty = BindableProperty.Create(nameof(HasHelpText), typeof(bool), typeof(FormField), false);
+
+    public static readonly BindableProperty CountFromProperty = BindableProperty.Create(
+        nameof(CountFrom),
+        typeof(int),
+        typeof(FormField),
+        0,
+        propertyChanged: (bindable, _, _) => ((FormField)bindable).UpdateCount());
+
+    public static readonly BindableProperty CountTextProperty = BindableProperty.Create(nameof(CountText), typeof(string), typeof(FormField));
+
+    public static readonly BindableProperty HasCountTextProperty = BindableProperty.Create(nameof(HasCountText), typeof(bool), typeof(FormField), false);
+
+    public static readonly BindableProperty IsReadOnlyProperty = BindableProperty.Create(nameof(IsReadOnly), typeof(bool), typeof(FormField), false);
+
+    public static readonly BindableProperty InputDescriptionProperty = BindableProperty.Create(nameof(InputDescription), typeof(string), typeof(FormField));
 
     public static readonly BindableProperty PlaceholderProperty = BindableProperty.Create(nameof(Placeholder), typeof(string), typeof(FormField));
 
@@ -45,7 +91,12 @@ public partial class FormField : ContentView
 
     public static readonly BindableProperty ReturnCommandProperty = BindableProperty.Create(nameof(ReturnCommand), typeof(ICommand), typeof(FormField));
 
-    public static readonly BindableProperty MaxLengthProperty = BindableProperty.Create(nameof(MaxLength), typeof(int), typeof(FormField), int.MaxValue);
+    public static readonly BindableProperty MaxLengthProperty = BindableProperty.Create(
+        nameof(MaxLength),
+        typeof(int),
+        typeof(FormField),
+        int.MaxValue,
+        propertyChanged: (bindable, _, _) => ((FormField)bindable).UpdateCount());
 
     public static readonly BindableProperty IsSpellCheckEnabledProperty = BindableProperty.Create(nameof(IsSpellCheckEnabled), typeof(bool), typeof(FormField), true);
 
@@ -89,7 +140,100 @@ public partial class FormField : ContentView
         InitializeComponent();
         Input.Focused += (_, _) => UpdateLook();
         Input.Unfocused += (_, _) => UpdateLook();
+        Area.Focused += (_, _) =>
+        {
+            UpdateLook();
+            BringIntoView(keep: true);
+        };
+        Area.Unfocused += (_, _) =>
+        {
+            UpdateLook();
+            BringIntoView(keep: false);
+        };
         UpdateLayoutState();
+        UpdateDescription();
+    }
+
+    public bool IsMultiline
+    {
+        get => (bool)GetValue(IsMultilineProperty);
+        set => SetValue(IsMultilineProperty, value);
+    }
+
+    public bool IsSingleLine
+    {
+        get => (bool)GetValue(IsSingleLineProperty);
+        private set => SetValue(IsSingleLineProperty, value);
+    }
+
+    public string? HelpText
+    {
+        get => (string?)GetValue(HelpTextProperty);
+        set => SetValue(HelpTextProperty, value);
+    }
+
+    public bool HasHelpText
+    {
+        get => (bool)GetValue(HasHelpTextProperty);
+        private set => SetValue(HasHelpTextProperty, value);
+    }
+
+    public int CountFrom
+    {
+        get => (int)GetValue(CountFromProperty);
+        set => SetValue(CountFromProperty, value);
+    }
+
+    public string? CountText
+    {
+        get => (string?)GetValue(CountTextProperty);
+        private set => SetValue(CountTextProperty, value);
+    }
+
+    public bool HasCountText
+    {
+        get => (bool)GetValue(HasCountTextProperty);
+        private set => SetValue(HasCountTextProperty, value);
+    }
+
+    public bool IsReadOnly
+    {
+        get => (bool)GetValue(IsReadOnlyProperty);
+        set => SetValue(IsReadOnlyProperty, value);
+    }
+
+    public string? InputDescription
+    {
+        get => (string?)GetValue(InputDescriptionProperty);
+        private set => SetValue(InputDescriptionProperty, value);
+    }
+
+    public static string? RemainingText(int length, int maxLength, int countFrom)
+    {
+        if (countFrom <= 0 || length < countFrom)
+        {
+            return null;
+        }
+
+        var remaining = Math.Max(0, maxLength - length);
+        return remaining switch
+        {
+            0 => NoCharactersLeft,
+            1 => "1 character left",
+            _ => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{remaining} characters left"),
+        };
+    }
+
+    public static bool AnnouncesCount(string? previous, string? current) =>
+        current is not null && (previous is null || (current == NoCharactersLeft && previous != NoCharactersLeft));
+
+    public static string Describe(string? label, string? help, string? count)
+    {
+        var parts = new[] { label, help, count }
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => part!.Trim())
+            .ToList();
+        return string.Join(' ', parts.Select((part, index) => index < parts.Count - 1 && !part.EndsWith('.') ? part + "." : part));
     }
 
     public ICommand TogglePasswordCommand { get; }
@@ -220,6 +364,20 @@ public partial class FormField : ContentView
         set => SetValue(HidePasswordRequestProperty, value);
     }
 
+    public bool HoldsInput => (Input?.IsFocused ?? false) || (Area?.IsFocused ?? false);
+
+    public void ReleaseInput()
+    {
+        foreach (var field in new InputView?[] { Input, Area })
+        {
+            if (field is { IsFocused: true })
+            {
+                _ = field.HideSoftInputAsync(CancellationToken.None);
+                field.Unfocus();
+            }
+        }
+    }
+
     public static bool HidesTextAfterRequest(bool isPassword, int previous, int requested, bool isTextHidden) =>
         requested != previous ? isPassword : isTextHidden;
 
@@ -228,10 +386,50 @@ public partial class FormField : ContentView
 
     private void OnFocusRequested(int previous, int requested)
     {
-        if (requested != previous && requested != 0 && Input is not null)
+        if (requested == previous || requested == 0 || Input is null)
+        {
+            return;
+        }
+
+        if (IsMultiline)
+        {
+            Area.Focus();
+        }
+        else
         {
             Input.Focus();
         }
+    }
+
+    private void UpdateCount()
+    {
+        var previous = CountText;
+        var current = RemainingText(Text?.Length ?? 0, MaxLength, CountFrom);
+        CountText = current;
+        HasCountText = current is not null;
+        UpdateDescription();
+        if (current is not null && AnnouncesCount(previous, current) && Handler is not null)
+        {
+            SemanticScreenReader.Default.Announce(current);
+        }
+    }
+
+    private void UpdateDescription() => InputDescription = Describe(Label, HelpText, CountText);
+
+    private void BringIntoView(bool keep)
+    {
+        if (_viewHost is null)
+        {
+            Element? ancestor = Parent;
+            while (ancestor is not null and not IKeepInViewHost)
+            {
+                ancestor = ancestor.Parent;
+            }
+
+            _viewHost = ancestor as IKeepInViewHost;
+        }
+
+        _viewHost?.KeepInView(keep ? this : null);
     }
 
     private void ResetPasswordVisibility(bool isPassword)
@@ -264,7 +462,7 @@ public partial class FormField : ContentView
 
     private void UpdateLook()
     {
-        var focused = Input is not null && Input.IsFocused;
+        var focused = (Input is not null && Input.IsFocused) || (Area is not null && Area.IsFocused);
         ShowsFocusLook = focused;
         ShowsErrorLook = HasError && !focused;
     }

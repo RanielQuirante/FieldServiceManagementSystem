@@ -57,6 +57,7 @@
                            ClearButtonVisibility="Never"
                            MinimumHeightRequest="{StaticResource FsHeightInputContent}"
                            Grid.Column="1"
+                           IsVisible="{Binding IsSingleLine}"
                            Text="{Binding Text}"
                            Placeholder="{Binding Placeholder}"
                            IsPassword="{Binding IsTextHidden}"
@@ -64,11 +65,26 @@
                            ReturnType="{Binding ReturnType}"
                            ReturnCommand="{Binding ReturnCommand}"
                            MaxLength="{Binding MaxLength}"
+                           IsReadOnly="{Binding IsReadOnly}"
                            IsSpellCheckEnabled="{Binding IsSpellCheckEnabled}"
                            IsTextPredictionEnabled="{Binding IsTextPredictionEnabled}"
                            Margin="{Binding EntryMargin}"
                            VerticalOptions="Center"
-                           SemanticProperties.Description="{Binding Label}" />
+                           SemanticProperties.Description="{Binding InputDescription}" />
+                    <Editor x:Name="Area"
+                            Grid.Column="1"
+                            IsVisible="{Binding IsMultiline}"
+                            Text="{Binding Text}"
+                            Keyboard="{Binding Keyboard}"
+                            MaxLength="{Binding MaxLength}"
+                            IsReadOnly="{Binding IsReadOnly}"
+                            IsSpellCheckEnabled="{Binding IsSpellCheckEnabled}"
+                            IsTextPredictionEnabled="{Binding IsTextPredictionEnabled}"
+                            AutoSize="TextChanges"
+                            MinimumHeightRequest="{StaticResource FsHeightEditorMinimum}"
+                            MaximumHeightRequest="{StaticResource FsHeightEditorMaximum}"
+                            Margin="{StaticResource FsMarginEditor}"
+                            SemanticProperties.Description="{Binding InputDescription}" />
                     <Grid Grid.Column="2"
                           IsVisible="{Binding IsPassword}"
                           WidthRequest="{StaticResource FsHeightIconButton}"
@@ -107,5 +123,13 @@
                    Text="{Binding ErrorText}"
                    Style="{StaticResource FsTextFieldError}" />
         </Grid>
+        <Label Text="{Binding HelpText}"
+               IsVisible="{Binding HasHelpText}"
+               Style="{StaticResource FsTextInfoSecondary}"
+               AutomationProperties.IsInAccessibleTree="False" />
+        <Label Text="{Binding CountText}"
+               IsVisible="{Binding HasCountText}"
+               Style="{StaticResource FsTextInfoSecondary}"
+               AutomationProperties.IsInAccessibleTree="False" />
     </VerticalStackLayout>
 </ContentView>

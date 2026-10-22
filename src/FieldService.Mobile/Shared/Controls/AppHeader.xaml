@@ -142,7 +142,8 @@
                             <controls:PriorityLabel Priority="{Binding SummaryPriority}"
                                                     IsOnDark="True" />
                         </HorizontalStackLayout>
-                        <Label Text="{Binding SummaryTitle}"
+                        <Label x:Name="SummaryTitleLabel"
+                               Text="{Binding SummaryTitle}"
                                Style="{StaticResource FsTextHeroJobTitle}"
                                SemanticProperties.HeadingLevel="Level2" />
                         <VerticalStackLayout IsVisible="{Binding HasSchedule}"
@@ -164,17 +165,25 @@
                                    IsVisible="{Binding HasAssignedText}"
                                    Style="{StaticResource FsTextMetaOnDark}" />
                         </VerticalStackLayout>
-                        <Grid IsVisible="{Binding HasStatusLine}"
-                              ColumnDefinitions="Auto,*"
-                              ColumnSpacing="{StaticResource FsSpace8}">
-                            <controls:Icon x:Name="StatusLineIcon"
-                                           Size="16"
-                                           Color="{StaticResource FsOnDark2}"
-                                           VerticalOptions="Center" />
-                            <Label Grid.Column="1"
-                                   Text="{Binding StatusLineText}"
-                                   Style="{StaticResource FsTextMetaOnDark}" />
-                        </Grid>
+                        <VerticalStackLayout IsVisible="{Binding HasStatusLine}"
+                                             Spacing="{StaticResource FsSpace4}">
+                            <Grid ColumnDefinitions="Auto,*"
+                                  ColumnSpacing="{StaticResource FsSpace8}">
+                                <controls:Icon x:Name="StatusLineIcon"
+                                               Size="16"
+                                               Color="{StaticResource FsOnDark2}"
+                                               VerticalOptions="Center" />
+                                <Label Grid.Column="1"
+                                       Text="{Binding StatusLineText}"
+                                       Style="{StaticResource FsTextMetaOnDark}" />
+                            </Grid>
+                            <Label Text="{Binding ReasonText}"
+                                   IsVisible="{Binding HasReasonText}"
+                                   Style="{StaticResource FsTextMetaOnDark}"
+                                   Margin="{StaticResource FsMarginHeroReason}"
+                                   MaxLines="3"
+                                   LineBreakMode="TailTruncation" />
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </VerticalStackLayout>
 

@@ -22,5 +22,6 @@ namespace FieldService.Mobile.Shared.Http;
 [JsonSerializable(typeof(SessionResponse))]
 [JsonSerializable(typeof(GetAssignedJobsResponse))]
 [JsonSerializable(typeof(JobDetailsResponse))]
+[JsonSerializable(typeof(UpdateJobStatusRequest))]
 [JsonSerializable(typeof(ApiProblem))]
 public sealed partial class MobileJsonContext : JsonSerializerContext;

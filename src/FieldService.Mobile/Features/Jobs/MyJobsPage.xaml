@@ -10,7 +10,7 @@
              SafeAreaEdges="None">
     <Grid SafeAreaEdges="None">
         <Grid SafeAreaEdges="None"
-              AutomationProperties.ExcludedWithChildren="{Binding IsAccountSheetOpen}">
+              AutomationProperties.ExcludedWithChildren="{Binding HasOpenSheet}">
             <RefreshView IsVisible="{Binding ShowsSinglePane}"
                          SafeAreaEdges="None"
                          IsRefreshing="{Binding IsRefreshing}"
@@ -57,6 +57,13 @@
                                                  IsVisible="{Binding IsOffline}"
                                                  Title="{x:Static jobs:MyJobsViewModel.OfflineTitle}"
                                                  Message="{Binding OfflineMessage}"
+                                                 ActionText="Try again"
+                                                 ActionCommand="{Binding RetryCommand}" />
+                                <controls:Banner Variant="Error"
+                                                 IsVisible="{Binding HasRefreshError}"
+                                                 Title="{Binding RefreshError.Title}"
+                                                 Message="{Binding RefreshError.Message}"
+                                                 Reference="{Binding RefreshError.Reference}"
                                                  ActionText="Try again"
                                                  ActionCommand="{Binding RetryCommand}" />
                                 <controls:Banner Variant="Error"
@@ -196,6 +203,13 @@
                                                      ActionText="Try again"
                                                      ActionCommand="{Binding RetryCommand}" />
                                     <controls:Banner Variant="Error"
+                                                     IsVisible="{Binding HasRefreshError}"
+                                                     Title="{Binding RefreshError.Title}"
+                                                     Message="{Binding RefreshError.Message}"
+                                                     Reference="{Binding RefreshError.Reference}"
+                                                     ActionText="Try again"
+                                                     ActionCommand="{Binding RetryCommand}" />
+                                    <controls:Banner Variant="Error"
                                                      IsVisible="{Binding IsError}"
                                                      Title="{Binding Error.Title}"
                                                      Message="{Binding Error.Message}"
@@ -277,6 +291,17 @@
                               Title="{Binding DisplayName}"
                               CloseCommand="{Binding CloseAccountSheetCommand}">
             <jobs:AccountSheet />
+        </controls:BottomSheet>
+
+        <controls:BottomSheet IsOpen="{Binding Details.ShowsPaneSheet}"
+                              IsCentred="True"
+                              Title="{x:Static jobs:JobDetailsViewModel.SheetTitle}"
+                              CloseCommand="{Binding Details.CloseStatusSheetCommand}"
+                              ScrollToEndRequest="{Binding Details.SheetScrollRequest}">
+            <controls:BottomSheet.Header>
+                <jobs:UpdateStatusSheetTitle BindingContext="{Binding Details}" />
+            </controls:BottomSheet.Header>
+            <jobs:UpdateStatusSheet BindingContext="{Binding Details}" />
         </controls:BottomSheet>
     </Grid>
 </ContentPage>

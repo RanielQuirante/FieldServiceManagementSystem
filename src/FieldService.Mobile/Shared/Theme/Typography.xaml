@@ -99,6 +99,13 @@
         <Setter Property="TextColor" Value="{StaticResource FsInk}" />
     </Style>
 
+    <Style x:Key="FsTextOptionTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="LineHeight" Value="1.05" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
     <Style x:Key="FsTextBody" TargetType="Label">
         <Setter Property="FontFamily" Value="GeistRegular" />
         <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />

@@ -21,4 +21,6 @@ public partial class JobDetailsPage : ContentPage
         _viewModel.DisappearingCommand.Execute(null);
         base.OnDisappearing();
     }
+
+    protected override bool OnBackButtonPressed() => _viewModel.CloseSheet() || base.OnBackButtonPressed();
 }

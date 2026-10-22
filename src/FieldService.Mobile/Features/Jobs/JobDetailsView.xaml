@@ -10,7 +10,9 @@
           SafeAreaEdges="None">
         <ScrollView x:Name="DetailsScroll"
                     Grid.Row="0"
-                    SafeAreaEdges="None">
+                    SafeAreaEdges="None"
+                    controls:ScrollRequests.ToTop="{Binding ScrollToTopRequest}"
+                    AutomationProperties.ExcludedWithChildren="{Binding IsStatusSheetOpen}">
             <VerticalStackLayout SafeAreaEdges="None">
                 <controls:AppHeader x:Name="DetailsHeader"
                                     Variant="Pushed"
@@ -27,7 +29,9 @@
                                     ScheduleText="{Binding ScheduleLine}"
                                     StartsText="{Binding StartsLine}"
                                     AssignedText="{Binding AssignedLine}"
-                                    StatusLineText="{Binding StatusLine}" />
+                                    StatusLineText="{Binding StatusLine}"
+                                    ReasonText="{Binding HoldReasonLine}"
+                                    SummaryFocusRequest="{Binding TitleFocusRequest}" />
                 <VerticalStackLayout Padding="{Binding ContentPadding}"
                                      Spacing="{StaticResource FsSpace16}">
                     <Border Style="{StaticResource FsPaneHero}"
@@ -66,9 +70,50 @@
                             <Label Text="{Binding PaneMeta}"
                                    IsVisible="{Binding ShowsPaneMeta}"
                                    Style="{StaticResource FsTextMetaOnDark}" />
+                            <Label Text="{Binding HoldReasonLine}"
+                                   IsVisible="{Binding HasHoldReasonLine}"
+                                   Style="{StaticResource FsTextMetaOnDark}"
+                                   MaxLines="3"
+                                   LineBreakMode="TailTruncation" />
                             <HorizontalStackLayout IsVisible="{Binding ShowsHeroActions}"
                                                    Spacing="{StaticResource FsSpace10}">
-                                <Grid>
+                                <Grid IsVisible="{Binding ShowsStartJob}">
+                                    <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
+                                            Command="{Binding StartJobCommand}"
+                                            SemanticProperties.Description="{Binding StartJobLabel}" />
+                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                                           Padding="{StaticResource FsPaddingDesktopButton}"
+                                                           HorizontalOptions="Center"
+                                                           InputTransparent="True"
+                                                           AutomationProperties.ExcludedWithChildren="True">
+                                        <controls:Icon PathData="{StaticResource FsIconPlayCircle}"
+                                                       Size="18"
+                                                       Color="{StaticResource FsInk}"
+                                                       VerticalOptions="Center" />
+                                        <Label Text="{Binding StartJobLabel}"
+                                               Style="{StaticResource FsTextButtonLabelDesktop}"
+                                               TextColor="{StaticResource FsInk}" />
+                                    </HorizontalStackLayout>
+                                </Grid>
+                                <Grid IsVisible="{Binding ShowsUpdateStatus}">
+                                    <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
+                                            Command="{Binding OpenStatusSheetCommand}"
+                                            SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}" />
+                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                                           Padding="{StaticResource FsPaddingDesktopButton}"
+                                                           HorizontalOptions="Center"
+                                                           InputTransparent="True"
+                                                           AutomationProperties.ExcludedWithChildren="True">
+                                        <controls:Icon PathData="{StaticResource FsIconActivity}"
+                                                       Size="18"
+                                                       Color="{StaticResource FsInk}"
+                                                       VerticalOptions="Center" />
+                                        <Label Text="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
+                                               Style="{StaticResource FsTextButtonLabelDesktop}"
+                                               TextColor="{StaticResource FsInk}" />
+                                    </HorizontalStackLayout>
+                                </Grid>
+                                <Grid IsVisible="{Binding ShowsNavigationRow}">
                                     <Button Style="{StaticResource FsSecondaryOnDarkDesktopButton}"
                                             Command="{Binding NavigateCommand}"
                                             SemanticProperties.Description="{Binding NavigateLabel}" />
@@ -86,7 +131,7 @@
                                                TextColor="{StaticResource FsOnDark}" />
                                     </HorizontalStackLayout>
                                 </Grid>
-                                <Grid IsVisible="{Binding CanCall}">
+                                <Grid IsVisible="{Binding ShowsCallAction}">
                                     <Button Style="{StaticResource FsSecondaryOnDarkDesktopButton}"
                                             Command="{Binding CallCommand}"
                                             SemanticProperties.Description="{Binding CallLabel}" />
@@ -107,10 +152,22 @@
                             </HorizontalStackLayout>
                         </VerticalStackLayout>
                     </Border>
+                    <controls:Banner Variant="{Binding ActionBanner.Variant}"
+                                     IsVisible="{Binding HasActionBanner}"
+                                     Title="{Binding ActionBanner.Title}"
+                                     Message="{Binding ActionBanner.Message}"
+                                     Reference="{Binding ActionBanner.Reference}" />
                     <controls:Banner Variant="Offline"
                                      IsVisible="{Binding IsOffline}"
                                      Title="{x:Static jobs:JobDetailsViewModel.OfflineTitle}"
                                      Message="{Binding OfflineMessage}"
+                                     ActionText="Try again"
+                                     ActionCommand="{Binding RetryCommand}" />
+                    <controls:Banner Variant="Error"
+                                     IsVisible="{Binding HasRefreshError}"
+                                     Title="{Binding RefreshError.Title}"
+                                     Message="{Binding RefreshError.Message}"
+                                     Reference="{Binding RefreshError.Reference}"
                                      ActionText="Try again"
                                      ActionCommand="{Binding RetryCommand}" />
                     <controls:Banner Variant="Error"
@@ -201,44 +258,71 @@
                                       ScrollSource="{x:Reference DetailsScroll}" />
         <controls:SystemBarSpacer Grid.Row="1" />
         <controls:ActionDock Grid.Row="1"
-                             IsVisible="{Binding ShowsDock}">
-            <Grid ColumnDefinitions="*,*"
-                  ColumnSpacing="{StaticResource FsSpace10}">
-                <Grid Grid.Column="0"
-                      Grid.ColumnSpan="{Binding NavigateColumnSpan}">
-                    <Button Style="{StaticResource FsSecondaryButton}"
-                            Command="{Binding NavigateCommand}"
-                            SemanticProperties.Description="{Binding NavigateLabel}" />
-                    <HorizontalStackLayout Spacing="{StaticResource FsSpace10}"
-                                           HorizontalOptions="Center"
-                                           InputTransparent="True"
-                                           AutomationProperties.ExcludedWithChildren="True">
-                        <controls:Icon PathData="{StaticResource FsIconNavigation}"
-                                       Size="20"
-                                       Color="{StaticResource FsTeal700}"
-                                       VerticalOptions="Center" />
-                        <Label Text="Navigate"
-                               Style="{StaticResource FsTextButtonLabel}" />
-                    </HorizontalStackLayout>
+                             IsVisible="{Binding ShowsDock}"
+                             HelperText="{Binding DockHelper}"
+                             AutomationProperties.ExcludedWithChildren="{Binding IsStatusSheetOpen}">
+            <VerticalStackLayout Spacing="{StaticResource FsSpace10}">
+                <Grid ColumnDefinitions="*,*"
+                      ColumnSpacing="{StaticResource FsSpace10}"
+                      IsVisible="{Binding ShowsNavigationRow}">
+                    <Grid Grid.Column="0"
+                          Grid.ColumnSpan="{Binding NavigateColumnSpan}">
+                        <Button Style="{StaticResource FsSecondaryButton}"
+                                Command="{Binding NavigateCommand}"
+                                SemanticProperties.Description="{Binding NavigateLabel}" />
+                        <HorizontalStackLayout Spacing="{StaticResource FsSpace10}"
+                                               HorizontalOptions="Center"
+                                               InputTransparent="True"
+                                               AutomationProperties.ExcludedWithChildren="True">
+                            <controls:Icon PathData="{StaticResource FsIconNavigation}"
+                                           Size="20"
+                                           Color="{StaticResource FsTeal700}"
+                                           VerticalOptions="Center" />
+                            <Label Text="Navigate"
+                                   Style="{StaticResource FsTextButtonLabel}" />
+                        </HorizontalStackLayout>
+                    </Grid>
+                    <Grid Grid.Column="1"
+                          IsVisible="{Binding CanCall}">
+                        <Button Style="{StaticResource FsSecondaryButton}"
+                                Command="{Binding CallCommand}"
+                                SemanticProperties.Description="{Binding CallLabel}" />
+                        <HorizontalStackLayout Spacing="{StaticResource FsSpace10}"
+                                               HorizontalOptions="Center"
+                                               InputTransparent="True"
+                                               AutomationProperties.ExcludedWithChildren="True">
+                            <controls:Icon PathData="{StaticResource FsIconPhone}"
+                                           Size="20"
+                                           Color="{StaticResource FsTeal700}"
+                                           VerticalOptions="Center" />
+                            <Label Text="Call"
+                                   Style="{StaticResource FsTextButtonLabel}" />
+                        </HorizontalStackLayout>
+                    </Grid>
                 </Grid>
-                <Grid Grid.Column="1"
-                      IsVisible="{Binding CanCall}">
-                    <Button Style="{StaticResource FsSecondaryButton}"
-                            Command="{Binding CallCommand}"
-                            SemanticProperties.Description="{Binding CallLabel}" />
-                    <HorizontalStackLayout Spacing="{StaticResource FsSpace10}"
-                                           HorizontalOptions="Center"
-                                           InputTransparent="True"
-                                           AutomationProperties.ExcludedWithChildren="True">
-                        <controls:Icon PathData="{StaticResource FsIconPhone}"
-                                       Size="20"
-                                       Color="{StaticResource FsTeal700}"
-                                       VerticalOptions="Center" />
-                        <Label Text="Call"
-                               Style="{StaticResource FsTextButtonLabel}" />
-                    </HorizontalStackLayout>
-                </Grid>
-            </Grid>
+                <controls:PrimaryButton IsVisible="{Binding ShowsStartJob}"
+                                        Text="Start job"
+                                        BusyText="Starting…"
+                                        IconData="{StaticResource FsIconPlayCircle}"
+                                        IsBusy="{Binding IsStarting}"
+                                        Command="{Binding StartJobCommand}"
+                                        SemanticFocusRequest="{Binding StartJobFocusRequest}" />
+                <controls:PrimaryButton IsVisible="{Binding ShowsUpdateStatus}"
+                                        Text="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
+                                        IconData="{StaticResource FsIconActivity}"
+                                        Command="{Binding OpenStatusSheetCommand}"
+                                        SemanticFocusRequest="{Binding UpdateStatusFocusRequest}" />
+            </VerticalStackLayout>
         </controls:ActionDock>
+        <controls:BottomSheet IsOpen="{Binding ShowsPhoneSheet}"
+                              Title="{x:Static jobs:JobDetailsViewModel.SheetTitle}"
+                              CloseCommand="{Binding CloseStatusSheetCommand}"
+                              ScrollToEndRequest="{Binding SheetScrollRequest}"
+                              Grid.RowSpan="2">
+            <controls:BottomSheet.Header>
+                <jobs:UpdateStatusSheetTitle />
+            </controls:BottomSheet.Header>
+            <jobs:UpdateStatusSheet />
+        </controls:BottomSheet>
     </Grid>
 </ContentView>

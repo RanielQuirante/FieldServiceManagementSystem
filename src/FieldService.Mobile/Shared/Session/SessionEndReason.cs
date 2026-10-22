@@ -5,4 +5,5 @@ public enum SessionEndReason
     None,
     Expired,
     SignedOut,
+    Replaced,
 }

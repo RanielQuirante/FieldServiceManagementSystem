@@ -14,6 +14,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
 {
     public const string PageTitle = "My jobs";
     public const string LoadFailedTitle = "Jobs could not be loaded.";
+    public const string RefreshFailedTitle = "Jobs could not be refreshed.";
     public const string OfflineTitle = "You're offline.";
     public const string LoadingText = "Loading your jobs";
     public const string NoLongerAssignedText = "This job is no longer assigned to you.";
@@ -97,6 +98,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     public partial JobListItem? SelectedJob { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOpenSheet))]
     public partial bool IsAccountSheetOpen { get; private set; }
 
     [ObservableProperty]
@@ -112,6 +114,8 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     public bool ShowsNoSelection => SelectedJob is null;
 
     public bool HasNotice => !string.IsNullOrEmpty(Notice);
+
+    public bool HasOpenSheet => IsAccountSheetOpen || _details?.IsStatusSheetOpen == true;
 
     public bool IsActiveSelected => SelectedView == AssignedJobsView.Active;
 
@@ -171,6 +175,11 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
 
     public bool CloseSheet()
     {
+        if (_details?.CloseSheet() == true)
+        {
+            return true;
+        }
+
         if (!IsAccountSheetOpen)
         {
             return false;
@@ -270,6 +279,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         SelectedView = view;
         Notice = null;
         SelectedJob = null;
+        RefreshError = null;
         if (_loaded.TryGetValue(view, out var loaded))
         {
             Show(view, loaded);
@@ -277,6 +287,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         else
         {
             Groups = [];
+            LastUpdated = null;
             State = ScreenState.Loading;
         }
 
@@ -350,6 +361,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         if (!_loaded.ContainsKey(view))
         {
             Groups = [];
+            LastUpdated = null;
             State = ScreenState.Loading;
         }
 
@@ -386,7 +398,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
 
             Error = null;
             OfflineMessage = null;
-            LastUpdated = loaded.LoadedAt;
+            RefreshError = null;
             Show(view, loaded);
         }
         catch (Exception) when (token.IsCancellationRequested)
@@ -395,9 +407,18 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         catch (Exception exception) when (IsFailure(exception, token))
         {
             LogLoadFailed(_logger, JobsApiClient.ViewValue(view), exception.GetType().Name);
-            Groups = [];
-            Error = Describe(exception, LoadFailedTitle);
-            State = ScreenState.Error;
+            if (_loaded.TryGetValue(view, out var shown))
+            {
+                ShowRefreshFailed(view, shown, exception);
+            }
+            else
+            {
+                Groups = [];
+                RefreshError = null;
+                LastUpdated = null;
+                Error = Describe(exception, LoadFailedTitle);
+                State = ScreenState.Error;
+            }
         }
         finally
         {
@@ -412,25 +433,39 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     private void Show(AssignedJobsView view, LoadedJobs loaded)
     {
         Groups = JobDayGroup.Build(loaded.Items, view, Zone, Today);
+        LastUpdated = loaded.LoadedAt;
         State = loaded.Items.Count == 0 ? ScreenState.Empty : ScreenState.Content;
         KeepSelection();
     }
 
+    private void ShowRefreshFailed(AssignedJobsView view, LoadedJobs loaded, Exception exception)
+    {
+        Error = null;
+        OfflineMessage = null;
+        RefreshError = DescribeRefresh(exception, RefreshFailedTitle, ShowingJobsFrom(loaded.LoadedAt));
+        Show(view, loaded);
+    }
+
     private void ShowOffline(AssignedJobsView view)
     {
+        RefreshError = null;
         if (_loaded.TryGetValue(view, out var loaded))
         {
             Groups = JobDayGroup.Build(loaded.Items, view, Zone, Today);
-            OfflineMessage = "Showing jobs from " + DisplayFormats.Time(loaded.LoadedAt, Zone) + ".";
+            LastUpdated = loaded.LoadedAt;
+            OfflineMessage = ShowingJobsFrom(loaded.LoadedAt);
             Error = null;
             State = ScreenState.Offline;
             return;
         }
 
         Groups = [];
+        LastUpdated = null;
         Error = new ScreenError(LoadFailedTitle, CheckConnectionMessage, null);
         State = ScreenState.Error;
     }
+
+    private string ShowingJobsFrom(DateTimeOffset loadedAt) => "Showing jobs from " + DisplayFormats.Time(loadedAt, Zone) + ".";
 
     private void KeepSelection()
     {
@@ -445,7 +480,19 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         var details = _createDetails();
         details.IsInPane = true;
         details.JobUnavailable += OnPaneJobUnavailable;
+        details.StatusChanged += OnPaneStatusChanged;
+        details.PropertyChanged += OnPanePropertyChanged;
         return details;
+    }
+
+    private void OnPaneStatusChanged(object? sender, EventArgs e) => _ = LoadCurrentAsync();
+
+    private void OnPanePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(JobDetailsViewModel.IsStatusSheetOpen))
+        {
+            OnPropertyChanged(nameof(HasOpenSheet));
+        }
     }
 
     private void OnPaneJobUnavailable(object? sender, EventArgs e)
@@ -480,6 +527,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         OfflineMessage = null;
         Notice = null;
         Error = null;
+        RefreshError = null;
         IsBusy = false;
         IsRefreshing = false;
         IsAccountSheetOpen = false;

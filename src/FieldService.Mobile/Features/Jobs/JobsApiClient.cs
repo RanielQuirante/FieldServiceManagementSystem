@@ -16,6 +16,7 @@ public sealed class JobsApiClient(HttpClient http)
 {
     public const string AssignedJobsRoute = "/api/technicians/me/jobs";
     public const string JobRoute = "/api/jobs/{jobId}";
+    public const string JobStatusRoute = "/api/jobs/{jobId}/status";
     public const string ViewParameter = "view";
 
     public static string ViewValue(AssignedJobsView view) => view switch
@@ -36,9 +37,19 @@ public sealed class JobsApiClient(HttpClient http)
         return await GetAsync(path, JobRoute, MobileJsonContext.Default.JobDetailsResponse, cancellationToken);
     }
 
-    private async Task<T> GetAsync<T>(string path, string routeTemplate, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
+    public async Task<JobDetailsResponse> UpdateStatusAsync(Guid jobId, UpdateJobStatusRequest body, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(path.TrimStart('/'), UriKind.Relative));
+        var path = JobStatusRoute.Replace("{jobId}", jobId.ToString("D"), StringComparison.Ordinal);
+        using var content = JsonContent.Create(body, MobileJsonContext.Default.UpdateJobStatusRequest);
+        return await SendAsync(HttpMethod.Put, path, JobStatusRoute, content, MobileJsonContext.Default.JobDetailsResponse, cancellationToken);
+    }
+
+    private Task<T> GetAsync<T>(string path, string routeTemplate, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken) =>
+        SendAsync(HttpMethod.Get, path, routeTemplate, null, typeInfo, cancellationToken);
+
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, string routeTemplate, HttpContent? content, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, new Uri(path.TrimStart('/'), UriKind.Relative)) { Content = content };
         request.Options.Set(RequestLoggingHandler.RouteTemplateKey, routeTemplate);
 
         using var response = await http.SendAsync(request, cancellationToken);

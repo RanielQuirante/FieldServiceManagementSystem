@@ -82,6 +82,10 @@
     <Color x:Key="FsDangerBannerStroke">#59B42318</Color>
     <Color x:Key="FsTimelineHalo">#290F766E</Color>
     <Color x:Key="FsSelectedHalo">#240F766E</Color>
+    <Color x:Key="FsWarningBannerStroke">#66F59E0B</Color>
+    <Color x:Key="FsOptionStroke">#1A0B1F3A</Color>
+    <Color x:Key="FsOptionSelectedFill">#0F0F766E</Color>
+    <Color x:Key="FsOptionDisabledFill">#080B1F3A</Color>
 
     <SolidColorBrush x:Key="FsShadowBrush" Color="{StaticResource FsNavy900}" />
     <SolidColorBrush x:Key="FsShadowBlackBrush" Color="{StaticResource FsShadowBlack}" />
@@ -130,5 +134,9 @@
     <SolidColorBrush x:Key="FsSelectedHaloBrush" Color="{StaticResource FsSelectedHalo}" />
     <SolidColorBrush x:Key="FsGlassDarkTrackStrokeBrush" Color="{StaticResource FsGlassDarkTrackStroke}" />
     <SolidColorBrush x:Key="FsGlassDarkPillStrokeBrush" Color="{StaticResource FsGlassDarkPillStroke}" />
+    <SolidColorBrush x:Key="FsWarningBannerStrokeBrush" Color="{StaticResource FsWarningBannerStroke}" />
+    <SolidColorBrush x:Key="FsOptionStrokeBrush" Color="{StaticResource FsOptionStroke}" />
+    <SolidColorBrush x:Key="FsOptionSelectedFillBrush" Color="{StaticResource FsOptionSelectedFill}" />
+    <SolidColorBrush x:Key="FsOptionDisabledFillBrush" Color="{StaticResource FsOptionDisabledFill}" />
 
 </ResourceDictionary>

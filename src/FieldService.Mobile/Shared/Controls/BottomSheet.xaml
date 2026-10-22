@@ -7,8 +7,9 @@
              SafeAreaEdges="None">
     <ContentView.ControlTemplate>
         <ControlTemplate x:DataType="controls:BottomSheet">
-            <Grid IsVisible="{TemplateBinding IsOpen}"
-                  SafeAreaEdges="None">
+            <Grid x:Name="SheetRoot"
+                  IsVisible="{TemplateBinding IsOpen}"
+                  SafeAreaEdges="None,None,None,SoftInput">
                 <BoxView Color="{StaticResource FsOverlay}"
                          InputTransparent="False"
                          AutomationProperties.IsInAccessibleTree="False">
@@ -16,18 +17,35 @@
                         <TapGestureRecognizer Command="{TemplateBinding CloseCommand}" />
                     </BoxView.GestureRecognizers>
                 </BoxView>
-                <Border Style="{StaticResource FsSheet}"
+                <Border x:Name="SheetSurface"
+                        Style="{StaticResource FsSheet}"
                         Padding="{TemplateBinding SheetPadding}"
                         VerticalOptions="End">
-                    <VerticalStackLayout Spacing="18">
-                        <BoxView WidthRequest="{StaticResource FsWidthSheetHandle}"
+                    <VerticalStackLayout>
+                        <BoxView x:Name="SheetHandle"
+                                 WidthRequest="{StaticResource FsWidthSheetHandle}"
                                  HeightRequest="{StaticResource FsHeightSheetHandle}"
+                                 Margin="{StaticResource FsMarginSheetHandle}"
                                  CornerRadius="3"
                                  Color="{StaticResource FsSheetHandle}"
                                  HorizontalOptions="Center"
                                  InputTransparent="True"
                                  AutomationProperties.IsInAccessibleTree="False" />
-                        <ContentPresenter />
+                        <ContentView x:Name="SheetHeader"
+                                     Content="{TemplateBinding Header}"
+                                     IsVisible="{TemplateBinding HasHeader}"
+                                     Padding="{StaticResource FsPaddingSheetHeader}" />
+                        <BoxView x:Name="SheetHairline"
+                                 HeightRequest="1"
+                                 Color="{StaticResource FsHairlineSoft}"
+                                 IsVisible="{TemplateBinding HasHeader}"
+                                 Opacity="0"
+                                 InputTransparent="True"
+                                 AutomationProperties.IsInAccessibleTree="False" />
+                        <ScrollView x:Name="SheetScroll"
+                                    MaximumHeightRequest="{TemplateBinding ContentMaxHeight}">
+                            <ContentPresenter Padding="{TemplateBinding ContentPadding}" />
+                        </ScrollView>
                     </VerticalStackLayout>
                 </Border>
             </Grid>

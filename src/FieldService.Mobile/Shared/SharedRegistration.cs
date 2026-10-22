@@ -20,6 +20,7 @@ public static class SharedRegistration
         services.AddSingleton(_ => PhoneDialer.Default);
         services.AddSingleton(_ => Launcher.Default);
         services.AddSingleton(_ => DeviceInfo.Current);
+        services.AddSingleton(_ => SemanticScreenReader.Default);
         services.AddSingleton<INavigator, ShellNavigator>();
         services.AddSingleton<NetworkStatus>();
         services.AddSingleton<AppStartup>();

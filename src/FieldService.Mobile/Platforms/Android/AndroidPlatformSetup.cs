@@ -4,6 +4,7 @@ using FieldService.Mobile.Shared.Navigation;
 using Microsoft.Maui.Controls.Handlers.Items;
 using Microsoft.Maui.Handlers;
 using Microsoft.Maui.LifecycleEvents;
+using Microsoft.Maui.Platform;
 
 namespace FieldService.Mobile;
 
@@ -46,12 +47,24 @@ public static class AndroidPlatformSetup
             EditorHandler.Mapper.AppendToMapping(key, (handler, _) => RemoveFieldChrome(handler.PlatformView));
         }
 
-        builder.ConfigureMauiHandlers(handlers => handlers.AddHandler<JobCard, TappableCardHandler>());
+        builder.ConfigureMauiHandlers(handlers =>
+        {
+            handlers.AddHandler<JobCard, TappableCardHandler>();
+            handlers.AddHandler<OptionRow, OptionRowHandler>();
+            handlers.AddHandler<Label, WrapSafeLabelHandler>();
+        });
         ContentViewHandler.Mapper.AppendToMapping(SystemBarInsetsMappingKey, (handler, view) =>
         {
             if (view is ISystemBarInsetsAware aware)
             {
                 TrackSystemBarInsets(handler.PlatformView, aware);
+            }
+        });
+        ContentViewHandler.Mapper.AppendToMapping(nameof(IView.Visibility), (handler, view) =>
+        {
+            if (view is BottomSheet sheet)
+            {
+                ApplySoftInputMode(handler.PlatformView, sheet.IsOpen);
             }
         });
         LayoutHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => KeepEffectsUnclipped(handler.PlatformView));
@@ -97,6 +110,20 @@ public static class AndroidPlatformSetup
         }
 
         observer.AddOnPreDrawListener(new SplashHold(content, startup));
+    }
+
+    private static void ApplySoftInputMode(Android.Views.View platformView, bool sheetOpen)
+    {
+        if (platformView.Context?.GetActivity()?.Window is not { } window)
+        {
+            return;
+        }
+
+        window.SetSoftInputMode(sheetOpen ? Android.Views.SoftInput.AdjustResize : Android.Views.SoftInput.AdjustPan);
+        if (!sheetOpen && window.DecorView is { } decor)
+        {
+            WindowCompat.GetInsetsController(window, decor)?.Hide(WindowInsetsCompat.Type.Ime());
+        }
     }
 
     private static void RemoveFieldChrome(Android.Widget.EditText platformView)

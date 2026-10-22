@@ -25,8 +25,8 @@ public sealed class AuthorizationHandler(ISessionService session, ApiBaseUrl api
             return await base.SendAsync(request, cancellationToken);
         }
 
-        var accessToken = session.AccessToken;
-        Authorize(request, accessToken);
+        var credential = session.Credential;
+        Authorize(request, credential.AccessToken);
 
         var response = await base.SendAsync(request, cancellationToken);
         if (response.StatusCode != HttpStatusCode.Unauthorized)
@@ -34,10 +34,10 @@ public sealed class AuthorizationHandler(ISessionService session, ApiBaseUrl api
             return response;
         }
 
-        bool refreshed;
+        string? retryToken;
         try
         {
-            refreshed = await session.RefreshAccessTokenAsync(accessToken, cancellationToken);
+            retryToken = await session.RefreshAccessTokenAsync(credential, cancellationToken);
         }
         catch
         {
@@ -45,13 +45,13 @@ public sealed class AuthorizationHandler(ISessionService session, ApiBaseUrl api
             throw;
         }
 
-        if (!refreshed)
+        if (string.IsNullOrEmpty(retryToken))
         {
             return response;
         }
 
         response.Dispose();
-        Authorize(request, session.AccessToken);
+        Authorize(request, retryToken);
         return await base.SendAsync(request, cancellationToken);
     }
 

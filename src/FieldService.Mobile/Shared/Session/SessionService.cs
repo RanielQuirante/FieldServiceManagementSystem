@@ -44,6 +44,17 @@ public sealed partial class SessionService(
         }
     }
 
+    public SessionCredential Credential
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return new SessionCredential(_epoch, _user?.Id, _accessToken);
+            }
+        }
+    }
+
     public SessionEndReason EndReason
     {
         get
@@ -99,26 +110,42 @@ public sealed partial class SessionService(
         }
     }
 
-    public async Task<bool> RefreshAccessTokenAsync(string? rejectedAccessToken, CancellationToken cancellationToken)
+    public async Task<string?> RefreshAccessTokenAsync(SessionCredential rejected, CancellationToken cancellationToken)
     {
-        Task<bool> refresh;
+        Task<bool>? refresh = null;
         TaskCompletionSource<bool>? started = null;
+        string? renewed = null;
         long epoch;
         lock (_gate)
         {
-            if (_accessToken is not null && !string.Equals(_accessToken, rejectedAccessToken, StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            if (_refresh is null)
-            {
-                started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                _refresh = started.Task;
-            }
-
-            refresh = _refresh;
             epoch = _epoch;
+            if (IsCurrent(rejected))
+            {
+                if (_accessToken is not null && !string.Equals(_accessToken, rejected.AccessToken, StringComparison.Ordinal))
+                {
+                    renewed = _accessToken;
+                }
+                else
+                {
+                    if (_refresh is null)
+                    {
+                        started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                        _refresh = started.Task;
+                    }
+
+                    refresh = _refresh;
+                }
+            }
+        }
+
+        if (refresh is null)
+        {
+            if (renewed is null)
+            {
+                LogRetryWithheld(logger);
+            }
+
+            return renewed;
         }
 
         if (started is not null)
@@ -126,7 +153,7 @@ public sealed partial class SessionService(
             _ = RunRefreshAsync(started, epoch);
         }
 
-        return await refresh.WaitAsync(cancellationToken);
+        return await refresh.WaitAsync(cancellationToken) ? AccessTokenFor(rejected) : null;
     }
 
     public async Task SignOutAsync(CancellationToken cancellationToken)
@@ -168,6 +195,35 @@ public sealed partial class SessionService(
     }
 
     private string RouteForCurrentSession() => User is null ? Routes.SignIn : Routes.Jobs;
+
+    private bool IsCurrent(SessionCredential credential) =>
+        credential.Epoch == _epoch && (credential.UserId is null || credential.UserId == _user?.Id);
+
+    private bool HasLiveSession() => _user is not null || _accessToken is not null;
+
+    private string? AccessTokenFor(SessionCredential credential)
+    {
+        string? accessToken;
+        lock (_gate)
+        {
+            accessToken = IsCurrent(credential) ? _accessToken : null;
+        }
+
+        if (accessToken is null)
+        {
+            LogRetryWithheld(logger);
+        }
+
+        return accessToken;
+    }
+
+    private long? LiveSessionEpoch()
+    {
+        lock (_gate)
+        {
+            return HasLiveSession() ? _epoch : null;
+        }
+    }
 
     private async Task RunRefreshAsync(TaskCompletionSource<bool> completion, long epoch)
     {
@@ -238,20 +294,61 @@ public sealed partial class SessionService(
 
     private async Task<SignedInUser> BeginAsync(SessionResponse response, string email)
     {
-        await _commit.WaitAsync();
-        try
+        while (true)
         {
-            lock (_gate)
+            if (LiveSessionEpoch() is { } live)
             {
-                _epoch++;
-                _refresh = null;
+                var replacedToken = await tokens.ReadAsync();
+                if (await ClearSessionAsync(SessionEndReason.Replaced, live) is { } replaced)
+                {
+                    LogSessionReplaced(logger, replaced.UserId);
+                    if (replacedToken is not null)
+                    {
+                        _ = SignOutAbandonedAsync(replacedToken, replaced.UserId);
+                    }
+                }
             }
 
-            return await StoreAsync(response, email);
+            await _commit.WaitAsync();
+            try
+            {
+                if (TryOpenEpoch())
+                {
+                    return await StoreAsync(response, email);
+                }
+            }
+            finally
+            {
+                _commit.Release();
+            }
         }
-        finally
+    }
+
+    private async Task SignOutAbandonedAsync(string refreshToken, Guid? userId)
+    {
+        try
         {
-            _commit.Release();
+            await auth.SignOutAsync(refreshToken, CancellationToken.None);
+            LogAbandonedSignedOut(logger, userId);
+        }
+        catch (Exception exception)
+        {
+            LogAbandonedSignOutFailed(logger, userId, Describe(exception));
+        }
+    }
+
+    private bool TryOpenEpoch()
+    {
+        lock (_gate)
+        {
+            if (HasLiveSession())
+            {
+                return false;
+            }
+
+            _epoch++;
+            _refresh = null;
+            return true;
         }
     }
 
@@ -260,12 +357,20 @@ public sealed partial class SessionService(
         await _commit.WaitAsync();
         try
         {
+            bool superseded;
             lock (_gate)
             {
-                if (_epoch != epoch)
+                superseded = _epoch != epoch;
+            }
+
+            if (superseded)
+            {
+                if (!string.IsNullOrEmpty(response.RefreshToken))
                 {
-                    return null;
+                    _ = SignOutAbandonedAsync(response.RefreshToken, response.User.Id);
                 }
+
+                return null;
             }
 
             return await StoreAsync(response, null);
@@ -387,6 +492,18 @@ public sealed partial class SessionService(
 
     [LoggerMessage(EventName = "session.signed-out", Level = LogLevel.Information, Message = "session.signed-out {UserId}")]
     private static partial void LogSignedOut(ILogger logger, Guid? userId);
+
+    [LoggerMessage(EventName = "session.replaced", Level = LogLevel.Information, Message = "session.replaced {UserId}")]
+    private static partial void LogSessionReplaced(ILogger logger, Guid? userId);
+
+    [LoggerMessage(EventName = "session.abandoned-signed-out", Level = LogLevel.Information, Message = "session.abandoned-signed-out {UserId}")]
+    private static partial void LogAbandonedSignedOut(ILogger logger, Guid? userId);
+
+    [LoggerMessage(EventName = "session.abandoned-sign-out-failed", Level = LogLevel.Warning, Message = "session.abandoned-sign-out-failed {UserId} {Failure}")]
+    private static partial void LogAbandonedSignOutFailed(ILogger logger, Guid? userId, string failure);
+
+    [LoggerMessage(EventName = "session.retry-withheld", Level = LogLevel.Information, Message = "session.retry-withheld")]
+    private static partial void LogRetryWithheld(ILogger logger);
 
     [LoggerMessage(EventName = "session.ended-handler-failed", Level = LogLevel.Warning, Message = "session.ended-handler-failed {Failure}")]
     private static partial void LogEndedHandlerFailed(ILogger logger, string failure);

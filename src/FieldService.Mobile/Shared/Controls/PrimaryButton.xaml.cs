@@ -38,6 +38,25 @@ public partial class PrimaryButton : ContentView
         typeof(PrimaryButton),
         propertyChanged: (bindable, _, _) => ((PrimaryButton)bindable).UpdateLook());
 
+    public static readonly BindableProperty IconKeyProperty = BindableProperty.Create(
+        nameof(IconKey),
+        typeof(string),
+        typeof(PrimaryButton),
+        propertyChanged: (bindable, _, newValue) =>
+        {
+            if (newValue is string { Length: > 0 } key)
+            {
+                ((PrimaryButton)bindable).SetDynamicResource(IconDataProperty, key);
+            }
+        });
+
+    public static readonly BindableProperty SemanticFocusRequestProperty = BindableProperty.Create(
+        nameof(SemanticFocusRequest),
+        typeof(int),
+        typeof(PrimaryButton),
+        0,
+        propertyChanged: (bindable, oldValue, newValue) => ((PrimaryButton)bindable).OnSemanticFocusRequested((int)oldValue, (int)newValue));
+
     public static readonly BindableProperty HasIconProperty = BindableProperty.Create(nameof(HasIcon), typeof(bool), typeof(PrimaryButton), false);
 
     public static readonly BindableProperty ButtonTextProperty = BindableProperty.Create(nameof(ButtonText), typeof(string), typeof(PrimaryButton));
@@ -97,6 +116,18 @@ public partial class PrimaryButton : ContentView
         set => SetValue(IconDataProperty, value);
     }
 
+    public string? IconKey
+    {
+        get => (string?)GetValue(IconKeyProperty);
+        set => SetValue(IconKeyProperty, value);
+    }
+
+    public int SemanticFocusRequest
+    {
+        get => (int)GetValue(SemanticFocusRequestProperty);
+        set => SetValue(SemanticFocusRequestProperty, value);
+    }
+
     public bool HasIcon
     {
         get => (bool)GetValue(HasIconProperty);
@@ -107,6 +138,14 @@ public partial class PrimaryButton : ContentView
     {
         get => (string?)GetValue(ButtonTextProperty);
         private set => SetValue(ButtonTextProperty, value);
+    }
+
+    private void OnSemanticFocusRequested(int previous, int requested)
+    {
+        if (requested != previous && requested != 0 && CoreButton?.Handler is not null)
+        {
+            Dispatcher.Dispatch(() => CoreButton.SetSemanticFocus());
+        }
     }
 
     private void OnCoreButtonPropertyChanged(object? sender, PropertyChangedEventArgs e)

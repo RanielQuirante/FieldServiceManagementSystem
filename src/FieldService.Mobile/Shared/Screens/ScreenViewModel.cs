@@ -25,11 +25,15 @@ public abstract partial class ScreenViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsLoading), nameof(IsContent), nameof(IsEmpty), nameof(IsError), nameof(IsOffline), nameof(ShowsContent))]
+    [NotifyPropertyChangedFor(nameof(IsLoading), nameof(IsContent), nameof(IsEmpty), nameof(IsError), nameof(IsOffline), nameof(ShowsContent), nameof(HasRefreshError))]
     public partial ScreenState State { get; protected set; }
 
     [ObservableProperty]
     public partial ScreenError? Error { get; protected set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRefreshError))]
+    public partial ScreenError? RefreshError { get; protected set; }
 
     public bool IsLoading => State == ScreenState.Loading;
 
@@ -42,6 +46,8 @@ public abstract partial class ScreenViewModel : ObservableObject
     public bool IsOffline => State == ScreenState.Offline;
 
     public bool ShowsContent => State is ScreenState.Content or ScreenState.Offline;
+
+    public bool HasRefreshError => RefreshError is not null && State is ScreenState.Content or ScreenState.Empty;
 
     protected bool IsOnline => _network.IsOnline;
 
@@ -65,6 +71,13 @@ public abstract partial class ScreenViewModel : ObservableObject
             ApiException api => new ScreenError(title, CheckConnectionMessage, api.CorrelationId),
             _ => new ScreenError(title, CheckConnectionMessage, null),
         };
+    }
+
+    public static ScreenError DescribeRefresh(Exception exception, string title, string message)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        return new ScreenError(title, message, exception is ApiException api ? api.CorrelationId : null);
     }
 
     public static bool IsFailure(Exception exception, CancellationToken cancellationToken) =>

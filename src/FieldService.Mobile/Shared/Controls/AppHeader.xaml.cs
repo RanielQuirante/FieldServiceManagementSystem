@@ -98,6 +98,21 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         typeof(AppHeader),
         propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ApplyText());
 
+    public static readonly BindableProperty ReasonTextProperty = BindableProperty.Create(
+        nameof(ReasonText),
+        typeof(string),
+        typeof(AppHeader),
+        propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ApplyText());
+
+    public static readonly BindableProperty HasReasonTextProperty = BindableProperty.Create(nameof(HasReasonText), typeof(bool), typeof(AppHeader), false);
+
+    public static readonly BindableProperty SummaryFocusRequestProperty = BindableProperty.Create(
+        nameof(SummaryFocusRequest),
+        typeof(int),
+        typeof(AppHeader),
+        0,
+        propertyChanged: (bindable, oldValue, newValue) => ((AppHeader)bindable).OnSummaryFocusRequested((int)oldValue, (int)newValue));
+
     public static readonly BindableProperty UpdatedTextProperty = BindableProperty.Create(
         nameof(UpdatedText),
         typeof(string),
@@ -345,6 +360,24 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         private set => SetValue(HasAssignedTextProperty, value);
     }
 
+    public string? ReasonText
+    {
+        get => (string?)GetValue(ReasonTextProperty);
+        set => SetValue(ReasonTextProperty, value);
+    }
+
+    public bool HasReasonText
+    {
+        get => (bool)GetValue(HasReasonTextProperty);
+        private set => SetValue(HasReasonTextProperty, value);
+    }
+
+    public int SummaryFocusRequest
+    {
+        get => (int)GetValue(SummaryFocusRequestProperty);
+        set => SetValue(SummaryFocusRequestProperty, value);
+    }
+
     public bool HasStatusLine
     {
         get => (bool)GetValue(HasStatusLineProperty);
@@ -415,7 +448,16 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         HasStartsText = !string.IsNullOrWhiteSpace(StartsText);
         HasAssignedText = !string.IsNullOrWhiteSpace(AssignedText);
         HasStatusLine = !string.IsNullOrWhiteSpace(StatusLineText);
+        HasReasonText = !string.IsNullOrWhiteSpace(ReasonText);
         HasUpdatedText = !string.IsNullOrWhiteSpace(UpdatedText);
+    }
+
+    private void OnSummaryFocusRequested(int previous, int requested)
+    {
+        if (requested != previous && requested != 0 && SummaryTitleLabel?.Handler is not null)
+        {
+            Dispatcher.Dispatch(() => SummaryTitleLabel.SetSemanticFocus());
+        }
     }
 
     private void ApplyAccessory()

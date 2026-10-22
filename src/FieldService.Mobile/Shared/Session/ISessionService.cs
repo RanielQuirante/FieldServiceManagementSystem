@@ -8,13 +8,15 @@ public interface ISessionService
 
     string? AccessToken { get; }
 
+    SessionCredential Credential { get; }
+
     SessionEndReason EndReason { get; }
 
     Task<SignedInUser> SignInAsync(string email, string password, CancellationToken cancellationToken);
 
     Task<string> TryRestoreAsync(CancellationToken cancellationToken);
 
-    Task<bool> RefreshAccessTokenAsync(string? rejectedAccessToken, CancellationToken cancellationToken);
+    Task<string?> RefreshAccessTokenAsync(SessionCredential rejected, CancellationToken cancellationToken);
 
     Task SignOutAsync(CancellationToken cancellationToken);
 }

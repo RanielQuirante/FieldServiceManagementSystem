@@ -16,6 +16,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 {
     public const string PageTitle = "Job details";
     public const string LoadFailedTitle = "The job could not be loaded.";
+    public const string RefreshFailedTitle = "The job could not be refreshed.";
     public const string OfflineTitle = "You're offline.";
     public const string MapSearchAddress = "https://www.bing.com/maps?q=";
 
@@ -27,6 +28,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     private readonly IPhoneDialer _phoneDialer;
     private readonly ILauncher _launcher;
     private readonly INavigator _navigator;
+    private readonly ISemanticScreenReader _screenReader;
     private readonly TimeProvider _clock;
     private readonly ILogger<JobDetailsViewModel> _logger;
     private CancellationTokenSource? _load;
@@ -42,6 +44,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         IPhoneDialer phoneDialer,
         ILauncher launcher,
         INavigator navigator,
+        ISemanticScreenReader screenReader,
         NetworkStatus network,
         TimeProvider clock,
         ILogger<JobDetailsViewModel> logger)
@@ -53,6 +56,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         _phoneDialer = phoneDialer;
         _launcher = launcher;
         _navigator = navigator;
+        _screenReader = screenReader;
         _clock = clock;
         _logger = logger;
         Timeline = [];
@@ -198,9 +202,9 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     public bool ShowsRowActions => Job is not null && !IsAssigned;
 
-    public bool ShowsDock => IsAssigned && !IsInPane;
+    public bool ShowsDock => !IsInPane && (IsAssigned || ShowsUpdateStatus);
 
-    public bool ShowsHeroActions => IsAssigned && IsInPane;
+    public bool ShowsHeroActions => IsInPane && (IsAssigned || ShowsUpdateStatus);
 
     public bool CanCall => _phoneDialer.IsSupported && ContactPhone is not null;
 
@@ -319,8 +323,10 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         if (jobId != _jobId)
         {
             _jobId = jobId;
+            ForgetStatusChanges(keepDraft: false);
             Job = null;
             Timeline = [];
+            RefreshError = null;
             _loadedAt = null;
         }
 
@@ -331,6 +337,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     {
         _load?.Cancel();
         _load = null;
+        ForgetStatusChanges(keepDraft: false);
         _jobId = Guid.Empty;
         _loadedAt = null;
         Job = null;
@@ -338,6 +345,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         StartsLine = null;
         OfflineMessage = null;
         Error = null;
+        RefreshError = null;
         State = ScreenState.Loading;
     }
 
@@ -363,6 +371,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     protected override void OnConnectivityChanged(bool isOnline)
     {
+        NotifyStatusActions();
         if (!isOnline && State == ScreenState.Content)
         {
             ShowOffline();
@@ -372,6 +381,10 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
             _ = LoadJobAsync();
         }
     }
+
+    partial void OnJobChanged(JobDetailsResponse? value) => NotifyStatusActions();
+
+    partial void OnIsInPaneChanged(bool value) => NotifyStatusActions();
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
@@ -478,6 +491,8 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
             Timeline = BuildTimeline(job, Zone, Today);
             Error = null;
             OfflineMessage = null;
+            RefreshError = null;
+            ActionBanner = null;
             State = ScreenState.Content;
             UpdateStartsLine();
         }
@@ -490,6 +505,17 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         }
         catch (Exception exception) when (IsFailure(exception, token))
         {
+            if (Job is not null && _loadedAt is { } loadedAt)
+            {
+                Error = null;
+                OfflineMessage = null;
+                ActionBanner = null;
+                RefreshError = DescribeRefresh(exception, RefreshFailedTitle, ShowingThisJobAsOf(loadedAt));
+                State = ScreenState.Content;
+                return;
+            }
+
+            RefreshError = null;
             Error = Describe(exception, LoadFailedTitle);
             State = ScreenState.Error;
         }
@@ -497,9 +523,11 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     private void ShowOffline()
     {
+        RefreshError = null;
+        ActionBanner = null;
         if (Job is not null && _loadedAt is { } loadedAt)
         {
-            OfflineMessage = "Showing this job as of " + DisplayFormats.Time(loadedAt, Zone) + ".";
+            OfflineMessage = ShowingThisJobAsOf(loadedAt);
             Error = null;
             State = ScreenState.Offline;
             return;
@@ -508,6 +536,8 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         Error = new ScreenError(LoadFailedTitle, CheckConnectionMessage, null);
         State = ScreenState.Error;
     }
+
+    private string ShowingThisJobAsOf(DateTimeOffset loadedAt) => "Showing this job as of " + DisplayFormats.Time(loadedAt, Zone) + ".";
 
     private async Task NoLongerAssignedAsync()
     {
