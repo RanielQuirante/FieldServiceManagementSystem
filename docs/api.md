@@ -25,7 +25,7 @@ The examples use the demo data that the API seeds in Development (see [database.
 | Base path | `/api`. Every business endpoint lives under it. This is version 1 of the contract. |
 | Other paths | `/health/live`, `/health/ready`, and `/openapi/v1.json` in the Development and Testing environments only |
 | Versioning | Changes under `/api` are additive only. A breaking change gets a decision record and a parallel `/api/v2` route group. |
-| Methods | GET reads. POST creates a resource (`/api/jobs`) or performs an action (the auth actions). PUT replaces the state of a sub-resource (`/assignment`). There is no PATCH and no DELETE. |
+| Methods | GET reads. POST creates a resource (`/api/jobs`) or performs an action (the auth actions). PUT replaces the state of a sub-resource (`/assignment`, `/status`). There is no PATCH and no DELETE. |
 | Route ids | `{jobId}` must be a GUID. Any other value matches no route and returns 404 `resource.not-found`. |
 | Unknown input | Unknown query parameters and unknown JSON members are ignored. |
 
@@ -75,7 +75,7 @@ Clients accept enumeration values they do not know and render them neutrally. Ad
 - Length limits are counted in UTF-16 code units and match the database columns.
 - The API trims leading and trailing white space from request strings before storing them, except `password` and `refreshToken`, which are used exactly as sent.
 - An optional string that is empty after trimming is stored as `null`. A required string must contain a character that is not white space, except `password`, which may be white space only and is then checked like any other password.
-- **Control characters.** Single-line fields reject U+0000 to U+001F and U+007F to U+009F. Multi-line fields (`description`, `siteAccessNotes`) allow only line feed, carriage return and tab among them. Either violation is a field error keyed by the field.
+- **Control characters.** Single-line fields reject U+0000 to U+001F and U+007F to U+009F. Multi-line fields (`description`, `siteAccessNotes`, the status `note`) allow only line feed, carriage return and tab among them. Either violation is a field error keyed by the field.
 - Responses return strings as stored.
 
 ### Collections, paging, sorting and filtering
@@ -198,11 +198,12 @@ Every job command carries the `version` the client last read. The API checks a c
 | Command | Same state (200, no write) | 409 codes |
 |---|---|---|
 | AssignJob | Status `Assigned` with the same technician | `job.not-assignable`, `technician.unavailable`, `concurrency.conflict` |
+| UpdateJobStatus | The job's status equals the requested status; the request's `note` is discarded | `job.invalid-transition`, `concurrency.conflict` |
 | CreateJob | None; it is not idempotent | `technician.unavailable` |
 
-- Every 409 means: refetch, explain, and let the user act again. When a stale version and a broken rule coincide, the rule's code wins, because rules are checked against the current state first.
+- Every 409 means: refetch, explain, and let the user act again. When a stale version and a broken rule coincide, the rule's code wins, because rules are checked against the current state first. A missing hold note is also reported before a stale version.
 - Mutations are never retried automatically. An explicit Retry resends the same body, and the same-state check makes that safe after a lost response.
-- Two commands that race with the same `version` give one success and one 409 `concurrency.conflict`; only the success writes history and queues an event.
+- Two commands that race with the same `version` never both write. One succeeds; the other gets 409 `concurrency.conflict`, or 200 with no write when it reads the job after the winner has already moved it to the requested status (two Start requests). Only the success writes history and queues an event.
 
 ## Errors
 
@@ -250,6 +251,7 @@ No exception type, message or stack trace is returned outside Development.
 | `resource.not-found` | 404 | The resource was not found. | No route matches, including a route id that is not a GUID | A client defect |
 | `request.method-not-allowed` | 405 | The method is not allowed for this resource. | The route exists but not for this method | A client defect |
 | `concurrency.conflict` | 409 | The job was changed by someone else. | A stale `version`, or a concurrent write detected while saving | Refetch the job, explain that someone else changed it, and let the user act again. |
+| `job.invalid-transition` | 409 | The job cannot move to that status. | UpdateJobStatus to a status the job's current status does not lead to, for example `OnHold` from `Assigned`, or any change to a `Completed` or `Cancelled` job | Refetch and offer only the new `allowedStatusChanges`. |
 | `job.not-assignable` | 409 | The job can no longer be assigned. | AssignJob on a job that is neither `Unassigned` nor `Assigned` | Refetch. The assign panel disappears because `canAssign` is false. |
 | `technician.unavailable` | 409 | The technician is not available. | The chosen technician is inactive or off shift | Refetch the technicians and ask for another choice. |
 | `request.too-large` | 413 | The request body is too large. | The body exceeds the endpoint's limit | A client defect |
@@ -330,7 +332,7 @@ A rule conflict carries a `detail`, for example AssignJob on a completed job:
 
 ### JobDetailsResponse
 
-Returned by CreateJob, GetJobById and AssignJob.
+Returned by CreateJob, GetJobById, AssignJob and UpdateJobStatus.
 
 | Member | Type | Null | Content |
 |---|---|---|---|
@@ -367,13 +369,21 @@ Computed for the caller from the same transition table that enforces the command
 
 | Member | Type | Content |
 |---|---|---|
+| `allowedStatusChanges` | AllowedStatusChange[] | The UpdateJobStatus targets open to the caller now; `[]` when there are none |
 | `canAssign` | boolean | AssignJob is open to the caller now |
 
-| Caller and job status | `canAssign` |
-|---|---|
-| Administrator, `Unassigned` or `Assigned` | true |
-| Administrator, `InProgress`, `OnHold`, `Completed` or `Cancelled` | false |
-| Technician, any status | false |
+`AllowedStatusChange`: `status` (JobStatus), the status to send to UpdateJobStatus, and `requiresNote` (boolean), true when the change needs a `note` (Put on hold).
+
+| Caller and job status | `allowedStatusChanges` | `canAssign` |
+|---|---|---|
+| Administrator, `Unassigned` or `Assigned` | `[]` | true |
+| Administrator, `InProgress`, `OnHold`, `Completed` or `Cancelled` | `[]` | false |
+| Assigned technician, `Assigned` | `[{ "status": "InProgress", "requiresNote": false }]` (Start job) | false |
+| Assigned technician, `InProgress` | `[{ "status": "OnHold", "requiresNote": true }]` (Put on hold) | false |
+| Assigned technician, `OnHold` | `[{ "status": "InProgress", "requiresNote": false }]` (Resume) | false |
+| Assigned technician, `Completed` or `Cancelled` | `[]` | false |
+
+Other technicians never receive the job: it is a 404 for them. A client offers exactly the listed changes and asks for a note when `requiresNote` is true.
 
 ### JobHistoryEntryResponse
 
@@ -420,12 +430,13 @@ One row of GetJobs.
 | Jobs | GetJobs | `GET /api/jobs?search&status&technicianId&priority&page&pageSize` | Administrator | Global | | 200 `GetJobsResponse` |
 | Jobs | GetJobById | `GET /api/jobs/{jobId}` | AdministratorOrTechnician, own jobs only for a technician | Global | | 200 `JobDetailsResponse` |
 | Jobs | AssignJob | `PUT /api/jobs/{jobId}/assignment` | Administrator | Global | 1 MB | 200 `JobDetailsResponse` |
+| Jobs | UpdateJobStatus | `PUT /api/jobs/{jobId}/status` | Technician, own jobs only | Global | 1 MB | 200 `JobDetailsResponse` |
 | ChecklistTemplates | GetChecklistTemplates | `GET /api/checklist-templates` | Administrator | Global | | 200 `GetChecklistTemplatesResponse` |
 | Infrastructure | Liveness | `GET /health/live` | Anonymous | None | | 200 text |
 | Infrastructure | Readiness | `GET /health/ready` | Anonymous | None | | 200 or 503 text |
 | Infrastructure | OpenAPI document | `GET /openapi/v1.json` (Development and Testing) | Anonymous | None | | 200 JSON |
 
-OpenAPI tags equal the feature names, and operation ids equal the operation names. GET endpoints are safe and idempotent and read no body; AssignJob is idempotent through its same-state rule. Every response carries `X-Correlation-ID`, `Cache-Control: no-store` and the security headers listed above; the examples show only the first two.
+OpenAPI tags equal the feature names, and operation ids equal the operation names. GET endpoints are safe and idempotent and read no body; AssignJob and UpdateJobStatus are idempotent through their same-state rules. Every response carries `X-Correlation-ID`, `Cache-Control: no-store` and the security headers listed above; the examples show only the first two.
 
 ## Auth
 
@@ -840,7 +851,7 @@ X-Correlation-ID: b2b49504-1cd6-4228-9a7b-85f907ad5a91
     { "id": "01a1549f-79e0-71ae-8e7f-1896175a9d87", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:45:00.000Z" }
   ],
   "version": 48241,
-  "affordances": { "canAssign": true }
+  "affordances": { "allowedStatusChanges": [], "canAssign": true }
 }
 ```
 
@@ -996,7 +1007,10 @@ X-Correlation-ID: caa8b68d-452a-4513-8595-cb1ddf78a023
     { "id": "01a1544a-5500-71c6-b856-aa0a8dd0fb9c", "action": "Started", "fromStatus": "Assigned", "toStatus": "InProgress", "actor": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "technician": null, "note": null, "occurredAt": "2026-10-19T13:12:00.000Z" }
   ],
   "version": 48213,
-  "affordances": { "canAssign": false }
+  "affordances": {
+    "allowedStatusChanges": [{ "status": "OnHold", "requiresNote": true }],
+    "canAssign": false
+  }
 }
 ```
 
@@ -1088,11 +1102,141 @@ X-Correlation-ID: 68849554-8207-48bf-94c6-63a5151a3d93
     { "id": "01a154a2-3900-7138-bfc1-d54f96a71fa5", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan" }, "note": null, "occurredAt": "2026-10-19T14:48:00.000Z" }
   ],
   "version": 48263,
-  "affordances": { "canAssign": true }
+  "affordances": { "allowedStatusChanges": [], "canAssign": true }
 }
 ```
 
 Sending the same body again returns the same job with `version` 48263 and changes nothing. Assigning Samuel Osei, who is off shift, returns 409 `technician.unavailable`; a stale `version` returns the 409 `concurrency.conflict` shown in [Example](#example).
+
+### UpdateJobStatus: `PUT /api/jobs/{jobId}/status`
+
+The assigned technician starts, puts on hold or resumes a job. Completing a job is not a status change and is not accepted here.
+
+| Item | Value |
+|---|---|
+| Access | Technician, only for the jobs assigned to them |
+| Rate limit | Global |
+| Success | 200 `JobDetailsResponse` with the new `status` and `version` |
+| Side effects | `status` and `updatedAt` set at one instant; `startedAt` on the first start only, so a resume keeps it; a `Started`, `PutOnHold` (with the note) or `Resumed` history entry by the technician; after the database commit, one `job.status-changed` event with the new status and the previous status, for live updates once they are enabled |
+| Same state | Already in the requested status: 200 with the current job, no write, no history entry and no event, whatever `version` or `note` was sent |
+| Idempotency | Through the same-state rule, so an explicit retry after a lost response is safe |
+
+Request body `UpdateJobStatusRequest`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `status` | JobStatus | yes | `InProgress` or `OnHold`. Any other value is 400 keyed `status`. |
+| `note` | string or null | for `OnHold` | Up to 500 characters; multi-line. Required and not blank for `OnHold`, otherwise 400 keyed `note`. With `InProgress` it is checked for length and control characters, then discarded: only `PutOnHold` entries carry a note. |
+| `version` | uint32 | yes | The job's `version` as last read |
+
+Allowed changes, the same that `allowedStatusChanges` offers:
+
+| From | To | History action | Offered as |
+|---|---|---|---|
+| `Assigned` | `InProgress` | `Started` | Start job |
+| `InProgress` | `OnHold` | `PutOnHold`, with the note | Put on hold |
+| `OnHold` | `InProgress` | `Resumed` | Resume |
+
+Errors, checked in the order of [Concurrency and idempotency](#concurrency-and-idempotency):
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `request.validation-failed` | A missing or malformed member; a `status` other than `InProgress` or `OnHold`; a `note` over 500 characters or with control characters; `OnHold` without a usable note, which is checked after the same-state rule and the transition |
+| 404 | `job.not-found` | The job does not exist or is not assigned to the caller. Both cases return the same response. |
+| 409 | `job.invalid-transition` | Any other combination, for example `OnHold` from `Assigned`, or any change to a `Completed` or `Cancelled` job. The `detail` names the job and both statuses. |
+| 409 | `concurrency.conflict` | A stale `version`, or another write to the job while saving |
+
+An administrator gets 403 `auth.forbidden`. Nothing is written and no event is queued when the request fails. Of two changes sent with the same `version`, one succeeds and the other gets 409 `concurrency.conflict`, or 200 with no write when the job already holds the requested status; there is never a second history entry or event.
+
+Example, Priya Natarajan starts JOB-1049 at 10:42 AM:
+
+```http
+PUT /api/jobs/01a153ec-f2c0-7499-a012-b2be45d90129/status HTTP/1.1
+Host: 10.0.2.2:5080
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+X-Correlation-ID: 23191419-f180-45eb-bcaf-8d9912281343
+```
+
+```json
+{
+  "status": "InProgress",
+  "note": null,
+  "version": 47990
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: 23191419-f180-45eb-bcaf-8d9912281343
+```
+
+```json
+{
+  "id": "01a153ec-f2c0-7499-a012-b2be45d90129",
+  "number": 1049,
+  "title": "Standby generator load test",
+  "description": "Monthly load test of the standby generator with the care home running on generator power.",
+  "priority": "Normal",
+  "status": "InProgress",
+  "customerName": "St. Anne's Care Home",
+  "siteAddress": "75 Willow Lane",
+  "siteAccessNotes": null,
+  "contactName": null,
+  "contactPhone": null,
+  "equipment": null,
+  "scheduledStart": "2026-10-19T14:00:00.000Z",
+  "scheduledEnd": "2026-10-19T16:00:00.000Z",
+  "checklistTemplate": { "id": "01a15175-3c00-7000-8000-000101000000", "name": "General electrical inspection", "trade": "Electrical" },
+  "assignedTechnician": { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan", "trade": "Electrical" },
+  "createdBy": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" },
+  "createdAt": "2026-10-18T17:20:00.000Z",
+  "updatedAt": "2026-10-19T14:42:00.000Z",
+  "assignedAt": "2026-10-18T17:25:00.000Z",
+  "startedAt": "2026-10-19T14:42:00.000Z",
+  "completedAt": null,
+  "cancelledAt": null,
+  "history": [
+    { "id": "01a153ec-f2c0-7d05-aaa3-37223455b611", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-18T17:20:00.000Z" },
+    { "id": "01a153f2-7100-75d3-85e9-bdb115b001ca", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan" }, "note": null, "occurredAt": "2026-10-18T17:25:00.000Z" },
+    { "id": "01a1549c-bac0-7dd7-887f-51d55ef3411e", "action": "Started", "fromStatus": "Assigned", "toStatus": "InProgress", "actor": { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:42:00.000Z" }
+  ],
+  "version": 48230,
+  "affordances": {
+    "allowedStatusChanges": [{ "status": "OnHold", "requiresNote": true }],
+    "canAssign": false
+  }
+}
+```
+
+Putting the job on hold sends the reason as the note:
+
+```json
+{
+  "status": "OnHold",
+  "note": "Waiting for the load bank to be delivered",
+  "version": 48230
+}
+```
+
+The response then has status `OnHold`, a `PutOnHold` entry carrying the trimmed note, `startedAt` unchanged and `allowedStatusChanges` `[{ "status": "InProgress", "requiresNote": false }]`. Sending the same body again returns the job unchanged.
+
+Sending `OnHold` for JOB-1047 while it is still `Assigned`:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "The job cannot move to that status.",
+  "status": 409,
+  "detail": "JOB-1047 cannot move from Assigned to OnHold.",
+  "instance": "/api/jobs/01a1546d-1f40-74c9-b6a6-b365b1422136/status",
+  "code": "job.invalid-transition",
+  "correlationId": "9b0e4c71-2d5a-4f86-a3c1-7e2f9d4b6a05",
+  "traceId": "00-7c3a9e1f5b2d4086a1e9c7b35d2f8e40-5e1a9c3b7d2f4a60-00"
+}
+```
 
 ## Checklist templates
 
