@@ -6,6 +6,8 @@ namespace FieldService.Api.Features.Jobs;
 
 public static class JobDetailsQuery
 {
+    private static readonly InspectionCompleteness _inspectionNotRead = InspectionCompleteness.Of(0, []);
+
     public static async Task<JobDetailsResponse?> FindAsync(
         FieldServiceDbContext db,
         Guid jobId,
@@ -53,8 +55,13 @@ public static class JobDetailsQuery
             .ToListAsync(cancellationToken);
 
         var details = row.Job;
+        var capabilities = JobCapabilities.For(details, actor, _inspectionNotRead);
         var affordances = new JobAffordances(
-            JobTransitions.Available(details, actor).Any(transition => transition.Command == JobCommand.Assign));
+            [
+                .. capabilities.AllowedStatusChanges
+                    .Select(option => new AllowedStatusChange(option.Status, option.RequiresNote)),
+            ],
+            capabilities.CanAssign);
         return new JobDetailsResponse(
             details.Id,
             details.Number,

@@ -28,6 +28,8 @@ public static class ErrorCodes
 
     public const string ConcurrencyConflict = "concurrency.conflict";
 
+    public const string JobInvalidTransition = "job.invalid-transition";
+
     public const string JobNotAssignable = "job.not-assignable";
 
     public const string TechnicianUnavailable = "technician.unavailable";
@@ -61,7 +63,11 @@ public static class ErrorCodes
         Forbidden or WrongApplication or CsrfRequired => StatusCodes.Status403Forbidden,
         JobNotFound or ResourceNotFound => StatusCodes.Status404NotFound,
         MethodNotAllowed => StatusCodes.Status405MethodNotAllowed,
-        ConcurrencyConflict or JobNotAssignable or TechnicianUnavailable or InspectionLocked => StatusCodes.Status409Conflict,
+        ConcurrencyConflict
+            or JobInvalidTransition
+            or JobNotAssignable
+            or TechnicianUnavailable
+            or InspectionLocked => StatusCodes.Status409Conflict,
         TooLarge => StatusCodes.Status413PayloadTooLarge,
         UnsupportedMediaType => StatusCodes.Status415UnsupportedMediaType,
         RateLimitExceeded => StatusCodes.Status429TooManyRequests,
@@ -84,6 +90,7 @@ public static class ErrorCodes
         TooLarge => "The request body is too large.",
         UnsupportedMediaType => "The request body must be JSON.",
         ConcurrencyConflict => "The job was changed by someone else.",
+        JobInvalidTransition => "The job cannot move to that status.",
         JobNotAssignable => "The job can no longer be assigned.",
         TechnicianUnavailable => "The technician is not available.",
         InspectionLocked => "The inspection can no longer be changed.",

@@ -742,6 +742,114 @@
         ]
       }
     },
+    "/api/jobs/{jobId}/status": {
+      "put": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Update the status of a job",
+        "description": "Starts, puts on hold or resumes a job assigned to the calling technician, and adds a Started, PutOnHold or Resumed history entry. The status must be InProgress or OnHold. Putting a job on hold needs a note of at most 500 characters; a note sent with InProgress is not stored. Send the version you last read; sending the job's current status returns the job unchanged. A technician can change only the jobs assigned to them; any other job returns 404. The response carries the job's details and its new version.",
+        "operationId": "UpdateJobStatus",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateJobStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/checklist-templates": {
       "get": {
         "tags": [
@@ -802,6 +910,21 @@
   },
   "components": {
     "schemas": {
+      "AllowedStatusChange": {
+        "required": [
+          "status",
+          "requiresNote"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "requiresNote": {
+            "type": "boolean"
+          }
+        }
+      },
       "AssignedJobResponse": {
         "required": [
           "id",
@@ -1169,10 +1292,17 @@
       },
       "JobAffordances": {
         "required": [
+          "allowedStatusChanges",
           "canAssign"
         ],
         "type": "object",
         "properties": {
+          "allowedStatusChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AllowedStatusChange"
+            }
+          },
           "canAssign": {
             "type": "boolean"
           }
@@ -1777,6 +1907,30 @@
           "Plumbing",
           "FireSafety"
         ]
+      },
+      "UpdateJobStatusRequest": {
+        "required": [
+          "status",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "note": {
+            "maxLength": 500,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
       },
       "UserReference": {
         "required": [
