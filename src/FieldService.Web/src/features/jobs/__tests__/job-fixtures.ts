@@ -266,7 +266,7 @@ export function jobDetails(overrides: Partial<JobDetails> = {}): JobDetails {
     cancelledAt: null,
     history: [historyEntry()],
     version: 48101,
-    affordances: { canAssign: true },
+    affordances: { allowedStatusChanges: [], canAssign: true },
     ...overrides,
   }
 }
@@ -317,7 +317,7 @@ export function assignedInProgressJob(): JobDetails {
       }),
     ],
     version: 48213,
-    affordances: { canAssign: false },
+    affordances: { allowedStatusChanges: [], canAssign: false },
   })
 }
 
@@ -373,6 +373,76 @@ export function onHoldJob(): JobDetails {
         occurredAt: onDemoDay(-3, 13, 50),
       }),
     ],
-    affordances: { canAssign: false },
+    affordances: { allowedStatusChanges: [], canAssign: false },
+  })
+}
+
+export const holdNote = 'Waiting for the replacement fan motor quote to be approved.'
+
+export function statusChangedJob(note: string = holdNote): JobDetails {
+  const byMarco = { id: marco.id, displayName: marco.displayName }
+  return jobDetails({
+    id: '01a1543c-6f40-7a2e-9b1d-5d0c3e8f1047',
+    number: 1047,
+    title: 'Walk-in freezer temperature alarm',
+    description:
+      'The walk-in freezer alarm keeps sounding and the display reads above the set point. Staff moved the stock to the reach-in freezers.',
+    priority: 'Urgent',
+    status: 'InProgress',
+    customerName: 'Elm Street Bakery',
+    siteAddress: '88 Elm Street',
+    siteAccessNotes: null,
+    contactName: null,
+    contactPhone: '(555) 014-4417',
+    scheduledStart: onDemoDay(0, 13, 30),
+    scheduledEnd: onDemoDay(0, 15, 0),
+    checklistTemplate: {
+      id: '01a15175-3c00-7000-8000-000102000000',
+      name: 'Rooftop HVAC service',
+      trade: 'Hvac',
+    },
+    assignedTechnician: marco,
+    createdAt: onDemoDay(0, 8, 47),
+    updatedAt: onDemoDay(0, 10, 38),
+    assignedAt: onDemoDay(0, 10, 5),
+    startedAt: onDemoDay(0, 10, 12),
+    history: [
+      historyEntry({ id: 'h-1047-1', occurredAt: onDemoDay(0, 8, 47) }),
+      historyEntry({
+        id: 'h-1047-2',
+        action: 'Assigned',
+        fromStatus: 'Unassigned',
+        toStatus: 'Assigned',
+        technician: byMarco,
+        occurredAt: onDemoDay(0, 10, 5),
+      }),
+      historyEntry({
+        id: 'h-1047-3',
+        action: 'Started',
+        fromStatus: 'Assigned',
+        toStatus: 'InProgress',
+        actor: byMarco,
+        occurredAt: onDemoDay(0, 10, 12),
+      }),
+      historyEntry({
+        id: 'h-1047-4',
+        action: 'PutOnHold',
+        fromStatus: 'InProgress',
+        toStatus: 'OnHold',
+        actor: byMarco,
+        note,
+        occurredAt: onDemoDay(0, 10, 25),
+      }),
+      historyEntry({
+        id: 'h-1047-5',
+        action: 'Resumed',
+        fromStatus: 'OnHold',
+        toStatus: 'InProgress',
+        actor: byMarco,
+        occurredAt: onDemoDay(0, 10, 38),
+      }),
+    ],
+    version: 48300,
+    affordances: { allowedStatusChanges: [], canAssign: false },
   })
 }

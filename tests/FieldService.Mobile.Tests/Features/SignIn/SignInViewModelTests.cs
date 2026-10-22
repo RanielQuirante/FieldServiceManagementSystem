@@ -398,7 +398,7 @@ public sealed class SignInViewModelTests
         Assert.Equal(Email, viewModel.Email);
         var hideRequests = viewModel.PasswordHideRequest;
 
-        await harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None);
+        await harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None);
         await WaitFor(() => viewModel.Email.Length == 0);
         viewModel.AppearingCommand.Execute(null);
 

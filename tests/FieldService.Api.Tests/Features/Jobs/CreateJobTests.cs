@@ -104,7 +104,8 @@ public sealed class CreateJobTests(DatabaseFixture fixture) : DatabaseTest(fixtu
         Assert.Equal(JsonValueKind.Null, root.GetProperty("history")[0].GetProperty("fromStatus").ValueKind);
         Assert.Equal("Created", root.GetProperty("history")[0].GetProperty("action").GetString());
         var affordances = root.GetProperty("affordances");
-        Assert.Equal(["canAssign"], affordances.EnumerateObject().Select(member => member.Name));
+        Assert.Equal(["allowedStatusChanges", "canAssign"], affordances.EnumerateObject().Select(member => member.Name));
+        Assert.Equal("[]", affordances.GetProperty("allowedStatusChanges").GetRawText());
         Assert.Equal(JsonValueKind.True, affordances.GetProperty("canAssign").ValueKind);
     }
 

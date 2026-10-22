@@ -40,6 +40,7 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         ["request.method-not-allowed"] = (405, "rfc9110#section-15.5.6", "The method is not allowed for this resource."),
         ["concurrency.conflict"] = (409, "rfc9110#section-15.5.10", "The job was changed by someone else."),
         ["job.not-assignable"] = (409, "rfc9110#section-15.5.10", "The job can no longer be assigned."),
+        ["job.invalid-transition"] = (409, "rfc9110#section-15.5.10", "The job cannot move to that status."),
         ["technician.unavailable"] = (409, "rfc9110#section-15.5.10", "The technician is not available."),
         ["request.too-large"] = (413, "rfc9110#section-15.5.14", "The request body is too large."),
         ["request.unsupported-media-type"] = (415, "rfc9110#section-15.5.16", "The request body must be JSON."),
@@ -69,6 +70,13 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         { "AssignJob on a Completed job", "job.not-assignable", "" },
         { "AssignJob to an off-shift technician", "technician.unavailable", "" },
         { "CreateJob with an off-shift technician", "technician.unavailable", "" },
+        { "UpdateJobStatus OnHold for an Assigned job", "job.invalid-transition", "" },
+        { "UpdateJobStatus on a Completed job", "job.invalid-transition", "" },
+        { "UpdateJobStatus with a stale version", "concurrency.conflict", "" },
+        { "UpdateJobStatus with status Completed", "request.validation-failed", "status" },
+        { "UpdateJobStatus OnHold without a note", "request.validation-failed", "note" },
+        { "UpdateJobStatus on another technician's job", "job.not-found", "" },
+        { "UpdateJobStatus as an administrator", "auth.forbidden", "" },
         { "a job request of 1 MB + 1", "request.too-large", "" },
         { "CreateJob with a text/plain body", "request.unsupported-media-type", "" },
         { "the eleventh sign-in in a minute", "rate-limit.exceeded", "" },
@@ -318,6 +326,27 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
                 path = "/api/jobs";
                 response = await client.PostAsync(path, JobBody(now, body => body["technicianId"] = offShift.UserId.ToString()));
                 break;
+            case "UpdateJobStatus OnHold for an Assigned job":
+                (path, response) = await ChangeStatusAsync(client, data, JobStatus.Assigned, "OnHold", TestData.HoldNote, StatusCaller.Assignee, staleVersion: false, marker);
+                break;
+            case "UpdateJobStatus on a Completed job":
+                (path, response) = await ChangeStatusAsync(client, data, JobStatus.Completed, "InProgress", null, StatusCaller.Assignee, staleVersion: false, marker);
+                break;
+            case "UpdateJobStatus with a stale version":
+                (path, response) = await ChangeStatusAsync(client, data, JobStatus.InProgress, "OnHold", TestData.HoldNote, StatusCaller.Assignee, staleVersion: true, marker);
+                break;
+            case "UpdateJobStatus with status Completed":
+                (path, response) = await ChangeStatusAsync(client, data, JobStatus.InProgress, "Completed", null, StatusCaller.Assignee, staleVersion: false, marker);
+                break;
+            case "UpdateJobStatus OnHold without a note":
+                (path, response) = await ChangeStatusAsync(client, data, JobStatus.InProgress, "OnHold", null, StatusCaller.Assignee, staleVersion: false, marker);
+                break;
+            case "UpdateJobStatus on another technician's job":
+                (path, response) = await ChangeStatusAsync(client, data, JobStatus.Assigned, "InProgress", null, StatusCaller.OtherTechnician, staleVersion: false, marker);
+                break;
+            case "UpdateJobStatus as an administrator":
+                (path, response) = await ChangeStatusAsync(client, data, JobStatus.Assigned, "InProgress", null, StatusCaller.Administrator, staleVersion: false, marker);
+                break;
             case "CreateJob with a text/plain body":
                 client.AccessToken = administratorToken;
                 path = "/api/jobs";
@@ -360,6 +389,40 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         var version = staleVersion ? unchecked(job.Version + 1) : job.Version;
         var response = await client.PutJsonAsync($"{path}?probe={marker}", new { technicianId = assignee.UserId, version });
         return (path, response);
+    }
+
+    private async Task<(string Path, HttpResponseMessage Response)> ChangeStatusAsync(
+        ApiClient client,
+        TestData data,
+        JobStatus from,
+        string target,
+        string? note,
+        StatusCaller caller,
+        bool staleVersion,
+        string marker)
+    {
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var other = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var created = await data.CreateJobAsync(administrator.Id, TestData.HvacTemplateId, CancellationToken);
+        var job = await data.MoveToAsync(created, owner, from, CancellationToken);
+        client.AccessToken = caller switch
+        {
+            StatusCaller.Assignee => TestTokens.For(Fixture.Factory, owner.User),
+            StatusCaller.OtherTechnician => TestTokens.For(Fixture.Factory, other.User),
+            _ => TestTokens.For(Fixture.Factory, administrator),
+        };
+        var path = $"/api/jobs/{job.Id}/status";
+        var version = staleVersion ? created.Version : job.Version;
+        var response = await client.PutJsonAsync($"{path}?probe={marker}", new { status = target, note, version });
+        return (path, response);
+    }
+
+    private enum StatusCaller
+    {
+        Assignee,
+        OtherTechnician,
+        Administrator,
     }
 
     private static string RefreshTokenOf43Characters() =>

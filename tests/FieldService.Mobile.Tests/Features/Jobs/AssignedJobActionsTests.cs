@@ -229,9 +229,19 @@ public sealed class AssignedJobActionsTests
     }
 
     [Fact]
-    public void StartJobArrivesWithTheStatusChangesOfW3()
+    public async Task StartJobJoinsNavigateAndCallInTheAssignedDockOnlyWhenTheServerAllowsIt()
     {
-        Assert.Null(typeof(JobDetailsViewModel).GetProperty("StartJobCommand"));
+        var (allowed, _) = await Load(JobDtoBuilder.Details1047());
+        var (refused, _) = await Load(JobDtoBuilder.Details1047() with { Affordances = new JobAffordances([], false) });
+
+        Assert.True(allowed.ShowsDock);
+        Assert.True(allowed.ShowsNavigationRow);
+        Assert.True(allowed.ShowsStartJob);
+        Assert.Equal("Dispatch sees the job as In progress as soon as you start.", allowed.DockHelper);
+        Assert.True(refused.ShowsDock);
+        Assert.True(refused.ShowsNavigationRow);
+        Assert.False(refused.ShowsStartJob);
+        Assert.Null(refused.DockHelper);
     }
 
     private static async Task<(JobDetailsViewModel ViewModel, JobsHarness Harness)> Load(JobDetailsResponse job, bool dialerSupported = true)

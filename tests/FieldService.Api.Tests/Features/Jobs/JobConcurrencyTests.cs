@@ -49,6 +49,107 @@ public sealed class JobConcurrencyTests(DatabaseFixture fixture) : DatabaseTest(
         }
     }
 
+    [Fact]
+    public async Task TwoStartsThatBothReachSaveChangesWithTheSameVersionGiveOne200AndOne409WithOneStartedRowAndOneEvent()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var barrier = new SaveChangesBarrier(participants: 2);
+            await using var factory = Fixture.CreateFactory(factory => factory.TestServices = services =>
+                services.ConfigureDbContext<FieldServiceDbContext>(options => options.AddInterceptors(barrier)));
+
+            var statuses = await RaceStartsAsync(factory);
+
+            Assert.Equal(2, barrier.Arrived);
+            Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], statuses.OrderBy(status => (int)status));
+        }
+    }
+
+    [Fact]
+    public async Task TwoStartsReleasedTogetherWithTheSameVersionGiveOne200AndAnother200OrA409WithOneStartedRowAndOneEvent()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            Fixture.Factory.Events.Clear();
+
+            await RaceStartsAsync(Fixture.Factory);
+        }
+    }
+
+    private async Task<HttpStatusCode[]> RaceStartsAsync(ApiFactory factory)
+    {
+        var earlier = Now.AddMinutes(-30);
+        var data = new TestData(Fixture, earlier);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Electrical, CancellationToken);
+        var job = await data.MoveToAsync(
+            await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken),
+            technician,
+            JobStatus.Assigned,
+            CancellationToken);
+        using var firstDevice = factory.CreateApiClient();
+        using var secondDevice = factory.CreateApiClient();
+        firstDevice.AccessToken = TestTokens.For(factory, technician.User);
+        secondDevice.AccessToken = TestTokens.For(factory, technician.User);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var firstCall = StartAfterAsync(gate.Task, firstDevice, job);
+        var secondCall = StartAfterAsync(gate.Task, secondDevice, job);
+        gate.SetResult();
+        var responses = await Task.WhenAll(firstCall, secondCall);
+
+        try
+        {
+            var successes = responses.Where(response => response.StatusCode == HttpStatusCode.OK).ToList();
+            Assert.NotEmpty(successes);
+            var others = responses.Where(response => response.StatusCode != HttpStatusCode.OK).ToList();
+            foreach (var other in others)
+            {
+                await ApiClient.AssertProblemAsync(other, HttpStatusCode.Conflict, "concurrency.conflict");
+            }
+
+            var bodies = new List<JobDetailsResponse>();
+            foreach (var success in successes)
+            {
+                bodies.Add((await success.Content.ReadFromJsonAsync<JobDetailsResponse>(ApiClient.Json, CancellationToken))!);
+            }
+
+            Assert.All(bodies, body => Assert.Equal(JobStatus.InProgress, body.Status));
+            Assert.Single(bodies.Select(body => body.Version).Distinct());
+
+            await using var db = Fixture.CreateAppDbContext();
+            var stored = await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == job.Id, CancellationToken);
+            Assert.Equal(JobStatus.InProgress, stored.Status);
+            Assert.Equal(bodies[0].Version, stored.Version);
+            Assert.Equal(bodies[0].StartedAt, stored.StartedAt);
+            Assert.Equal(
+                1,
+                await db.JobHistory.CountAsync(
+                    entry => entry.JobId == job.Id && entry.Action == JobHistoryAction.Started,
+                    CancellationToken));
+            var recorded = Assert.Single(factory.Events.Events);
+            Assert.Equal(JobEventTypes.StatusChanged, recorded.Type);
+            Assert.Equal(job.Id, recorded.JobId);
+            Assert.Equal(JobStatus.Assigned, recorded.PreviousStatus);
+            return [.. responses.Select(response => response.StatusCode)];
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    private static async Task<HttpResponseMessage> StartAfterAsync(Task gate, ApiClient client, Job job)
+    {
+        await gate;
+        return await client.PutJsonAsync(
+            UpdateJobStatusTests.PathOf(job.Id),
+            UpdateJobStatusTests.Body(JobStatus.InProgress, note: null, job.Version));
+    }
+
     private async Task RaceAsync(ApiFactory factory)
     {
         var earlier = Now.AddMinutes(-30);

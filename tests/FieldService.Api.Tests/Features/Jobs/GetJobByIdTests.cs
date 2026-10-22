@@ -243,16 +243,56 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
         var details = await ReadJobAsync(response);
         Assert.Equal(status, details.Status);
         Assert.Equal(canAssign, details.Affordances.CanAssign);
-        Assert.Equal(new JobAffordances(canAssign), details.Affordances);
     }
 
-    [Fact]
-    public async Task TheAffordancesMemberIsLastAndHoldsOnlyCanAssign()
+    [Theory]
+    [InlineData(JobStatus.Unassigned, false, null, false)]
+    [InlineData(JobStatus.Assigned, false, null, false)]
+    [InlineData(JobStatus.InProgress, false, null, false)]
+    [InlineData(JobStatus.OnHold, false, null, false)]
+    [InlineData(JobStatus.Completed, false, null, false)]
+    [InlineData(JobStatus.Cancelled, false, null, false)]
+    [InlineData(JobStatus.Assigned, true, JobStatus.InProgress, false)]
+    [InlineData(JobStatus.InProgress, true, JobStatus.OnHold, true)]
+    [InlineData(JobStatus.OnHold, true, JobStatus.InProgress, false)]
+    [InlineData(JobStatus.Completed, true, null, false)]
+    [InlineData(JobStatus.Cancelled, true, null, false)]
+    public async Task AllowedStatusChangesFollowTheTransitionTableForTheCallerAndTheJobStatus(
+        JobStatus status,
+        bool asAssignee,
+        JobStatus? allowedStatus,
+        bool requiresNote)
     {
         var data = new TestData(Fixture, Now);
         var administrator = await data.CreateAdministratorAsync(CancellationToken);
-        var job = await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken);
-        using var client = ClientFor(administrator);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await data.MoveToAsync(
+            await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken),
+            technician,
+            status,
+            CancellationToken);
+        using var client = ClientFor(asAssignee ? technician.User : administrator);
+
+        using var response = await client.GetAsync(PathOf(job.Id));
+
+        var details = await ReadJobAsync(response);
+        Assert.Equal(status, details.Status);
+        AllowedStatusChange[] expected = allowedStatus is { } target ? [new(target, requiresNote)] : [];
+        Assert.Equal(expected, details.Affordances.AllowedStatusChanges);
+    }
+
+    [Fact]
+    public async Task TheAffordancesMemberIsLastAndHoldsAllowedStatusChangesThenCanAssign()
+    {
+        var data = new TestData(Fixture, Now);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await data.MoveToAsync(
+            await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken),
+            technician,
+            JobStatus.InProgress,
+            CancellationToken);
+        using var client = ClientFor(technician.User);
 
         using var response = await client.GetAsync(PathOf(job.Id));
 
@@ -260,9 +300,14 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken));
         var members = document.RootElement.EnumerateObject().Select(member => member.Name).ToList();
         Assert.Equal(["version", "affordances"], members.TakeLast(2));
+        var affordances = document.RootElement.GetProperty("affordances");
         Assert.Equal(
-            ["canAssign"],
-            document.RootElement.GetProperty("affordances").EnumerateObject().Select(member => member.Name));
+            ["allowedStatusChanges", "canAssign"],
+            affordances.EnumerateObject().Select(member => member.Name));
+        Assert.Equal(
+            """[{"status":"OnHold","requiresNote":true}]""",
+            affordances.GetProperty("allowedStatusChanges").GetRawText());
+        Assert.Equal(JsonValueKind.False, affordances.GetProperty("canAssign").ValueKind);
     }
 
     [Fact]

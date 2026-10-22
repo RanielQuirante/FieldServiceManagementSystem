@@ -102,7 +102,7 @@ public static class JobDtoBuilder
             History(JobHistoryAction.Started, JobStatus.Assigned, JobStatus.InProgress, _marco, null, null, Local(10, 19, 9, 12)),
         ],
         11,
-        new JobAffordances(false));
+        new JobAffordances([new AllowedStatusChange(JobStatus.OnHold, true)], false));
 
     public static JobDetailsResponse Details1047() => new(
         Job1047,
@@ -133,7 +133,7 @@ public static class JobDtoBuilder
             History(JobHistoryAction.Assigned, JobStatus.Unassigned, JobStatus.Assigned, _dana, _marco, null, Local(10, 19, 10, 5)),
         ],
         9,
-        new JobAffordances(true));
+        new JobAffordances([new AllowedStatusChange(JobStatus.InProgress, false)], false));
 
     public static JobDetailsResponse Details1039() => Details1042() with
     {
@@ -146,6 +146,7 @@ public static class JobDtoBuilder
         ContactPhone = null,
         Equipment = null,
         CompletedAt = Local(10, 19, 8, 52),
+        Affordances = new JobAffordances([], false),
         History =
         [
             History(JobHistoryAction.Created, null, JobStatus.Unassigned, _dana, null, null, Local(10, 19, 6, 58)),
@@ -162,6 +163,7 @@ public static class JobDtoBuilder
         Title = "Office AC filter replacement",
         Status = JobStatus.Cancelled,
         CancelledAt = Local(10, 16, 9, 20),
+        Affordances = new JobAffordances([], false),
         History =
         [
             History(JobHistoryAction.Created, null, JobStatus.Unassigned, _dana, null, null, Local(10, 15, 9, 40)),
@@ -183,6 +185,7 @@ public static class JobDtoBuilder
         Number = 1037,
         Title = "Annual boiler service",
         Status = JobStatus.OnHold,
+        Affordances = new JobAffordances([new AllowedStatusChange(JobStatus.InProgress, false)], false),
         History =
         [
             History(JobHistoryAction.Created, null, JobStatus.Unassigned, _dana, null, null, Local(10, 15, 10, 15)),

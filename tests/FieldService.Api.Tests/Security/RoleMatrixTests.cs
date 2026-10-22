@@ -20,6 +20,8 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
 
     private const string AssignmentRoute = "/api/jobs/{jobId:guid}/assignment";
 
+    private const string StatusRoute = "/api/jobs/{jobId:guid}/status";
+
     private const string TechniciansRoute = "/api/technicians";
 
     private const string MyJobsRoute = "/api/technicians/me/jobs";
@@ -70,6 +72,10 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "PUT", AssignmentRoute, AssignedTechnician, 403, "auth.forbidden" },
         { "PUT", AssignmentRoute, OtherTechnician, 403, "auth.forbidden" },
         { "PUT", AssignmentRoute, Administrator, 200, null },
+        { "PUT", StatusRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "PUT", StatusRoute, AssignedTechnician, 200, null },
+        { "PUT", StatusRoute, OtherTechnician, 404, "job.not-found" },
+        { "PUT", StatusRoute, Administrator, 403, "auth.forbidden" },
         { "GET", "/health/live", Anonymous, 200, null },
         { "GET", "/health/live", AssignedTechnician, 200, null },
         { "GET", "/health/live", OtherTechnician, 200, null },
@@ -195,8 +201,8 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         var assigned = await data.CreateTechnicianAsync(Trade.Hvac, cancellationToken);
         var other = await data.CreateTechnicianAsync(Trade.Hvac, cancellationToken);
         var job = await data.CreateJobAsync(administrator.Id, TestData.HvacTemplateId, cancellationToken);
-        await data.AssignJobAsync(job, assigned, cancellationToken);
-        return new World(administrator, assigned.User, other.User, job.Id, data.Now);
+        var assignedJob = await data.AssignJobAsync(job, assigned, cancellationToken);
+        return new World(administrator, assigned.User, other.User, job.Id, assignedJob.Version, data.Now);
     }
 
     private static Task<HttpResponseMessage> SendAsync(ApiClient client, string method, string route, World world)
@@ -214,6 +220,7 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
             ("POST", "/api/auth/sign-out") => client.PostAsync(path),
             ("POST", "/api/jobs") => client.PostJsonAsync(path, CreateJobBody(world.Now, Guid.NewGuid().ToString("N")[..8])),
             ("PUT", AssignmentRoute) => client.PutJsonAsync(path, new { technicianId = world.AssignedTechnician.Id, version = 0u }),
+            ("PUT", StatusRoute) => client.PutJsonAsync(path, new { status = "InProgress", note = (string?)null, version = world.JobVersion }),
             ("GET", _) => client.GetAsync(path),
             _ => throw new ArgumentOutOfRangeException(nameof(route), $"{method} {route} has no request in the role matrix."),
         };
@@ -224,6 +231,7 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         User AssignedTechnician,
         User OtherTechnician,
         Guid JobId,
+        uint JobVersion,
         DateTimeOffset Now)
     {
         public string? TokenFor(ApiFactory factory, string caller) => caller switch

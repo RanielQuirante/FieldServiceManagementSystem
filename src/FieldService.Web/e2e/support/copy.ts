@@ -146,6 +146,15 @@ export const jobDetailCopy = {
   backToJobs: 'Back to jobs',
 } as const
 
+export const historyCopy = {
+  created: (name: string): string => `Created by ${name}`,
+  assigned: (name: string): string => `Assigned to ${name}`,
+  started: (name: string): string => `Started by ${name}`,
+  putOnHold: (name: string): string => `Put on hold by ${name}`,
+  resumed: (name: string): string => `Resumed by ${name}`,
+  note: (text: string): string => `“${text}”`,
+} as const
+
 export const notFoundCopy = {
   heading: 'Page not found',
   title: 'Nothing is at this address',

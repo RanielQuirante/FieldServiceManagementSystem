@@ -21,7 +21,7 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
     ];
 
     [Fact]
-    public async Task SignInRefreshCreateAndSignOutLeaveNoSecretOrPersonalDatumInTheCapturedEventsOrTheLogFile()
+    public async Task SignInRefreshCreateStatusChangesAndSignOutLeaveNoSecretOrPersonalDatumInTheCapturedEventsOrTheLogFile()
     {
         var flow = await RunFlowAsync();
 
@@ -46,6 +46,9 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             },
             name => Assert.Contains(flow.FileLines, line => line.Contains($"\"Name\":\"{name}\"", StringComparison.Ordinal)));
         Assert.Contains(flow.FileLines, line => line.Contains("\"RequestPath\":\"/api/jobs\"", StringComparison.Ordinal));
+        Assert.True(
+            flow.FileLines.Count(line => line.Contains($"\"RequestPath\":\"{flow.StatusPath}\"", StringComparison.Ordinal)) >= 3,
+            "The log file holds fewer than three lines for the status changes.");
         Assert.True(flow.Secrets.Count >= 40, $"Only {flow.Secrets.Count} sentinel values were scanned for.");
     }
 
@@ -99,6 +102,8 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
         var wrongPassword = $"Wrong-{Marker()}";
         var unknownEmail = $"unknown-{marker}@fieldservice.example";
         var search = $"search-{marker}";
+        var holdNote = $"Sentinel hold note {marker}";
+        var statusPath = string.Empty;
         var job = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["job title"] = $"Sentinel title {marker}",
@@ -116,6 +121,7 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             ("the wrong password", wrongPassword),
             ("the unknown email", unknownEmail),
             ("the search term", search),
+            ("the hold note", holdNote),
         };
         secrets.AddRange(job.Select(entry => (entry.Key, entry.Value)));
         foreach (var user in DemoData.Users)
@@ -198,6 +204,9 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             using var mobileRefresh = await mobile.RefreshWithBodyAsync(mobileSession.RefreshToken);
             Assert.Equal(HttpStatusCode.OK, mobileRefresh.StatusCode);
             var mobileRefreshed = await ApiClient.ReadSessionAsync(mobileRefresh);
+            mobile.AccessToken = mobileRefreshed.AccessToken;
+            statusPath = await StartHoldAndResumeAsync(mobile, holdNote);
+            mobile.AccessToken = null;
             using var mobileSignOut = await mobile.SignOutWithBodyAsync(mobileRefreshed.RefreshToken);
             Assert.Equal(HttpStatusCode.NoContent, mobileSignOut.StatusCode);
 
@@ -235,7 +244,28 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             .Select(logEvent => new LogRecord($"captured event \"{logEvent.MessageTemplate.Text}\"", CapturingLogSink.Text(logEvent)))
             .Concat(lines.Select((line, index) => new LogRecord($"log file line {index + 1}", DecodedText(line))))
             .ToList();
-        return new Flow(secrets, records, factory.LogSink.Events, lines, addresses);
+        return new Flow(secrets, records, factory.LogSink.Events, lines, addresses, statusPath);
+    }
+
+    private static async Task<string> StartHoldAndResumeAsync(ApiClient technician, string holdNote)
+    {
+        using var assigned = await technician.GetAsync("/api/technicians/me/jobs?view=active");
+        Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
+        using var list = JsonDocument.Parse(await assigned.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var job = list.RootElement.GetProperty("items").EnumerateArray()
+            .First(item => item.GetProperty("status").GetString() == "Assigned");
+        var path = $"/api/jobs/{job.GetProperty("id").GetGuid()}/status";
+        var version = job.GetProperty("version").GetUInt32();
+        foreach (var (status, note) in new[] { ("InProgress", (string?)null), ("OnHold", holdNote), ("InProgress", null) })
+        {
+            using var changed = await technician.PutJsonAsync(path, new { status, note, version });
+            Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+            using var body = JsonDocument.Parse(await changed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(status, body.RootElement.GetProperty("status").GetString());
+            version = body.RootElement.GetProperty("version").GetUInt32();
+        }
+
+        return path;
     }
 
     private static List<string> ReadLogFiles(string directory)
@@ -312,5 +342,6 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
         List<LogRecord> Records,
         IReadOnlyList<LogEvent> Events,
         List<string> FileLines,
-        List<string> Addresses);
+        List<string> Addresses,
+        string StatusPath);
 }

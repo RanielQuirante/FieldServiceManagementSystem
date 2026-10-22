@@ -105,4 +105,17 @@ public sealed class MobileJsonContextTests
         Assert.DoesNotContain("Aisha", user.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain(nameof(UserRole.Technician), user.ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AStatusChangeRequestNeverPrintsTheHoldReason()
+    {
+        const string Note = "Waiting for the replacement fan motor quote to be approved.";
+        var request = new FieldService.Mobile.Features.Jobs.UpdateJobStatusRequest(FieldService.Mobile.Features.Jobs.JobStatus.OnHold, Note, 1);
+
+        var printed = request.ToString();
+
+        Assert.Equal("UpdateJobStatusRequest OnHold", printed);
+        Assert.DoesNotContain(Note, printed, StringComparison.Ordinal);
+        Assert.DoesNotContain("replacement", printed, StringComparison.Ordinal);
+    }
 }

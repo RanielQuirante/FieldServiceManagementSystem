@@ -126,6 +126,23 @@ public sealed class OpenApiDriftTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TheStatusCommandIsAPutOfTheRequestSchemaAnsweredWithTheJobDetails()
+    {
+        var paths = _snapshot.Value.RootElement.GetProperty("paths");
+        Assert.True(paths.TryGetProperty(JobsApiClient.JobStatusRoute, out var route));
+        var put = route.GetProperty("put");
+
+        var request = put.GetProperty("requestBody").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString();
+        var ok = put.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString();
+        var note = Schemas().GetProperty("UpdateJobStatusRequest").GetProperty("properties").GetProperty("note");
+
+        Assert.Equal("#/components/schemas/UpdateJobStatusRequest", request);
+        Assert.Equal("#/components/schemas/JobDetailsResponse", ok);
+        Assert.Equal(JobDetailsViewModel.ReasonMaxLength, note.GetProperty("maxLength").GetInt32());
+        Assert.Equal(["200", "400", "401", "403", "404", "409", "429"], put.GetProperty("responses").EnumerateObject().Select(response => response.Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void TheCheckerCatchesAWrongTypeAMissingMemberAndANullabilityMismatch()
     {
         var entry = new DtoSchema(typeof(DriftedUserReference), "UserReference", DtoDirection.Response);

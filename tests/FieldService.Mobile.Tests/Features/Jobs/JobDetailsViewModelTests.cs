@@ -1,5 +1,6 @@
 using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Shared.Controls;
+using FieldService.Mobile.Shared.Formatting;
 using FieldService.Mobile.Shared.Navigation;
 using FieldService.Mobile.Shared.Screens;
 using FieldService.Mobile.Tests.Shared.Testing;
@@ -35,7 +36,10 @@ public sealed class JobDetailsViewModelTests
         Assert.Equal("Rooftop HVAC service", viewModel.ChecklistName);
         Assert.StartsWith("Rooftop unit RTU-2 runs but is not cooling.", viewModel.Description, StringComparison.Ordinal);
         Assert.True(viewModel.ShowsRowActions);
-        Assert.False(viewModel.ShowsDock);
+        Assert.True(viewModel.ShowsDock);
+        Assert.True(viewModel.ShowsUpdateStatus);
+        Assert.False(viewModel.ShowsNavigationRow);
+        Assert.False(viewModel.ShowsStartJob);
         Assert.False(viewModel.IsAssigned);
     }
 
@@ -91,8 +95,11 @@ public sealed class JobDetailsViewModelTests
 
         await viewModel.ShowJobAsync(details.Id);
 
+        var hasDock = job == "Job1037";
         Assert.Equal(statusLine, viewModel.StatusLine);
-        Assert.False(viewModel.ShowsDock);
+        Assert.Equal(hasDock, viewModel.ShowsDock);
+        Assert.Equal(hasDock, viewModel.ShowsUpdateStatus);
+        Assert.False(viewModel.ShowsStartJob);
         Assert.False(viewModel.IsAssigned);
     }
 
@@ -286,6 +293,161 @@ public sealed class JobDetailsViewModelTests
         harness.Session.Received(1).SessionEnded += Arg.Any<EventHandler>();
         harness.Session.Received(1).SessionEnded -= Arg.Any<EventHandler>();
     }
+
+    [Fact]
+    public async Task AFailedReloadWhileOnlineKeepsTheJobUnderTheRefreshBanner()
+    {
+        var correlationId = Guid.NewGuid().ToString("D");
+        var harness = new JobsHarness(StubHttpMessageHandler.Sequence(
+            () => JobDtoBuilder.Json(JobDtoBuilder.Details1042()),
+            () => ProblemResponses.ServerError(correlationId)));
+        var viewModel = harness.CreateDetails();
+        viewModel.AppearingCommand.Execute(null);
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+        harness.Clock.Advance(TimeSpan.FromMinutes(20));
+
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+
+        Assert.Equal(2, harness.Stub.Requests.Count);
+        Assert.Equal(ScreenState.Content, viewModel.State);
+        Assert.True(viewModel.ShowsContent);
+        Assert.True(viewModel.HasRefreshError);
+        Assert.Equal(new ScreenError("The job could not be refreshed.", "Showing this job as of " + At("10:42 AM") + ".", correlationId), viewModel.RefreshError);
+        Assert.False(viewModel.IsError);
+        Assert.Null(viewModel.Error);
+        Assert.True(viewModel.HasJob);
+        Assert.Equal("Rooftop HVAC unit not cooling", viewModel.Title);
+        Assert.Equal("Brightwater Medical Clinic", viewModel.CustomerName);
+        Assert.Equal(3, viewModel.Timeline.Count);
+    }
+
+    [Fact]
+    public async Task AReloadThatNeverReachesTheApiKeepsTheJobWithoutAReference()
+    {
+        var calls = 0;
+        var harness = new JobsHarness(new StubHttpMessageHandler((_, _) => Interlocked.Increment(ref calls) == 1
+            ? Task.FromResult(JobDtoBuilder.Json(JobDtoBuilder.Details1042()))
+            : Task.FromException<HttpResponseMessage>(new HttpRequestException("Connection refused"))));
+        var viewModel = harness.CreateDetails();
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.Equal(ScreenState.Content, viewModel.State);
+        Assert.Equal(new ScreenError("The job could not be refreshed.", "Showing this job as of " + At("10:42 AM") + ".", null), viewModel.RefreshError);
+        Assert.Equal("Rooftop HVAC unit not cooling", viewModel.Title);
+    }
+
+    [Fact]
+    public async Task TryAgainAfterAFailedReloadShowsTheNewVersionAndRemovesTheBanner()
+    {
+        var harness = new JobsHarness(StubHttpMessageHandler.Sequence(
+            () => JobDtoBuilder.Json(JobDtoBuilder.Details1042()),
+            () => ProblemResponses.ServerError(Guid.NewGuid().ToString("D")),
+            () => JobDtoBuilder.Json(JobDtoBuilder.Details1042() with { Title = "Rooftop HVAC unit cooling again" })));
+        var viewModel = harness.CreateDetails();
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasRefreshError);
+
+        await viewModel.RetryCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.HasRefreshError);
+        Assert.Null(viewModel.RefreshError);
+        Assert.Equal(ScreenState.Content, viewModel.State);
+        Assert.Equal("Rooftop HVAC unit cooling again", viewModel.Title);
+    }
+
+    [Fact]
+    public async Task GoingOfflineAfterAFailedReloadShowsOnlyTheOfflineBannerAndAFailedReloadOnReturnKeepsTheJob()
+    {
+        var harness = new JobsHarness(StubHttpMessageHandler.Sequence(
+            () => JobDtoBuilder.Json(JobDtoBuilder.Details1042()),
+            () => ProblemResponses.ServerError(Guid.NewGuid().ToString("D")),
+            () => ProblemResponses.ServerError(Guid.NewGuid().ToString("D"))));
+        var viewModel = harness.CreateDetails();
+        viewModel.AppearingCommand.Execute(null);
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        harness.SetOnline(false);
+
+        Assert.Equal(ScreenState.Offline, viewModel.State);
+        Assert.False(viewModel.HasRefreshError);
+        Assert.Null(viewModel.RefreshError);
+        Assert.Equal("Showing this job as of " + At("10:42 AM") + ".", viewModel.OfflineMessage);
+
+        harness.SetOnline(true);
+
+        await WaitFor(() => viewModel.HasRefreshError);
+        Assert.Equal(ScreenState.Content, viewModel.State);
+        Assert.Null(viewModel.OfflineMessage);
+        Assert.Equal("Rooftop HVAC unit not cooling", viewModel.Title);
+        Assert.Equal(3, harness.Stub.Requests.Count);
+    }
+
+    [Fact]
+    public async Task AnotherJobOpenedAfterAFailedReloadStartsWithoutTheBanner()
+    {
+        var release = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var harness = new JobsHarness(new StubHttpMessageHandler((_, _) => Interlocked.Increment(ref calls) switch
+        {
+            1 => Task.FromResult(JobDtoBuilder.Json(JobDtoBuilder.Details1042())),
+            2 => Task.FromResult(ProblemResponses.ServerError(Guid.NewGuid().ToString("D"))),
+            _ => release.Task,
+        }));
+        var viewModel = harness.CreateDetails();
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasRefreshError);
+
+        var opening = viewModel.ShowJobAsync(JobDtoBuilder.Job1047);
+
+        Assert.Equal(ScreenState.Loading, viewModel.State);
+        Assert.False(viewModel.HasRefreshError);
+        Assert.Null(viewModel.RefreshError);
+        Assert.Null(viewModel.Job);
+        release.SetResult(JobDtoBuilder.Json(JobDtoBuilder.Details1047()));
+        await opening;
+        Assert.Equal("Elm Street Bakery", viewModel.CustomerName);
+        Assert.False(viewModel.HasRefreshError);
+    }
+
+    [Fact]
+    public async Task AFailedFirstLoadStillReplacesTheContentWithTheErrorState()
+    {
+        var harness = new JobsHarness(StubHttpMessageHandler.Sequence(() => ProblemResponses.ServerError(Guid.NewGuid().ToString("D"))));
+        var viewModel = harness.CreateDetails();
+
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+
+        Assert.Equal(ScreenState.Error, viewModel.State);
+        Assert.False(viewModel.HasRefreshError);
+        Assert.Null(viewModel.RefreshError);
+        Assert.False(viewModel.ShowsContent);
+    }
+
+    [Fact]
+    public async Task TheRefreshBannerIsForgottenWhenTheSessionEnds()
+    {
+        var harness = new JobsHarness(StubHttpMessageHandler.Sequence(
+            () => JobDtoBuilder.Json(JobDtoBuilder.Details1042()),
+            () => ProblemResponses.ServerError(Guid.NewGuid().ToString("D"))));
+        var viewModel = harness.CreateDetails();
+        viewModel.AppearingCommand.Execute(null);
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasRefreshError);
+
+        harness.EndSession();
+
+        Assert.Null(viewModel.RefreshError);
+        Assert.False(viewModel.HasRefreshError);
+        Assert.Null(viewModel.Job);
+    }
+
+    private static string At(string time) => time.Replace(' ', DisplayFormats.NoBreakSpace);
 
     private static async Task WaitFor(Func<bool> condition)
     {

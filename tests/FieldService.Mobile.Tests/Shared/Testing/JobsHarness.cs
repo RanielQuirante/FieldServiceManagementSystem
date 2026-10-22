@@ -4,6 +4,7 @@ using FieldService.Mobile.Shared.Navigation;
 using FieldService.Mobile.Shared.Screens;
 using FieldService.Mobile.Shared.Session;
 using Microsoft.Extensions.Time.Testing;
+using Microsoft.Maui.Accessibility;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.ApplicationModel.Communication;
 using Microsoft.Maui.Devices.Sensors;
@@ -37,6 +38,7 @@ public sealed class JobsHarness
         Dialer = Substitute.For<IPhoneDialer>();
         Dialer.IsSupported.Returns(dialerSupported);
         Launcher = Substitute.For<ILauncher>();
+        ScreenReader = Substitute.For<ISemanticScreenReader>();
         Layout = Substitute.For<IWindowLayout>();
         Layout.IsTwoPane.Returns(twoPane);
         Jobs = new JobsApiClient(TestSession.CreateClient(stub, Logs, Session));
@@ -64,12 +66,14 @@ public sealed class JobsHarness
 
     public ILauncher Launcher { get; }
 
+    public ISemanticScreenReader ScreenReader { get; }
+
     public IWindowLayout Layout { get; }
 
     public JobsApiClient Jobs { get; }
 
     public JobDetailsViewModel CreateDetails() =>
-        new(Jobs, Session, Map, Dialer, Launcher, Navigator, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
+        new(Jobs, Session, Map, Dialer, Launcher, Navigator, ScreenReader, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
 
     public MyJobsViewModel CreateMyJobs() =>
         new(Jobs, Session, Navigator, Startup, Layout, CreateDetails, Network, Clock, Logs.CreateLogger<MyJobsViewModel>());
@@ -88,8 +92,10 @@ public sealed class JobsHarness
     private static ISessionService SignedInAsMarco()
     {
         var session = Substitute.For<ISessionService>();
+        var accessToken = "access-" + Guid.NewGuid().ToString("N");
         session.User.Returns(new SignedInUser(JobDtoBuilder.Marco, "Marco Reyes", FieldService.Mobile.Features.SignIn.UserRole.Technician, "marco.reyes@fieldservice.example"));
-        session.AccessToken.Returns("access-" + Guid.NewGuid().ToString("N"));
+        session.AccessToken.Returns(accessToken);
+        session.Credential.Returns(new SessionCredential(1, JobDtoBuilder.Marco, accessToken));
         return session;
     }
 }

@@ -129,6 +129,26 @@ public sealed class JobTransitionMatrixTests
         { JobStatus.Cancelled, JobStatus.Cancelled, Other, Invalid },
     };
 
+    public static TheoryData<JobStatus, JobStatus, string> StatusChangesToTargetsOfOtherCommands
+    {
+        get
+        {
+            var data = new TheoryData<JobStatus, JobStatus, string>();
+            foreach (var from in Enum.GetValues<JobStatus>())
+            {
+                foreach (var to in new[] { JobStatus.Assigned, JobStatus.Completed, JobStatus.Cancelled })
+                {
+                    foreach (var actorKind in new[] { Admin, Assignee, Other })
+                    {
+                        data.Add(from, to, actorKind);
+                    }
+                }
+            }
+
+            return data;
+        }
+    }
+
     [Fact]
     public void MatrixCoversEveryPairOfTheSixStatusesForEachOfTheThreeActors()
     {
@@ -176,6 +196,33 @@ public sealed class JobTransitionMatrixTests
         Assert.Equal(actor.UserId, entry.ActorUserId);
         Assert.Equal(arrangement.Later, entry.OccurredAt);
         Assert.Equal(arrangement.Later, job.UpdatedAt);
+    }
+
+    [Theory]
+    [MemberData(nameof(StatusChangesToTargetsOfOtherCommands))]
+    public void AStatusChangeToAssignedCompletedOrCancelledIsAnInvalidTransitionFromEveryStatusForEveryActor(
+        JobStatus from,
+        JobStatus to,
+        string actorKind)
+    {
+        var arrangement = TestData.ArrangeJob(from, _start);
+        var job = arrangement.Job;
+        var historyBefore = job.History.Count;
+        var updatedBefore = job.UpdatedAt;
+        var actor = actorKind switch
+        {
+            Admin => arrangement.AdministratorActor,
+            Assignee => arrangement.AssigneeActor,
+            _ => arrangement.OtherTechnicianActor,
+        };
+
+        var error = job.ChangeStatus(to, TestData.HoldNote, actor, arrangement.Later);
+
+        Assert.Equal(Invalid, error?.Code);
+        Assert.Null(error?.Field);
+        Assert.Equal(from, job.Status);
+        Assert.Equal(historyBefore, job.History.Count);
+        Assert.Equal(updatedBefore, job.UpdatedAt);
     }
 
     [Theory]

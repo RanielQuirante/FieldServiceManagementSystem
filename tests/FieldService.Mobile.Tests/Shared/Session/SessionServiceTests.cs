@@ -164,7 +164,7 @@ public sealed class SessionServiceTests
             () => ProblemResponses.Session(TestSession.NewAccessToken(), TestSession.NewRefreshToken(), _technicianId, "Aisha Karim")));
 
         await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
-        await harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None);
+        await harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None);
 
         Assert.Equal("aisha.karim@fieldservice.example", harness.Session.User?.Email);
         Assert.DoesNotContain("aisha.karim", harness.Session.User!.ToString(), StringComparison.Ordinal);
@@ -405,9 +405,9 @@ public sealed class SessionServiceTests
         await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
         var ended = CountEnds(harness.Session);
 
-        var refreshed = await harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None);
+        var refreshed = await harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None);
 
-        Assert.False(refreshed);
+        Assert.Null(refreshed);
         Assert.Equal(1, ended());
         Assert.Equal(SessionEndReason.Expired, harness.Session.EndReason);
         Assert.Null(harness.Session.User);
@@ -422,9 +422,9 @@ public sealed class SessionServiceTests
         harness.Storage.GetAsync(TokenStore.RefreshTokenKey).ThrowsAsync(new InvalidOperationException("keystore entry unreadable"));
         var ended = CountEnds(harness.Session);
 
-        var refreshed = await harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None);
+        var refreshed = await harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None);
 
-        Assert.False(refreshed);
+        Assert.Null(refreshed);
         Assert.Equal(1, ended());
         Assert.Equal(SessionEndReason.Expired, harness.Session.EndReason);
         Assert.Single(harness.Stub.Requests);
@@ -457,8 +457,8 @@ public sealed class SessionServiceTests
         await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
         var ended = CountEnds(harness.Session);
 
-        Assert.True(await harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None));
-        await Assert.ThrowsAsync<HttpRequestException>(() => harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None));
+        Assert.NotNull(await harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None));
+        await Assert.ThrowsAsync<HttpRequestException>(() => harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None));
 
         Assert.Equal(0, ended());
         Assert.NotNull(harness.Session.User);
@@ -481,13 +481,13 @@ public sealed class SessionServiceTests
         await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
         var ended = CountEnds(harness.Session);
 
-        var refreshing = harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None);
+        var refreshing = harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None);
         await refreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         await harness.Session.SignOutAsync(CancellationToken.None);
         heldRefresh.SetResult(ProblemResponses.Session(rotatedAccessToken, rotatedRefreshToken, _technicianId, "Aisha Karim"));
         var refreshed = await refreshing;
 
-        Assert.False(refreshed);
+        Assert.Null(refreshed);
         Assert.Null(harness.Session.User);
         Assert.Null(harness.Session.AccessToken);
         Assert.Null(harness.StoredRefreshToken);
@@ -518,14 +518,14 @@ public sealed class SessionServiceTests
         await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
         var ended = CountEnds(harness.Session);
 
-        var refreshing = harness.Session.RefreshAccessTokenAsync(harness.Session.AccessToken, CancellationToken.None);
+        var refreshing = harness.Session.RefreshAccessTokenAsync(harness.Session.Credential, CancellationToken.None);
         await refreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         await harness.Session.SignOutAsync(CancellationToken.None);
         await harness.Session.SignInAsync("lena.park@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
         heldRefresh.SetResult(ProblemResponses.SessionExpired());
         var refreshed = await refreshing;
 
-        Assert.False(refreshed);
+        Assert.Null(refreshed);
         Assert.Equal(_nextTechnicianId, harness.Session.User?.Id);
         Assert.Equal(nextAccessToken, harness.Session.AccessToken);
         Assert.Equal(nextRefreshToken, harness.StoredRefreshToken);
@@ -559,6 +559,160 @@ public sealed class SessionServiceTests
         Assert.Equal(_nextTechnicianId, harness.Session.User?.Id);
         Assert.Equal(nextRefreshToken, harness.StoredRefreshToken);
         await harness.Storage.DidNotReceive().SetAsync(TokenStore.RefreshTokenKey, restoredRefreshToken);
+    }
+
+    [Fact]
+    public async Task ASignInOverALiveSessionSignsTheReplacedSessionOutWithItsOwnRefreshToken()
+    {
+        var replacedRefreshToken = TestSession.NewRefreshToken();
+        var nextRefreshToken = TestSession.NewRefreshToken();
+        var signedOut = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var signIns = 0;
+        var harness = TestSession.Create(new StubHttpMessageHandler((request, _) =>
+        {
+            switch (request.RequestUri!.AbsolutePath)
+            {
+                case SignInPath:
+                    return Task.FromResult(Interlocked.Increment(ref signIns) == 1
+                        ? ProblemResponses.Session(TestSession.NewAccessToken(), replacedRefreshToken, _technicianId, "Aisha Karim")
+                        : ProblemResponses.Session(TestSession.NewAccessToken(), nextRefreshToken, _nextTechnicianId, "Lena Park"));
+                case SignOutPath:
+                    signedOut.TrySetResult(ReadRefreshToken(request));
+                    return Task.FromResult(ProblemResponses.NoContent());
+                default:
+                    throw new InvalidOperationException("Unexpected request.");
+            }
+        }));
+        await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
+
+        await harness.Session.SignInAsync("lena.park@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
+
+        Assert.Equal(replacedRefreshToken, await signedOut.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Equal(_nextTechnicianId, harness.Session.User?.Id);
+        Assert.Equal(nextRefreshToken, harness.StoredRefreshToken);
+        await WaitFor(() => harness.Logs.AllText().Contains("session.abandoned-signed-out " + _technicianId, StringComparison.Ordinal));
+        var text = harness.Logs.AllText();
+        Assert.Contains("session.replaced " + _technicianId, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(replacedRefreshToken, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(nextRefreshToken, text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASignOutOfTheReplacedSessionThatHangsOrFailsNeverHoldsUpTheNewSignIn()
+    {
+        var held = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var signIns = 0;
+        var harness = TestSession.Create(new StubHttpMessageHandler((request, _) => request.RequestUri!.AbsolutePath switch
+        {
+            SignInPath => Task.FromResult(Interlocked.Increment(ref signIns) == 1
+                ? ProblemResponses.Session(TestSession.NewAccessToken(), TestSession.NewRefreshToken(), _technicianId, "Aisha Karim")
+                : ProblemResponses.Session(TestSession.NewAccessToken(), TestSession.NewRefreshToken(), _nextTechnicianId, "Lena Park")),
+            SignOutPath => held.Task,
+            _ => throw new InvalidOperationException("Unexpected request."),
+        }));
+        await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
+
+        await harness.Session.SignInAsync("lena.park@fieldservice.example", TestSession.NewPassword(), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.Equal(_nextTechnicianId, harness.Session.User?.Id);
+        held.SetException(new HttpRequestException("Connection refused"));
+        await WaitFor(() => harness.Logs.AllText().Contains("session.abandoned-sign-out-failed " + _technicianId + " HttpRequestException", StringComparison.Ordinal));
+        Assert.Equal(_nextTechnicianId, harness.Session.User?.Id);
+        Assert.NotNull(harness.Session.AccessToken);
+    }
+
+    [Fact]
+    public async Task ARefreshThatResumesOnlyAfterTheNextTechnicianSignedInNeverHandsOverTheirToken()
+    {
+        var heldRefresh = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rotatedAccessToken = TestSession.NewAccessToken();
+        var nextAccessToken = TestSession.NewAccessToken();
+        var signIns = 0;
+        var harness = TestSession.Create(new StubHttpMessageHandler((request, _) => request.RequestUri!.AbsolutePath switch
+        {
+            SignInPath => Task.FromResult(Interlocked.Increment(ref signIns) == 1
+                ? ProblemResponses.Session(TestSession.NewAccessToken(), TestSession.NewRefreshToken(), _technicianId, "Aisha Karim")
+                : ProblemResponses.Session(nextAccessToken, TestSession.NewRefreshToken(), _nextTechnicianId, "Lena Park")),
+            RefreshPath => Hold(refreshStarted, heldRefresh),
+            SignOutPath => Task.FromResult(ProblemResponses.NoContent()),
+            _ => throw new InvalidOperationException("Unexpected request."),
+        }));
+        await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
+        var rejected = harness.Session.Credential;
+        var first = Task.Run(() => harness.Session.RefreshAccessTokenAsync(rejected, CancellationToken.None), TestContext.Current.CancellationToken);
+        await refreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var screen = new QueuedSynchronizationContext();
+        var joined = QueuedSynchronizationContext.CreateOn(screen, () => harness.Session.RefreshAccessTokenAsync(rejected, CancellationToken.None));
+
+        heldRefresh.SetResult(ProblemResponses.Session(rotatedAccessToken, TestSession.NewRefreshToken(), _technicianId, "Aisha Karim"));
+        var firstToken = await first.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await WaitFor(() => screen.Pending > 0);
+        await Task.Run(() => harness.Session.SignInAsync("lena.park@fieldservice.example", TestSession.NewPassword(), CancellationToken.None), TestContext.Current.CancellationToken);
+        screen.RunPending();
+
+        Assert.True(joined.IsCompleted);
+        Assert.Equal(rotatedAccessToken, firstToken);
+        Assert.Null(await joined);
+        Assert.Equal(nextAccessToken, harness.Session.AccessToken);
+        Assert.Equal(_nextTechnicianId, harness.Session.User?.Id);
+        Assert.Contains("session.retry-withheld", harness.Logs.AllText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ARestoreThatFinishesAfterASignInSignsItsRotatedSessionOut()
+    {
+        var heldRestore = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var restoreStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var signedOut = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var restoredRefreshToken = TestSession.NewRefreshToken();
+        var harness = TestSession.Create(new StubHttpMessageHandler((request, _) =>
+        {
+            switch (request.RequestUri!.AbsolutePath)
+            {
+                case SignInPath:
+                    return Task.FromResult(ProblemResponses.Session(TestSession.NewAccessToken(), TestSession.NewRefreshToken(), _nextTechnicianId, "Lena Park"));
+                case RefreshPath:
+                    return Hold(restoreStarted, heldRestore);
+                case SignOutPath:
+                    signedOut.TrySetResult(ReadRefreshToken(request));
+                    return Task.FromResult(ProblemResponses.NoContent());
+                default:
+                    throw new InvalidOperationException("Unexpected request.");
+            }
+        }));
+        harness.StoreRefreshToken(TestSession.NewRefreshToken());
+
+        var restoring = harness.Session.TryRestoreAsync(CancellationToken.None);
+        await restoreStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await harness.Session.SignInAsync("lena.park@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
+        heldRestore.SetResult(ProblemResponses.Session(TestSession.NewAccessToken(), restoredRefreshToken, _technicianId, "Aisha Karim"));
+        await restoring;
+
+        Assert.Equal(restoredRefreshToken, await signedOut.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Equal(_nextTechnicianId, harness.Session.User?.Id);
+        await WaitFor(() => harness.Logs.AllText().Contains("session.abandoned-signed-out " + _technicianId, StringComparison.Ordinal));
+        Assert.DoesNotContain(restoredRefreshToken, harness.Logs.AllText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AFirstSignInSignsNothingOut()
+    {
+        var harness = TestSession.Create(StubHttpMessageHandler.Sequence(
+            () => ProblemResponses.Session(TestSession.NewAccessToken(), TestSession.NewRefreshToken(), _technicianId, "Aisha Karim")));
+        harness.StoreRefreshToken(TestSession.NewRefreshToken());
+
+        await harness.Session.SignInAsync("aisha.karim@fieldservice.example", TestSession.NewPassword(), CancellationToken.None);
+
+        Assert.Single(harness.Stub.Requests);
+        Assert.DoesNotContain("session.replaced", harness.Logs.AllText(), StringComparison.Ordinal);
+    }
+
+    private static string? ReadRefreshToken(HttpRequestMessage request)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+        return document.RootElement.GetProperty("refreshToken").GetString();
     }
 
     private static Func<int> CountEnds(ISessionService session)

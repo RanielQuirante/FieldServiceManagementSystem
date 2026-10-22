@@ -67,7 +67,21 @@ export interface JobHistoryEntry {
   readonly toStatus: JobStatus
   readonly actor: PersonReference
   readonly technician: TechnicianReference | null
+  readonly note: string | null
   readonly occurredAt: string
+}
+
+export type StatusChangeTarget = 'InProgress' | 'OnHold'
+
+export interface AllowedStatusChange {
+  readonly status: JobStatus
+  readonly requiresNote: boolean
+}
+
+export interface UpdateJobStatusBody {
+  readonly status: string
+  readonly note: string | null
+  readonly version: number
 }
 
 export interface JobDetails extends JobSummary {
@@ -80,8 +94,12 @@ export interface JobDetails extends JobSummary {
   readonly createdBy: PersonReference
   readonly createdAt: string
   readonly assignedAt: string | null
+  readonly startedAt: string | null
   readonly history: readonly JobHistoryEntry[]
-  readonly affordances: { readonly canAssign: boolean }
+  readonly affordances: {
+    readonly allowedStatusChanges: readonly AllowedStatusChange[]
+    readonly canAssign: boolean
+  }
 }
 
 export interface TechnicianJobReference {
@@ -385,6 +403,50 @@ export class TechnicianApi {
 
   private get(path: string): Promise<APIResponse> {
     return this.request.get(path, { headers: { Authorization: `Bearer ${this.accessToken}` } })
+  }
+
+  updateStatus(jobId: string, body: UpdateJobStatusBody): Promise<APIResponse> {
+    return this.request.put(`/api/jobs/${jobId}/status`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+      data: body,
+    })
+  }
+
+  async readJob(jobId: string): Promise<JobDetails> {
+    const response = await this.getJob(jobId)
+    if (!response.ok()) {
+      const problem = await readProblem(response)
+      throw new Error(`GET /api/jobs/{jobId} failed with ${problem.status} ${problem.code}.`)
+    }
+    return (await response.json()) as JobDetails
+  }
+
+  private async changeStatus(
+    jobId: string,
+    status: StatusChangeTarget,
+    note: string | null,
+  ): Promise<JobDetails> {
+    const current = await this.readJob(jobId)
+    const response = await this.updateStatus(jobId, { status, note, version: current.version })
+    if (!response.ok()) {
+      const problem = await readProblem(response)
+      throw new Error(
+        `PUT /api/jobs/{jobId}/status to ${status} failed with ${problem.status} ${problem.code}.`,
+      )
+    }
+    return (await response.json()) as JobDetails
+  }
+
+  start(jobId: string): Promise<JobDetails> {
+    return this.changeStatus(jobId, 'InProgress', null)
+  }
+
+  hold(jobId: string, note: string): Promise<JobDetails> {
+    return this.changeStatus(jobId, 'OnHold', note)
+  }
+
+  resume(jobId: string): Promise<JobDetails> {
+    return this.changeStatus(jobId, 'InProgress', null)
   }
 
   async assignedJobs(view: AssignedJobsView): Promise<AssignedJob[]> {

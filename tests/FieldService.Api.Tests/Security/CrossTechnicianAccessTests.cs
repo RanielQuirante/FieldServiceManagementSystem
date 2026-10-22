@@ -27,6 +27,8 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
 
     public static TheoryData<JobStatus> AssignedStatuses => [.. _assignedStatuses];
 
+    public static TheoryData<JobStatus> ChangeableStatuses => [JobStatus.Assigned, JobStatus.InProgress, JobStatus.OnHold];
+
     public static TheoryData<string?, bool> MyJobsQueries => new()
     {
         { null, false },
@@ -55,16 +57,54 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
 
         using var foreign = await intruderClient.GetAsync($"/api/jobs/{job.Id}");
         using var missing = await intruderClient.GetAsync($"/api/jobs/{Guid.CreateVersion7()}");
+        using var foreignChange = await intruderClient.PutJsonAsync(StatusPath(job.Id), OwnersNextChange(job));
+        using var missingChange = await intruderClient.PutJsonAsync(StatusPath(Guid.CreateVersion7()), OwnersNextChange(job));
         using var own = await ownerClient.GetAsync($"/api/jobs/{job.Id}");
 
         using var foreignProblem = await ApiClient.AssertProblemAsync(foreign, HttpStatusCode.NotFound, "job.not-found");
         using var missingProblem = await ApiClient.AssertProblemAsync(missing, HttpStatusCode.NotFound, "job.not-found");
         Assert.Equal(WithoutRequestMembers(missingProblem), WithoutRequestMembers(foreignProblem));
+        using var foreignChangeProblem = await ApiClient.AssertProblemAsync(foreignChange, HttpStatusCode.NotFound, "job.not-found");
+        using var missingChangeProblem = await ApiClient.AssertProblemAsync(missingChange, HttpStatusCode.NotFound, "job.not-found");
+        Assert.Equal(WithoutRequestMembers(missingChangeProblem), WithoutRequestMembers(foreignChangeProblem));
+        Assert.Equal(WithoutRequestMembers(foreignProblem), WithoutRequestMembers(foreignChangeProblem));
         Assert.Equal(HttpStatusCode.OK, own.StatusCode);
         using var ownBody = JsonDocument.Parse(await own.Content.ReadAsStringAsync(CancellationToken));
         Assert.Equal(status.ToString(), ownBody.RootElement.GetProperty("status").GetString());
         Assert.Equal(before, await ReadRowAsync(job.Id));
         Fixture.Factory.Events.AssertEmpty();
+    }
+
+    [Theory]
+    [MemberData(nameof(ChangeableStatuses))]
+    public async Task AnotherTechniciansChangeGets404WhileTheOwnerMakesTheSameChangeWithTheSameVersion(JobStatus status)
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var intruder = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await ArrangeJobAsync(data, administrator, owner, status);
+        var before = await ReadRowAsync(job.Id);
+        Fixture.Factory.Events.Clear();
+        using var intruderClient = Fixture.Factory.CreateApiClient();
+        intruderClient.AccessToken = TestTokens.For(Fixture.Factory, intruder.User);
+        using var ownerClient = Fixture.Factory.CreateApiClient();
+        ownerClient.AccessToken = TestTokens.For(Fixture.Factory, owner.User);
+
+        using var foreignChange = await intruderClient.PutJsonAsync(StatusPath(job.Id), OwnersNextChange(job));
+
+        using var problem = await ApiClient.AssertProblemAsync(foreignChange, HttpStatusCode.NotFound, "job.not-found");
+        Assert.Equal(before, await ReadRowAsync(job.Id));
+        Fixture.Factory.Events.AssertEmpty();
+
+        using var ownChange = await ownerClient.PutJsonAsync(StatusPath(job.Id), OwnersNextChange(job));
+
+        Assert.Equal(HttpStatusCode.OK, ownChange.StatusCode);
+        using var ownBody = JsonDocument.Parse(await ownChange.Content.ReadAsStringAsync(CancellationToken));
+        var expected = status == JobStatus.InProgress ? JobStatus.OnHold : JobStatus.InProgress;
+        Assert.Equal(expected.ToString(), ownBody.RootElement.GetProperty("status").GetString());
+        var recorded = Assert.Single(Fixture.Factory.Events.Events);
+        Assert.Equal(job.Id, recorded.JobId);
     }
 
     [Fact]
@@ -79,11 +119,20 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
         using var administratorClient = Fixture.Factory.CreateApiClient();
         administratorClient.AccessToken = TestTokens.For(Fixture.Factory, administrator);
 
+        var before = await ReadRowAsync(job.Id);
+        Fixture.Factory.Events.Clear();
+
         using var hidden = await technicianClient.GetAsync($"/api/jobs/{job.Id}");
+        using var hiddenChange = await technicianClient.PutJsonAsync(
+            StatusPath(job.Id),
+            new { status = "InProgress", note = (string?)null, version = job.Version });
         using var visible = await administratorClient.GetAsync($"/api/jobs/{job.Id}");
 
         using var problem = await ApiClient.AssertProblemAsync(hidden, HttpStatusCode.NotFound, "job.not-found");
+        using var changeProblem = await ApiClient.AssertProblemAsync(hiddenChange, HttpStatusCode.NotFound, "job.not-found");
         Assert.Equal(HttpStatusCode.OK, visible.StatusCode);
+        Assert.Equal(before, await ReadRowAsync(job.Id));
+        Fixture.Factory.Events.AssertEmpty();
     }
 
     [Theory]
@@ -151,6 +200,9 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
 
         using var foreign = await previousClient.GetAsync($"/api/jobs/{job.Id}");
         using var missing = await previousClient.GetAsync($"/api/jobs/{Guid.CreateVersion7()}");
+        using var foreignChange = await previousClient.PutJsonAsync(
+            StatusPath(job.Id),
+            new { status = "InProgress", note = (string?)null, version = reassignedBody.RootElement.GetProperty("version").GetUInt32() });
         using var previousActive = await previousClient.GetAsync(MyJobsPath);
         using var previousCompleted = await previousClient.GetAsync(MyJobsPath + "?view=completed");
         using var own = await nextClient.GetAsync($"/api/jobs/{job.Id}");
@@ -159,6 +211,8 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
         using var foreignProblem = await ApiClient.AssertProblemAsync(foreign, HttpStatusCode.NotFound, "job.not-found");
         using var missingProblem = await ApiClient.AssertProblemAsync(missing, HttpStatusCode.NotFound, "job.not-found");
         Assert.Equal(WithoutRequestMembers(missingProblem), WithoutRequestMembers(foreignProblem));
+        using var foreignChangeProblem = await ApiClient.AssertProblemAsync(foreignChange, HttpStatusCode.NotFound, "job.not-found");
+        Assert.Equal(WithoutRequestMembers(foreignProblem), WithoutRequestMembers(foreignChangeProblem));
         Assert.Empty(await ReadMyJobIdsAsync(previousActive));
         Assert.Empty(await ReadMyJobIdsAsync(previousCompleted));
         Assert.Equal(HttpStatusCode.OK, own.StatusCode);
@@ -168,6 +222,12 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
     }
 
     private static bool IsFinished(JobStatus status) => status is JobStatus.Completed or JobStatus.Cancelled;
+
+    private static string StatusPath(Guid jobId) => $"/api/jobs/{jobId}/status";
+
+    private static object OwnersNextChange(Job job) => job.Status == JobStatus.InProgress
+        ? new { status = "OnHold", note = (string?)TestData.HoldNote, version = job.Version }
+        : new { status = "InProgress", note = (string?)null, version = job.Version };
 
     private static string MyJobsQuery(string? view, Guid? technicianId)
     {

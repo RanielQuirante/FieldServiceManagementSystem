@@ -44,8 +44,16 @@ public sealed class HeaderAndPaneLayoutTests
         Assert.Equal("16,0", Resolve(Setter(style, "Padding")));
         Assert.Equal(14, Number(Resolve(Setter(label, "FontSize"))));
         var buttons = heroActions.Descendants(_maui + "Button").ToList();
-        Assert.Equal(["{Binding NavigateCommand}", "{Binding CallCommand}"], buttons.Select(button => button.Attribute("Command")?.Value));
-        Assert.All(buttons, button => Assert.Equal("{StaticResource FsSecondaryOnDarkDesktopButton}", button.Attribute("Style")?.Value));
+        var primary = Style("Styles.xaml", "FsPrimaryOnDarkDesktopButton");
+        Assert.Equal(
+            ["{Binding StartJobCommand}", "{Binding OpenStatusSheetCommand}", "{Binding NavigateCommand}", "{Binding CallCommand}"],
+            buttons.Select(button => button.Attribute("Command")?.Value));
+        Assert.Equal(
+            ["FsPrimaryOnDarkDesktopButton", "FsPrimaryOnDarkDesktopButton", "FsSecondaryOnDarkDesktopButton", "FsSecondaryOnDarkDesktopButton"],
+            buttons.Select(button => button.Attribute("Style")?.Value?.Replace("{StaticResource ", string.Empty, StringComparison.Ordinal).TrimEnd('}')));
+        Assert.Equal("{StaticResource FsSecondaryOnDarkDesktopButton}", primary.Attribute("BasedOn")?.Value);
+        Assert.Equal("{StaticResource FsPrimaryOnDarkBrush}", Setter(primary, "Background"));
+        Assert.Equal("{StaticResource FsInk}", Setter(primary, "TextColor"));
         Assert.All(heroActions.Descendants().Where(element => element.Name.LocalName == "Icon"), icon => Assert.Equal("18", icon.Attribute("Size")?.Value));
         Assert.All(heroActions.Descendants(_maui + "Label"), text => Assert.Equal("{StaticResource FsTextButtonLabelDesktop}", text.Attribute("Style")?.Value));
         Assert.All(heroActions.Descendants(_maui + "HorizontalStackLayout"), row => Assert.Equal("{StaticResource FsSpace8}", row.Attribute("Spacing")?.Value));

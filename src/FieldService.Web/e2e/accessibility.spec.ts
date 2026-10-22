@@ -16,6 +16,7 @@ import { demoAccounts, demoTechnicians, type JobStatus } from './support/api.ts'
 import {
   assignCopy,
   createJobCopy,
+  historyCopy,
   jobDetailCopy,
   jobsCopy,
   notFoundCopy,
@@ -26,8 +27,10 @@ import {
 } from './support/copy.ts'
 import {
   assignRowName,
+  createOnHoldJob,
   createUnassignedJob,
   expectedAssignOrder,
+  holdNoteFor,
   momentSpansOf,
   rowNamed,
 } from './support/jobs.ts'
@@ -118,6 +121,10 @@ function errorToast(page: Page): Locator {
     .getByRole('region', { name: shellCopy.notifications })
     .getByRole('alert')
     .filter({ hasText: toastCopy.errorTitle })
+}
+
+function historyItems(page: Page): Locator {
+  return page.getByRole('region', { name: jobDetailCopy.history }).getByRole('listitem')
 }
 
 function assignPanel(page: Page): Locator {
@@ -309,7 +316,7 @@ const signInConsole = anyOf(
   consolePatterns.signInServerError,
 )
 
-test.describe('E2E-19 accessibility of the W1 and W2 routes and states', () => {
+test.describe('E2E-19 accessibility of the W1 to W3 routes and states', () => {
   for (const viewport of widths) {
     test(`sign-in states pass axe at ${viewport.width} px`, async ({
       anonymousPage: page,
@@ -381,10 +388,11 @@ test.describe('E2E-19 accessibility of the W1 and W2 routes and states', () => {
       await expect(page).toHaveURL('/sign-in?redirect=%2Fjobs')
     })
 
-    test(`W1 and W2 routes and states pass axe at ${viewport.width} px`, async ({
+    test(`W1 to W3 routes and states pass axe at ${viewport.width} px`, async ({
       adminPage: page,
       api,
       guards,
+      technician,
       runId,
     }, testInfo) => {
       const marker = `E2E ${runId} toast ${viewport.width}`
@@ -464,6 +472,33 @@ test.describe('E2E-19 accessibility of the W1 and W2 routes and states', () => {
         runId,
         `job detail after a stale-version conflict ${viewport.width}`,
       )
+      const lenaApi = await technician(demoTechnicians.assignments.email)
+      const note = holdNoteFor(runId)
+      const held = await createOnHoldJob(api, lenaApi, runId, `axe ${viewport.width} on hold`, note)
+      await openInApp(page, `/jobs/${held.id}`)
+      await expect(historyItems(page)).toHaveCount(4)
+      await expect(historyItems(page).last()).toContainText(historyCopy.note(note))
+      await audit(page, testInfo, runId, `job detail on hold with its note ${viewport.width}`)
+      await lenaApi.resume(held.id)
+      await openInApp(page, '/jobs?status=InProgress')
+      await expect(
+        page
+          .getByRole('group', { name: jobsCopy.statusFilter })
+          .getByRole('button', { name: new RegExp(`^${statusLabels.InProgress}`) }),
+      ).toHaveAttribute('aria-pressed', 'true')
+      const heldRow = tableRows(page).filter({
+        has: page.getByRole('link', { name: held.title, exact: true }),
+      })
+      await expect(heldRow).toHaveCount(1)
+      await audit(page, testInfo, runId, `jobs filtered by In progress ${viewport.width}`)
+      await heldRow.getByRole('link', { name: held.title, exact: true }).click()
+      await expect(historyItems(page)).toHaveCount(5)
+      await audit(
+        page,
+        testInfo,
+        runId,
+        `job detail after start, hold and resume ${viewport.width}`,
+      )
       await page.getByRole('link', { name: shellCopy.newJob }).click()
       await expect(
         page.getByRole('combobox', { name: createJobCopy.checklistTemplate }),
@@ -492,11 +527,13 @@ test.describe('E2E-19 accessibility of the W1 and W2 routes and states', () => {
     })
   }
 
-  test('every W1 and W2 route and state reflows at 320 px without page scroll', async ({
+  test('every W1 to W3 route and state reflows at 320 px without page scroll', async ({
     adminPage: page,
     anonymousPage,
     api,
     guards,
+    sentinelSink,
+    technician,
     runId,
   }, testInfo) => {
     const marker = `E2E ${runId} toast 320`
@@ -611,6 +648,22 @@ test.describe('E2E-19 accessibility of the W1 and W2 routes and states', () => {
       await pageScrollWidth(page),
       'assign panel with a technician chosen',
     ).toBeLessThanOrEqual(320)
+    const lenaApi = await technician(demoTechnicians.assignments.email)
+    const longNote = `HoldNote${runId}`.repeat(40).slice(0, 500)
+    sentinelSink('hold note', longNote)
+    const held = await createOnHoldJob(api, lenaApi, runId, 'reflow 320 on hold', longNote)
+    await openInApp(page, `/jobs/${held.id}`)
+    const history = page.getByRole('region', { name: jobDetailCopy.history })
+    await expect(historyItems(page).last()).toContainText(historyCopy.note(longNote))
+    expect(
+      await pageScrollWidth(page),
+      'job detail on hold with a 500-character note without spaces',
+    ).toBeLessThanOrEqual(320)
+    expect(
+      await fitsInRegion(history, history.getByText(historyCopy.note(longNote))),
+      'the 500-character note inside the history region',
+    ).toBe(true)
+    await lenaApi.resume(held.id)
     await page.getByRole('link', { name: shellCopy.newJob }).click()
     await page.getByRole('button', { name: createJobCopy.create }).click()
     await expect(

@@ -1,6 +1,6 @@
 import type { Locator } from '@playwright/test'
 
-import type { AdminApi, JobDetails, JobStatus, Technician, Trade } from './api.ts'
+import type { AdminApi, JobDetails, JobStatus, Technician, TechnicianApi, Trade } from './api.ts'
 import { assignCopy, openJobsLabel, tradeLabels } from './copy.ts'
 import { e2eTitle } from './run.ts'
 
@@ -25,10 +25,15 @@ export function tomorrowInUtc(): string {
   return new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
 }
 
+export function holdNoteFor(runId: string): string {
+  return `Waiting for the replacement extinguisher bracket to arrive. E2E ${runId}`
+}
+
 export async function createUnassignedJob(
   api: AdminApi,
   runId: string,
   label: string,
+  technicianId?: string,
 ): Promise<JobDetails> {
   const template = (await api.checklistTemplates()).find(
     (item) => item.name === fireSafetyJob.template,
@@ -46,7 +51,35 @@ export async function createUnassignedJob(
     scheduledStart: `${date}T09:00:00Z`,
     scheduledEnd: `${date}T11:00:00Z`,
     checklistTemplateId: template.id,
+    ...(technicianId !== undefined ? { technicianId } : {}),
   })
+}
+
+export async function createAssignedJob(
+  api: AdminApi,
+  runId: string,
+  label: string,
+  technicianId: string,
+): Promise<JobDetails> {
+  const job = await createUnassignedJob(api, runId, label, technicianId)
+  if (job.status !== 'Assigned' || job.assignedTechnician?.id !== technicianId) {
+    throw new Error(
+      `The job created for "${label}" is ${job.status}, not Assigned to the technician.`,
+    )
+  }
+  return job
+}
+
+export async function createOnHoldJob(
+  api: AdminApi,
+  technician: TechnicianApi,
+  runId: string,
+  label: string,
+  note: string,
+): Promise<JobDetails> {
+  const job = await createAssignedJob(api, runId, label, technician.user.id)
+  await technician.start(job.id)
+  return technician.hold(job.id, note)
 }
 
 function rank(technician: Technician, trade: Trade | null): readonly number[] {

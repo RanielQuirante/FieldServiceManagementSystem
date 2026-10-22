@@ -30,6 +30,8 @@ public static class DtoSchemaMap
         new(typeof(UserReference), "UserReference", DtoDirection.Response),
         new(typeof(JobHistoryEntryResponse), "JobHistoryEntryResponse", DtoDirection.Response),
         new(typeof(JobAffordances), "JobAffordances", DtoDirection.Response),
+        new(typeof(AllowedStatusChange), "AllowedStatusChange", DtoDirection.Response),
+        new(typeof(UpdateJobStatusRequest), "UpdateJobStatusRequest", DtoDirection.Request),
     ];
 
     public static IReadOnlyDictionary<Type, string> Enums { get; } = new Dictionary<Type, string>
@@ -52,6 +54,8 @@ public static class DtoSchemaMap
         "AssignedJobResponse",
         "JobDetailsResponse",
         "JobAffordances",
+        "AllowedStatusChange",
+        "UpdateJobStatusRequest",
         "HttpValidationProblemDetails",
     ];
 

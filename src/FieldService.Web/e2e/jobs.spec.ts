@@ -16,6 +16,7 @@ import {
   assignCopy,
   createJobCopy,
   documentTitle,
+  historyCopy,
   jobDetailCopy,
   jobsCopy,
   notFoundCopy,
@@ -25,9 +26,11 @@ import {
 } from './support/copy.ts'
 import {
   assignRowName,
+  createAssignedJob,
   createUnassignedJob,
   expectedAssignOrder,
   fireSafetyJob,
+  holdNoteFor,
   notAssignableStatuses,
   rowNamed,
   technicianOptionLabel,
@@ -254,6 +257,23 @@ function historyItems(page: Page) {
   return page.getByRole('region', { name: jobDetailCopy.history }).getByRole('listitem')
 }
 
+function trackStatusRequests(page: Page): string[] {
+  const requests: string[] = []
+  page.on('request', (request) => {
+    if (/^\/api\/jobs\/[^/]+\/status$/.test(new URL(request.url()).pathname)) {
+      requests.push(request.method())
+    }
+  })
+  return requests
+}
+
+async function expectNoControlsIn(page: Page): Promise<void> {
+  const main = page.getByRole('main')
+  for (const role of ['button', 'link', 'textbox', 'combobox', 'radio', 'checkbox'] as const) {
+    await expect(main.getByRole(role), `${role} elements in main`).toHaveCount(0)
+  }
+}
+
 async function fillFireSafetyForm(page: Page, title: string, date: string): Promise<void> {
   await field(page, createJobCopy.title).fill(title)
   await field(page, createJobCopy.description).fill(fireSafetyJob.description)
@@ -370,7 +390,7 @@ test.describe('E2E-06 create a job', () => {
 })
 
 test.describe('W1 job list', () => {
-  test('the list shows the API facet counts and filters by status, priority and search, twelve rows per page', async ({
+  test('the list shows the API facet counts and filters by status, priority and search, twelve rows per page, and a seeded job opens from it with its details, assignee and history', async ({
     adminPage: page,
     api,
     runId,
@@ -444,17 +464,16 @@ test.describe('W1 job list', () => {
     await expect(page).toHaveURL('/jobs')
     await expect(search).toBeFocused()
     await expect(rowsOf(page)).toHaveCount(12)
-  })
 
-  test('a seeded job opens with its details, assignee and history from the API', async ({
-    adminPage: page,
-    api,
-  }) => {
     const summary = await api.findJobByNumber(1042)
     const job = await api.getJob(summary.id)
+    await search.fill(`JOB-${job.number}`)
+    await search.press('Enter')
+    await expect(rowsOf(page)).toHaveCount(1)
 
-    await page.goto(`/jobs/${job.id}`)
+    await rowsOf(page).getByRole('link', { name: job.title, exact: true }).click()
 
+    await expect(page).toHaveURL(`/jobs/${job.id}`)
     await expect(page.getByRole('heading', { level: 1, name: job.title })).toBeVisible()
     await expect(page).toHaveTitle(documentTitle('JOB-1042'))
     const details = page.getByRole('region', { name: jobDetailCopy.detailsCard })
@@ -893,5 +912,155 @@ test.describe('W2 technician at creation and E2E-14 stale edit conflict (W2 part
     const templateSelect = newCard.getByRole('combobox', { name: createJobCopy.checklistTemplate })
     await expect(templateSelect).toBeDisabled()
     await expect(templateSelect).toContainText(createJobCopy.noTemplates)
+  })
+})
+
+test.describe('W3 status changes in the dashboard (W3-AC7)', () => {
+  test('after the technician starts, holds and resumes a job, a reload of the job detail shows Started, Put on hold with the note and Resumed; the In progress and On hold chips find the job; the dashboard never sends a status change', async ({
+    adminPage: page,
+    adminSession,
+    api,
+    guards,
+    sentinelSink,
+    technician,
+    runId,
+  }) => {
+    const lenaApi = await technician(demoTechnicians.assignments.email)
+    const lena = lenaApi.user
+    const note = holdNoteFor(runId)
+    sentinelSink('hold note', note)
+    const job = await createAssignedJob(api, runId, 'status changes', lena.id)
+    expect(
+      job.affordances.allowedStatusChanges,
+      'the administrator is offered no status change',
+    ).toEqual([])
+    const statusRequests = trackStatusRequests(page)
+    const chips = page.getByRole('group', { name: jobsCopy.statusFilter })
+    const ownRow = rowsOf(page).filter({
+      has: page.getByRole('link', { name: job.title, exact: true }),
+    })
+
+    await page.goto(`/jobs/${job.id}`)
+
+    await expect(page.getByRole('heading', { level: 1, name: job.title })).toBeVisible()
+    await expect(
+      page.getByRole('main').getByText(statusLabels.Assigned, { exact: true }).first(),
+    ).toBeVisible()
+    await expect(historyItems(page)).toHaveCount(2)
+
+    const started = await lenaApi.start(job.id)
+    expect(started).toMatchObject({ status: 'InProgress', version: expect.any(Number) })
+    expect(started.startedAt).not.toBeNull()
+    expect(started.affordances.allowedStatusChanges).toEqual([
+      { status: 'OnHold', requiresNote: true },
+    ])
+    const inProgress = await api.getJobs({ status: 'InProgress', pageSize: 12 })
+    const inProgressCount = inProgress.statusCounts.find((entry) => entry.status === 'InProgress')
+    await page
+      .getByRole('navigation', { name: shellCopy.breadcrumb })
+      .getByRole('link', { name: jobsCopy.heading })
+      .click()
+    await expect(page).toHaveURL('/jobs')
+    await chips.getByRole('button', { name: new RegExp(`^${statusLabels.InProgress}`) }).click()
+
+    await expect(page).toHaveURL('/jobs?status=InProgress')
+    await expect(
+      chips.getByRole('button', {
+        name: chipName(statusLabels.InProgress, inProgressCount?.count),
+      }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect(rowsOf(page)).toHaveCount(inProgress.items.length)
+    await expect(rowsOf(page).getByText(statusLabels.InProgress, { exact: true })).toHaveCount(
+      inProgress.items.length,
+    )
+    await expect(ownRow).toHaveCount(1)
+    await expect(ownRow).toContainText(statusLabels.InProgress)
+
+    const held = await lenaApi.hold(job.id, note)
+    expect(held.status).toBe('OnHold')
+    expect(held.startedAt).toBe(started.startedAt)
+    expect(held.affordances.allowedStatusChanges).toEqual([
+      { status: 'InProgress', requiresNote: false },
+    ])
+    const onHold = await api.getJobs({ status: 'OnHold', pageSize: 12 })
+    const onHoldCount = onHold.statusCounts.find((entry) => entry.status === 'OnHold')
+    await chips.getByRole('button', { name: new RegExp(`^${statusLabels.OnHold}`) }).click()
+
+    await expect(page).toHaveURL('/jobs?status=OnHold')
+    await expect(
+      chips.getByRole('button', { name: chipName(statusLabels.OnHold, onHoldCount?.count) }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect(
+      chips.getByRole('button', {
+        name: chipName(
+          statusLabels.InProgress,
+          onHold.statusCounts.find((entry) => entry.status === 'InProgress')?.count,
+        ),
+      }),
+    ).toHaveAttribute('aria-pressed', 'false')
+    await expect(rowsOf(page)).toHaveCount(onHold.items.length)
+    await expect(rowsOf(page).getByText(statusLabels.OnHold, { exact: true })).toHaveCount(
+      onHold.items.length,
+    )
+    await expect(ownRow).toContainText(statusLabels.OnHold)
+    await ownRow.getByRole('link', { name: job.title, exact: true }).click()
+
+    await expect(page).toHaveURL(`/jobs/${job.id}`)
+    await expect(
+      page.getByRole('main').getByText(statusLabels.OnHold, { exact: true }).first(),
+    ).toBeVisible()
+    await expect(historyItems(page)).toHaveCount(4)
+    await expect(historyItems(page).last()).toContainText(historyCopy.putOnHold(lena.displayName))
+    await expect(historyItems(page).last()).toContainText(historyCopy.note(note))
+    await expectNoControlsIn(page)
+
+    const resumed = await lenaApi.resume(job.id)
+    expect(resumed.status).toBe('InProgress')
+    expect(resumed.startedAt).toBe(started.startedAt)
+
+    await page.reload()
+
+    await expect(page.getByRole('heading', { level: 1, name: job.title })).toBeVisible()
+    await expect(
+      page.getByRole('main').getByText(statusLabels.InProgress, { exact: true }).first(),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('main').getByText(statusLabels.OnHold, { exact: true }),
+    ).toHaveCount(0)
+    await expect(historyItems(page)).toHaveCount(5)
+    const sentences = [
+      historyCopy.created(adminSession.user.displayName),
+      historyCopy.assigned(lena.displayName),
+      historyCopy.started(lena.displayName),
+      historyCopy.putOnHold(lena.displayName),
+      historyCopy.resumed(lena.displayName),
+    ]
+    for (const [index, sentence] of sentences.entries()) {
+      await expect(historyItems(page).nth(index)).toContainText(sentence)
+    }
+    await expect(historyItems(page).nth(3)).toContainText(historyCopy.note(note))
+    await expect(page.getByText(historyCopy.note(note), { exact: true })).toHaveCount(1)
+    await expectNoControlsIn(page)
+    const stored = await api.getJob(job.id)
+    expect(stored.history.map((entry) => entry.action)).toEqual([
+      'Created',
+      'Assigned',
+      'Started',
+      'PutOnHold',
+      'Resumed',
+    ])
+    expect(stored.history.map((entry) => entry.note)).toEqual([null, null, null, note, null])
+    expect(stored.history.slice(2).map((entry) => entry.actor.id)).toEqual([
+      lena.id,
+      lena.id,
+      lena.id,
+    ])
+    expect(stored).toMatchObject({
+      status: 'InProgress',
+      version: resumed.version,
+      startedAt: started.startedAt,
+    })
+    expect(statusRequests, 'requests to /status sent by the dashboard').toEqual([])
+    expect(guards.cspViolations).toEqual([])
   })
 })

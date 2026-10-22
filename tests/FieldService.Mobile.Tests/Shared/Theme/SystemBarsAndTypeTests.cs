@@ -44,7 +44,7 @@ public sealed partial class SystemBarsAndTypeTests
         Assert.Equal("None", page.Root!.Attribute("SafeAreaEdges")?.Value);
         Assert.Equal("None", page.Root.Elements(_maui + "Grid").Single().Attribute("SafeAreaEdges")?.Value);
         Assert.Equal("None", sheet.Root!.Attribute("SafeAreaEdges")?.Value);
-        Assert.Equal("None", template.Attribute("SafeAreaEdges")?.Value);
+        Assert.Equal("None,None,None,SoftInput", template.Attribute("SafeAreaEdges")?.Value);
         Assert.Equal("{TemplateBinding SheetPadding}", sheetBorder.Attribute("Padding")?.Value);
         Assert.Contains(page.Descendants(), element => element.Name.LocalName == "CollectionView.Footer" && element.Descendants().Any(child => child.Name.LocalName == "SystemBarSpacer"));
     }
@@ -55,7 +55,8 @@ public sealed partial class SystemBarsAndTypeTests
     [InlineData(-5, 28)]
     public void TheSheetContentIsPaddedAboveTheNavigationBar(double navigationBar, double bottom)
     {
-        Assert.Equal(new Thickness(16, 10, 16, bottom), BottomSheet.PaddingFor(navigationBar));
+        Assert.Equal(new Thickness(0, 10, 0, bottom), BottomSheet.PaddingFor(navigationBar));
+        Assert.Equal(new Thickness(16, 0, 16, 0), BottomSheet.ContentPaddingFor(hasHeader: false));
     }
 
     [Theory]

@@ -4,8 +4,17 @@ import { createMemoryHistory, type Router } from 'vue-router'
 
 import App from '@/app/App.vue'
 import { createAppRouter, installNavigationGuards } from '@/app/router'
-import { ruleDeclarations as declarationsOf } from '@/app/styles/__tests__/stylesheet-source'
+import {
+  ruleDeclarations as declarationsOf,
+  installStyles,
+  listSourceFiles,
+  readSource,
+  readTokens,
+} from '@/app/styles/__tests__/stylesheet-source'
 import { sessionResponse } from '@/features/auth/__tests__/session-fixtures'
+import type { JobHistoryAction } from '@/shared/format/labels'
+import AppIcon from '@/shared/ui/AppIcon.vue'
+import type { IconName } from '@/shared/ui/icons'
 import {
   deferred,
   json,
@@ -17,14 +26,19 @@ import {
   type RouteTable,
 } from '@/shared/testing/fetch-stub'
 
+import StatusTimeline from '../components/StatusTimeline.vue'
 import { noJobFilters } from '../composables/use-job-filters'
+import type { JobDetails, JobHistoryEntry } from '../jobs-api'
 import { jobsPageSize, useJobsStore } from '../jobs-store'
 import {
   assignedInProgressJob,
+  dana,
   demoStatusCounts,
   demoSummaries,
   demoTechnicians,
   demoToday,
+  historyEntry,
+  holdNote,
   jobDetails,
   jobList,
   jobSummary,
@@ -32,6 +46,7 @@ import {
   onDemoDay,
   onHoldJob,
   priya,
+  statusChangedJob,
 } from './job-fixtures'
 
 const listRoute = 'GET /api/jobs'
@@ -104,6 +119,30 @@ function technicianFilter(wrapper: VueWrapper): HTMLSelectElement {
 
 function optionTexts(select: HTMLSelectElement): string[] {
   return Array.from(select.options, (option) => option.text.trim())
+}
+
+const timelineFile = 'features/jobs/components/StatusTimeline.vue'
+
+const byMarco = { id: marco.id, displayName: marco.displayName }
+
+const cancelNote = 'Building management replaced the filters under its own maintenance contract.'
+
+function historyTexts(wrapper: VueWrapper): string[] {
+  return wrapper.findAll('.status-timeline__entry').map((entry) => entry.text())
+}
+
+function showTimeline(history: readonly JobHistoryEntry[]): VueWrapper {
+  const wrapper = mount(StatusTimeline, { props: { history, now: demoToday } })
+  mounted = wrapper
+  return wrapper
+}
+
+function withAction(entry: JobHistoryEntry, action: string): JobHistoryEntry {
+  return { ...entry, action } as unknown as JobHistoryEntry
+}
+
+function iconShapes(name: IconName): string {
+  return mount(AppIcon, { props: { name, size: 14 } }).element.innerHTML
 }
 
 describe('the jobs store', () => {
@@ -339,6 +378,119 @@ describe('the jobs page', () => {
     await wrapper.find('[aria-label="Filter by status"] button').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/jobs')
+  })
+
+  it.each([
+    ['InProgress', 'In progress, 2', 'In progress', 'status-chip--in-progress'],
+    ['OnHold', 'On hold, 3', 'On hold', 'status-chip--on-hold'],
+  ] as const)(
+    'filters to %s from its chip and lists those jobs with their own status chip',
+    async (status, chipName, label, tone) => {
+      const matching = [
+        jobSummary({
+          id: '01a15415-3b40-79a4-859f-2cf627f64d02',
+          number: 1042,
+          title: 'Rooftop HVAC unit not cooling',
+          status,
+          assignedTechnician: marco,
+        }),
+        jobSummary({
+          id: '01a153ec-f2c0-7499-a012-b2be45d90129',
+          number: 1049,
+          title: 'Standby generator load test',
+          status,
+          assignedTechnician: priya,
+        }),
+      ]
+      const { wrapper, router, stub } = await openApp('/jobs', {
+        [listRoute]: [firstPage(), json(jobList(matching, { totalCount: 2 }))],
+      })
+
+      const chip = wrapper
+        .findAll('[aria-label="Filter by status"] button')
+        .find((button) => button.attributes('aria-label') === chipName)
+      expect(chip?.attributes('aria-pressed')).toBe('false')
+      await chip?.trigger('click')
+      await flushPromises()
+
+      expect(router.currentRoute.value.query).toEqual({ status })
+      expect(lastQuery(stub)).toEqual({ status, page: '1', pageSize: '12' })
+      expect(pressedChip(wrapper)).toBe(chipName)
+      expect(wrapper.find('.page-header__subline').text()).toBe('2 jobs')
+      const rowChips = wrapper.findAll('tbody .status-chip')
+      expect(rowChips.map((rowChip) => rowChip.text())).toEqual([label, label])
+      expect(rowChips.map((rowChip) => rowChip.classes())).toEqual([
+        ['status-chip', tone],
+        ['status-chip', tone],
+      ])
+    },
+  )
+
+  it('takes each status count from the API in any order, and sums every status for All', async () => {
+    const { wrapper } = await openApp('/jobs', {
+      [listRoute]: json(
+        jobList(demoSummaries(12), {
+          statusCounts: [
+            { status: 'OnHold', count: 0 },
+            { status: 'Completed', count: 2 },
+            { status: 'InProgress', count: 5 },
+            { status: 'Assigned', count: 6 },
+            { status: 'Unassigned', count: 4 },
+            { status: 'Cancelled', count: 1 },
+          ],
+        }),
+      ),
+    })
+
+    expect(chipNames(wrapper)).toEqual([
+      'All, 18',
+      'Unassigned, 4',
+      'Assigned, 6',
+      'In progress, 5',
+      'On hold, 0',
+      'Completed, 2',
+      'Cancelled, 1',
+    ])
+  })
+
+  it('marks each status chip with the icon and tone of its status', async () => {
+    const { wrapper } = await openApp('/jobs', { [listRoute]: firstPage() })
+    const icons = wrapper
+      .findAll('[aria-label="Filter by status"] button')
+      .map((chip) => (chip.find('svg').exists() ? chip.find('svg') : null))
+
+    expect(icons[0]).toBeNull()
+    expect(icons.slice(1).map((icon) => icon?.classes())).toEqual(
+      ['unassigned', 'assigned', 'in-progress', 'on-hold', 'completed', 'cancelled'].map((tone) => [
+        'app-icon',
+        'filter-chip__icon',
+        `filter-chip__icon--${tone}`,
+      ]),
+    )
+    expect(icons.slice(1).map((icon) => icon?.element.innerHTML)).toEqual(
+      (
+        [
+          'circle-dashed',
+          'user-check',
+          'play-circle',
+          'pause-circle',
+          'check-circle',
+          'x-circle',
+        ] as const
+      ).map(iconShapes),
+    )
+    expect(
+      declarationsOf(
+        'shared/ui/FilterChipGroup.vue',
+        '.filter-chip--unselected .filter-chip__icon--in-progress',
+      ),
+    ).toEqual({ color: 'var(--color-fs-in-progress)' })
+    expect(
+      declarationsOf(
+        'shared/ui/FilterChipGroup.vue',
+        '.filter-chip--unselected .filter-chip__icon--on-hold',
+      ),
+    ).toEqual({ color: 'var(--color-fs-on-hold)' })
   })
 
   it('filters by priority', async () => {
@@ -765,6 +917,315 @@ describe('the job detail page', () => {
     expect(wrapper.find('.page-header__meta').text()).toBe(
       'On holdNormalCreated Thu 15 Oct, 10:15 AM by Dana Whitfield',
     )
+  })
+
+  it("shows the technician's start, hold with its reason, and resume in API order, newest last", async () => {
+    const job = statusChangedJob()
+    const { wrapper } = await openApp(`/jobs/${job.id}`, { [`GET /api/jobs/${job.id}`]: json(job) })
+    const history = wrapper
+      .findAll('section[aria-labelledby]')
+      .find((section) => section.find('h2').text() === 'Status history')
+    const entries = history?.findAll('ol > li') ?? []
+
+    expect(entries.map((entry) => entry.text())).toEqual([
+      '8:47 AMCreated by Dana Whitfield',
+      '10:05 AMAssigned to Marco Reyes',
+      '10:12 AMStarted by Marco Reyes',
+      `10:25 AMPut on hold by Marco Reyes“${holdNote}”`,
+      '10:38 AMResumed by Marco Reyes',
+    ])
+    expect(entries.map((entry) => entry.find('time').attributes('datetime'))).toEqual(
+      job.history.map((entry) => entry.occurredAt),
+    )
+    const hold = entries[3]?.find('.status-timeline__text')
+    expect(Array.from(hold?.element.children ?? [], (line) => line.textContent)).toEqual([
+      'Put on hold by Marco Reyes',
+      `“${holdNote}”`,
+    ])
+    expect(hold?.element.children[1]?.classList.contains('status-timeline__note')).toBe(true)
+    expect(wrapper.findAll('.status-timeline__note')).toHaveLength(1)
+    expect(wrapper.findAll('.status-timeline__dot--newest')).toHaveLength(1)
+    expect(entries[4]?.find('.status-timeline__dot').classes()).toContain(
+      'status-timeline__dot--newest',
+    )
+    expect(wrapper.find('.page-header__meta').text()).toBe(
+      'In progressUrgentCreated 8:47 AM by Dana Whitfield',
+    )
+  })
+
+  it('shows the new history entries after a reload and after leaving the job and coming back', async () => {
+    const changed = statusChangedJob()
+    const assigned: JobDetails = {
+      ...changed,
+      status: 'Assigned',
+      startedAt: null,
+      updatedAt: onDemoDay(0, 10, 5),
+      history: changed.history.slice(0, 2),
+      version: 48297,
+    }
+    const first = await openApp(`/jobs/${changed.id}`, {
+      [`GET /api/jobs/${changed.id}`]: json(assigned),
+    })
+    expect(historyTexts(first.wrapper)).toEqual([
+      '8:47 AMCreated by Dana Whitfield',
+      '10:05 AMAssigned to Marco Reyes',
+    ])
+    first.wrapper.unmount()
+    mounted = null
+
+    const { wrapper, router, stub } = await openApp(`/jobs/${changed.id}`, {
+      [`GET /api/jobs/${changed.id}`]: [json(changed), json(changed)],
+      [listRoute]: firstPage(),
+    })
+    const afterReload = historyTexts(wrapper)
+    expect(afterReload.slice(2)).toEqual([
+      '10:12 AMStarted by Marco Reyes',
+      `10:25 AMPut on hold by Marco Reyes“${holdNote}”`,
+      '10:38 AMResumed by Marco Reyes',
+    ])
+    expect(wrapper.find('.page-header__meta .status-chip').text()).toBe('In progress')
+
+    await router.push('/jobs')
+    await flushPromises()
+    await router.push(`/jobs/${changed.id}`)
+    await flushPromises()
+
+    expect(historyTexts(wrapper)).toEqual(afterReload)
+    expect(stub.requestsTo(`GET /api/jobs/${changed.id}`)).toHaveLength(2)
+  })
+
+  it('offers no status change and never sends one, even when a response lists allowed changes', async () => {
+    const job: JobDetails = {
+      ...statusChangedJob(),
+      affordances: {
+        allowedStatusChanges: [{ status: 'OnHold', requiresNote: true }],
+        canAssign: false,
+      },
+    }
+    const { wrapper, stub } = await openApp(`/jobs/${job.id}`, {
+      [`GET /api/jobs/${job.id}`]: json(job),
+    })
+    const main = wrapper.find('main')
+
+    expect(main.find('h1').text()).toBe('Walk-in freezer temperature alarm')
+    expect(
+      main.findAll(
+        'button, a[href], input, select, textarea, dialog, form, [role="button"], [role="radio"], [role="menuitem"]',
+      ),
+    ).toHaveLength(0)
+    expect(main.text()).not.toMatch(/Start job|Update status|Resume job|Change status/)
+    expect(
+      stub.requests
+        .filter((request) => request.method !== 'GET')
+        .map((request) => `${request.method} ${request.path}`),
+    ).toEqual(['POST /api/auth/refresh'])
+  })
+
+  it('leaves UpdateJobStatus and allowedStatusChanges out of every application module', () => {
+    const modules = [...listSourceFiles('.ts'), ...listSourceFiles('.vue')].filter(
+      (file) =>
+        !file.includes('__tests__/') &&
+        !file.startsWith('shared/testing/') &&
+        file !== 'shared/api/schema.gen.ts',
+    )
+    const readers = modules.filter((file) =>
+      /\/api\/jobs\/\{jobId\}\/status|UpdateJobStatus|allowedStatusChanges/.test(readSource(file)),
+    )
+
+    expect(modules).toEqual(
+      expect.arrayContaining([
+        'features/jobs/jobs-api.ts',
+        'features/jobs/jobs-store.ts',
+        'features/jobs/pages/JobDetailPage.vue',
+      ]),
+    )
+    expect(readers).toEqual([])
+  })
+
+  const sentences: Readonly<
+    Record<JobHistoryAction, { readonly entry: Partial<JobHistoryEntry>; readonly lines: string[] }>
+  > = {
+    Created: { entry: {}, lines: ['Created by Dana Whitfield'] },
+    Assigned: {
+      entry: { fromStatus: 'Unassigned', toStatus: 'Assigned', technician: byMarco },
+      lines: ['Assigned to Marco Reyes'],
+    },
+    Started: {
+      entry: { fromStatus: 'Assigned', toStatus: 'InProgress', actor: byMarco },
+      lines: ['Started by Marco Reyes'],
+    },
+    PutOnHold: {
+      entry: { fromStatus: 'InProgress', toStatus: 'OnHold', actor: byMarco, note: holdNote },
+      lines: ['Put on hold by Marco Reyes', `“${holdNote}”`],
+    },
+    Resumed: {
+      entry: { fromStatus: 'OnHold', toStatus: 'InProgress', actor: byMarco },
+      lines: ['Resumed by Marco Reyes'],
+    },
+    Completed: {
+      entry: { fromStatus: 'InProgress', toStatus: 'Completed', actor: byMarco },
+      lines: ['Completed by Marco Reyes'],
+    },
+    Cancelled: {
+      entry: { fromStatus: 'Assigned', toStatus: 'Cancelled', note: cancelNote },
+      lines: ['Cancelled by Dana Whitfield', `“${cancelNote}”`],
+    },
+  }
+
+  it.each(Object.entries(sentences))(
+    'writes a %s entry as its sentence, with a note line only for a hold or a cancel',
+    (action, { entry, lines }) => {
+      const wrapper = showTimeline([historyEntry({ ...entry, action: action as JobHistoryAction })])
+      const text = wrapper.find('.status-timeline__text')
+
+      expect(Array.from(text.element.children, (line) => line.textContent)).toEqual(lines)
+      expect(wrapper.findAll('.status-timeline__note')).toHaveLength(lines.length - 1)
+    },
+  )
+
+  it('writes "Assigned by" the actor when an assignment names no technician', () => {
+    const wrapper = showTimeline([
+      historyEntry({ action: 'Assigned', fromStatus: 'Unassigned', toStatus: 'Assigned' }),
+    ])
+
+    expect(wrapper.find('.status-timeline__text').text()).toBe('Assigned by Dana Whitfield')
+  })
+
+  it("keeps a multi-line hold note's line breaks as text, in one quoted line block", () => {
+    const note =
+      'Waiting for the replacement fan motor.\nThe customer approves the quote by phone.\n\nCall the store manager before 4 PM.'
+    const wrapper = showTimeline(statusChangedJob(note).history)
+    const line = wrapper.find('.status-timeline__note')
+
+    expect(line.element.textContent).toBe(`“${note}”`)
+    expect(line.element.childNodes).toHaveLength(1)
+    expect(line.element.firstChild?.nodeType).toBe(Node.TEXT_NODE)
+    expect(line.findAll('br')).toHaveLength(0)
+    expect(declarationsOf(timelineFile, '.status-timeline__note')).toEqual({
+      color: 'var(--color-fs-ink-2)',
+      'font-size': 'var(--text-fs-meta)',
+      'line-height': 'var(--text-fs-meta--line-height)',
+      'white-space': 'pre-line',
+    })
+  })
+
+  it('shows a 500-character hold note in full, wrapping anywhere a word is longer than the line', () => {
+    const words = 'The supplier confirmed the fan motor ships on Thursday morning. '
+      .repeat(8)
+      .slice(0, 499)
+    const unbroken = 'RTU2-MOTOR-QUOTE-'.repeat(30).slice(0, 500)
+    const wordy = `${words.trimEnd()}${'.'.repeat(500 - words.trimEnd().length)}`
+    expect(wordy).toHaveLength(500)
+    expect(unbroken).toHaveLength(500)
+
+    for (const note of [wordy, unbroken]) {
+      const wrapper = showTimeline(statusChangedJob(note).history)
+
+      expect(wrapper.find('.status-timeline__note').text()).toBe(`“${note}”`)
+    }
+    expect(declarationsOf(timelineFile, '.status-timeline__text')).toMatchObject({
+      'min-width': '0',
+      'overflow-wrap': 'anywhere',
+    })
+    expect(declarationsOf(timelineFile, '.status-timeline')).toMatchObject({
+      'grid-template-columns': 'minmax(72px, max-content) 10px minmax(0, 1fr)',
+    })
+  })
+
+  it('hangs each entry from its first line, with the dot centred on that line', () => {
+    const removeStyles = installStyles(timelineFile)
+    try {
+      const wrapper = mount(StatusTimeline, {
+        props: { history: statusChangedJob('x'.repeat(500)).history, now: demoToday },
+        attachTo: document.body,
+      })
+      mounted = wrapper
+      const textSize = readTokens().get('--text-fs-table')
+      const text = getComputedStyle(wrapper.find('.status-timeline__text').element)
+      const firstLine = Number.parseFloat(textSize ?? '') * 16 * Number(text.lineHeight)
+
+      expect(textSize).toBe('0.875rem')
+      expect(text.lineHeight).toBe('1.4')
+      expect(
+        wrapper
+          .findAll('.status-timeline__entry')
+          .map((entry) => getComputedStyle(entry.element).alignItems),
+      ).toEqual(Array(5).fill('baseline'))
+      expect(
+        wrapper.findAll('.status-timeline__time').map((time) => {
+          const style = getComputedStyle(time.element)
+          return [style.display, style.flexDirection]
+        }),
+      ).toEqual(Array(5).fill(['flex', 'column']))
+      expect(
+        wrapper.findAll('.status-timeline__dot').map((dot) => {
+          const style = getComputedStyle(dot.element)
+          return [style.alignSelf, style.marginTop, style.height]
+        }),
+      ).toEqual(Array(5).fill(['start', '4.8px', '10px']))
+      expect(Math.round(((firstLine - 10) / 2) * 100) / 100).toBe(4.8)
+    } finally {
+      removeStyles()
+    }
+  })
+
+  it('shows a note that looks like markup as plain text', () => {
+    const note = '<img src="x" onerror="alert(1)"><b>Locked</b> gate & "side" door'
+    const wrapper = showTimeline(statusChangedJob(note).history)
+
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.find('b').exists()).toBe(false)
+    expect(wrapper.find('.status-timeline__note').element.textContent).toBe(`“${note}”`)
+  })
+
+  it('leaves out a blank note and trims the line breaks around a note', () => {
+    const blank = showTimeline(statusChangedJob('  \n ').history)
+    expect(blank.findAll('.status-timeline__note')).toHaveLength(0)
+    expect(blank.findAll('.status-timeline__entry')[3]?.text()).toBe(
+      '10:25 AMPut on hold by Marco Reyes',
+    )
+
+    const padded = showTimeline(statusChangedJob('\n  Waiting for parts.\nCall first.  \n').history)
+    expect(padded.find('.status-timeline__note').element.textContent).toBe(
+      '“Waiting for parts.\nCall first.”',
+    )
+  })
+
+  it('shows an action the contract does not list as text with its actor, and keeps every other entry', async () => {
+    const known = statusChangedJob()
+    const job: JobDetails = {
+      ...known,
+      history: [
+        ...known.history,
+        withAction(historyEntry({ id: 'h-1047-6', occurredAt: onDemoDay(0, 10, 40) }), 'Escalated'),
+        withAction(
+          historyEntry({
+            id: 'h-1047-7',
+            actor: dana,
+            note: 'Customer asked for a second visit.',
+            occurredAt: onDemoDay(0, 10, 41),
+          }),
+          '<b>Reopened</b>',
+        ),
+      ],
+    }
+    const { wrapper } = await openApp(`/jobs/${job.id}`, { [`GET /api/jobs/${job.id}`]: json(job) })
+
+    expect(historyTexts(wrapper)).toEqual([
+      '8:47 AMCreated by Dana Whitfield',
+      '10:05 AMAssigned to Marco Reyes',
+      '10:12 AMStarted by Marco Reyes',
+      `10:25 AMPut on hold by Marco Reyes“${holdNote}”`,
+      '10:38 AMResumed by Marco Reyes',
+      '10:40 AMEscalated by Dana Whitfield',
+      '10:41 AM<b>Reopened</b> by Dana Whitfield“Customer asked for a second visit.”',
+    ])
+    expect(wrapper.find('main b').exists()).toBe(false)
+    expect(wrapper.findAll('.status-timeline__dot')[6]?.classes()).toContain(
+      'status-timeline__dot--newest',
+    )
+    expect(wrapper.findAll('.status-timeline__dot--newest')).toHaveLength(1)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
   it('says no job matches the link, never that it was removed, and leads back to the list', async () => {

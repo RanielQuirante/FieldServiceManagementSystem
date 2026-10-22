@@ -6,6 +6,8 @@ public sealed class QueuedSynchronizationContext : SynchronizationContext
 {
     private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _posted = new();
 
+    public int Pending => _posted.Count;
+
     public static T CreateOn<T>(QueuedSynchronizationContext context, Func<T> create)
     {
         ArgumentNullException.ThrowIfNull(create);
