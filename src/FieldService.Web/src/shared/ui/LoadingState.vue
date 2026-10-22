@@ -7,7 +7,11 @@ export type SkeletonShape =
   | 'short'
   | 'schedule'
   | 'avatar'
+  | 'avatar-large'
+  | 'radio'
   | 'name'
+  | 'technician-name'
+  | 'technician-detail'
   | 'chip'
   | 'page-number'
   | 'page-title'
@@ -101,8 +105,27 @@ withDefaults(
   height: 1.75rem;
 }
 
+.loading-state__block--avatar-large {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.loading-state__block--radio {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
 .loading-state__block--name {
   width: 5.5rem;
+}
+
+.loading-state__block--technician-name {
+  width: 7.5rem;
+}
+
+.loading-state__block--technician-detail {
+  width: 11.25rem;
+  height: 0.75rem;
 }
 
 .loading-state__block--chip {

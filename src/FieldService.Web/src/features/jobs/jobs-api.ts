@@ -17,11 +17,18 @@ export type JobList = Schemas['GetJobsResponse']
 
 export type CreateJobRequest = Schemas['CreateJobRequest']
 
+export type AssignJobRequest = Schemas['AssignJobRequest']
+
 export type ChecklistTemplate = Schemas['ChecklistTemplateResponse']
+
+export type Technician = Schemas['TechnicianResponse']
+
+export type TechnicianJobReference = Schemas['TechnicianJobReference']
 
 export interface JobListQuery {
   readonly search?: string
   readonly status?: JobStatus
+  readonly technicianId?: string
   readonly priority?: JobPriority
   readonly page: number
   readonly pageSize: number
@@ -39,7 +46,18 @@ export function createJob(request: CreateJobRequest): Promise<JobDetails> {
   return unwrap(apiClient.POST('/api/jobs', { body: request }))
 }
 
+export function assignJob(jobId: string, request: AssignJobRequest): Promise<JobDetails> {
+  return unwrap(
+    apiClient.PUT('/api/jobs/{jobId}/assignment', { params: { path: { jobId } }, body: request }),
+  )
+}
+
 export async function getChecklistTemplates(): Promise<readonly ChecklistTemplate[]> {
   const response = await unwrap(apiClient.GET('/api/checklist-templates'))
+  return response.items
+}
+
+export async function getAssignableTechnicians(): Promise<readonly Technician[]> {
+  const response = await unwrap(apiClient.GET('/api/technicians'))
   return response.items
 }

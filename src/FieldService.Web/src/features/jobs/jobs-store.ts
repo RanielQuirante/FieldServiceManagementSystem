@@ -14,11 +14,33 @@ export type JobListStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type JobDetailStatus = 'idle' | 'loading' | 'ready' | 'not-found' | 'error'
 
+export type JobConflictCode = 'concurrency.conflict' | 'job.not-assignable'
+
+export interface JobNotice {
+  readonly id: number
+  readonly code: JobConflictCode
+  readonly jobNumber: number
+}
+
+export type AssignOutcome =
+  | { readonly kind: 'assigned'; readonly job: JobDetails }
+  | { readonly kind: 'conflict'; readonly code: JobConflictCode }
+
+const conflictCodes: readonly string[] = ['concurrency.conflict', 'job.not-assignable']
+
+function conflictCodeOf(error: unknown): JobConflictCode | null {
+  if (!isApiError(error) || error.status !== 409 || error.code === null) {
+    return null
+  }
+  return conflictCodes.includes(error.code) ? (error.code as JobConflictCode) : null
+}
+
 export function jobListQuery(filters: JobFilters): JobListQuery {
   const search = filters.search.trim()
   return {
     ...(search.length > 0 ? { search } : {}),
     ...(filters.status !== null ? { status: filters.status } : {}),
+    ...(filters.technicianId !== null ? { technicianId: filters.technicianId } : {}),
     ...(filters.priority !== null ? { priority: filters.priority } : {}),
     page: filters.page,
     pageSize: jobsPageSize,
@@ -35,7 +57,9 @@ export const useJobsStore = defineStore('jobs', () => {
   const job = shallowRef<JobDetails | null>(null)
   const jobStatus = shallowRef<JobDetailStatus>('idle')
   const jobError = shallowRef<ApiError | null>(null)
+  const jobNotice = shallowRef<JobNotice | null>(null)
   let jobRequest = 0
+  let noticeCount = 0
 
   const statusCounts = computed<Readonly<Record<JobStatus, number>> | null>(() => {
     if (list.value === null) {
@@ -93,6 +117,7 @@ export const useJobsStore = defineStore('jobs', () => {
     job.value = null
     jobStatus.value = 'loading'
     jobError.value = null
+    jobNotice.value = null
     try {
       const result = await jobsApi.getJobById(jobId)
       if (request !== jobRequest) {
@@ -122,11 +147,70 @@ export const useJobsStore = defineStore('jobs', () => {
     await openJob(jobId)
   }
 
+  async function refreshJob(jobId: string): Promise<void> {
+    jobRequest += 1
+    const request = jobRequest
+    try {
+      const result = await jobsApi.getJobById(jobId)
+      if (request !== jobRequest) {
+        return
+      }
+      job.value = result
+      jobStatus.value = 'ready'
+      jobError.value = null
+    } catch (error) {
+      if (request !== jobRequest) {
+        return
+      }
+      job.value = null
+      if (isApiError(error) && error.status === 404) {
+        jobStatus.value = 'not-found'
+        return
+      }
+      jobStatus.value = 'error'
+      if (!isApiError(error)) {
+        throw error
+      }
+      jobError.value = error
+    }
+  }
+
   function closeJob(): void {
     jobRequest += 1
     job.value = null
     jobStatus.value = 'idle'
     jobError.value = null
+    jobNotice.value = null
+  }
+
+  async function assignJob(technicianId: string): Promise<AssignOutcome> {
+    const current = job.value
+    if (current === null) {
+      throw new Error('No job is open to assign')
+    }
+    jobNotice.value = null
+    try {
+      const updated = await jobsApi.assignJob(current.id, {
+        technicianId,
+        version: current.version,
+      })
+      if (job.value?.id === current.id) {
+        jobRequest += 1
+        job.value = updated
+      }
+      return { kind: 'assigned', job: updated }
+    } catch (error) {
+      const code = conflictCodeOf(error)
+      if (code === null) {
+        throw error
+      }
+      if (job.value?.id === current.id) {
+        await refreshJob(current.id)
+        noticeCount += 1
+        jobNotice.value = { id: noticeCount, code, jobNumber: current.number }
+      }
+      return { kind: 'conflict', code }
+    }
   }
 
   async function createJob(request: CreateJobRequest): Promise<JobDetails> {
@@ -148,10 +232,13 @@ export const useJobsStore = defineStore('jobs', () => {
     job,
     jobStatus,
     jobError,
+    jobNotice,
     loadJobs,
     openJob,
     reloadJob,
+    refreshJob,
     closeJob,
     createJob,
+    assignJob,
   }
 })

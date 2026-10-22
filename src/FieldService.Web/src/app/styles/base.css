@@ -66,4 +66,8 @@ textarea {
   [data-surface='dark'] :focus-visible {
     outline-color: Highlight;
   }
+
+  .app-icon {
+    forced-color-adjust: auto;
+  }
 }

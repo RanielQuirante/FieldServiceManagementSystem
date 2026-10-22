@@ -20,11 +20,13 @@ import {
   searchMaximumLength,
   type JobFilters,
 } from '../composables/use-job-filters'
+import type { Technician } from '../jobs-api'
 
 const props = defineProps<{
   filters: JobFilters
   statusCounts: Readonly<Record<JobStatus, number>> | null
   statusTotal: number | null
+  technicians: readonly Technician[] | null
 }>()
 
 const emit = defineEmits<{
@@ -102,6 +104,35 @@ const selectedStatus = computed({
   },
 })
 
+const allTechnicians: SelectOption = { value: '', label: 'All technicians' }
+
+const technicianOptions = computed<SelectOption[]>(() => {
+  const technicians = props.technicians
+  const chosen = props.filters.technicianId
+  if (technicians === null) {
+    return chosen === null ? [allTechnicians] : [{ value: chosen, label: 'Selected technician' }]
+  }
+  const unknown =
+    chosen !== null && !technicians.some((technician) => technician.id === chosen)
+      ? [{ value: chosen, label: 'Unknown technician' }]
+      : []
+  return [
+    allTechnicians,
+    ...unknown,
+    ...technicians.map((technician) => ({
+      value: technician.id,
+      label: technician.displayName,
+    })),
+  ]
+})
+
+const selectedTechnician = computed({
+  get: () => props.filters.technicianId ?? '',
+  set: (value: string) => {
+    emit('change', { technicianId: value === '' ? null : value }, false)
+  },
+})
+
 const priorityOptions: readonly SelectOption[] = [
   { value: '', label: 'All priorities' },
   ...priorityOrder.map((priority) => ({ value: priority, label: jobPriorityLabel(priority) })),
@@ -137,6 +168,15 @@ defineExpose({ focusSearch })
           :maxlength="searchMaximumLength"
         />
         <SelectField
+          v-model="selectedTechnician"
+          class="jobs-toolbar__technician"
+          name="technicianId"
+          label="Technician"
+          hidden-label
+          :options="technicianOptions"
+          :disabled="technicians === null"
+        />
+        <SelectField
           v-model="selectedPriority"
           class="jobs-toolbar__priority"
           name="priority"
@@ -165,6 +205,10 @@ defineExpose({ focusSearch })
 
 .jobs-toolbar__search {
   flex: 1 1 320px;
+}
+
+.jobs-toolbar__technician {
+  flex: 0 1 220px;
 }
 
 .jobs-toolbar__priority {

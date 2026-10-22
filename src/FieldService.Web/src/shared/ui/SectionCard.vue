@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, useId } from 'vue'
+import { computed, useId, useTemplateRef } from 'vue'
 
 type SectionCardVariant = 'section' | 'plain' | 'toolbar' | 'form'
 
@@ -8,8 +8,16 @@ const props = withDefaults(
     variant?: SectionCardVariant
     heading?: string
     headingId?: string
+    subheading?: string | null
+    focusableHeading?: boolean
   }>(),
-  { variant: 'section', heading: undefined, headingId: undefined },
+  {
+    variant: 'section',
+    heading: undefined,
+    headingId: undefined,
+    subheading: null,
+    focusableHeading: false,
+  },
 )
 
 const generatedId = useId()
@@ -17,12 +25,43 @@ const generatedId = useId()
 const titleId = computed(() => props.headingId ?? `${generatedId}-title`)
 
 const classes = computed(() => ['section-card', `section-card--${props.variant}`])
+
+const headingTabIndex = computed(() => (props.focusableHeading ? -1 : undefined))
+
+const headingElement = useTemplateRef<HTMLHeadingElement>('headingElement')
+
+function focusHeading(): void {
+  if (props.focusableHeading) {
+    headingElement.value?.focus()
+  }
+}
+
+defineExpose({ focusHeading })
 </script>
 
 <template>
   <section v-if="heading" :class="classes" :aria-labelledby="titleId">
     <header class="section-card__header">
-      <h2 :id="titleId" class="section-card__title">{{ heading }}</h2>
+      <div v-if="subheading" class="section-card__titles">
+        <h2
+          :id="titleId"
+          ref="headingElement"
+          class="section-card__title"
+          :tabindex="headingTabIndex"
+        >
+          {{ heading }}
+        </h2>
+        <p class="section-card__subheading">{{ subheading }}</p>
+      </div>
+      <h2
+        v-else
+        :id="titleId"
+        ref="headingElement"
+        class="section-card__title"
+        :tabindex="headingTabIndex"
+      >
+        {{ heading }}
+      </h2>
       <slot name="header-end" />
     </header>
     <slot />
@@ -61,6 +100,20 @@ const classes = computed(() => ['section-card', `section-card--${props.variant}`
   letter-spacing: var(--text-fs-card-heading--letter-spacing);
   color: var(--color-fs-ink);
   text-wrap: balance;
+}
+
+.section-card__titles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-fs-2);
+  min-width: 0;
+}
+
+.section-card__subheading {
+  margin: 0;
+  color: var(--color-fs-muted);
+  font-size: var(--text-fs-meta);
+  line-height: var(--text-fs-meta--line-height);
 }
 
 .section-card--plain {

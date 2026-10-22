@@ -4,6 +4,17 @@ export interface SelectOption {
   readonly label: string
   readonly disabled?: boolean
 }
+
+export interface SelectOptionGroup {
+  readonly label: string
+  readonly options: readonly SelectOption[]
+}
+
+export type SelectEntry = SelectOption | SelectOptionGroup
+
+export function isOptionGroup(entry: SelectEntry): entry is SelectOptionGroup {
+  return 'options' in entry
+}
 </script>
 
 <script setup lang="ts">
@@ -14,7 +25,7 @@ import AppIcon from './AppIcon.vue'
 const props = withDefaults(
   defineProps<{
     label: string
-    options: readonly SelectOption[]
+    options: readonly SelectEntry[]
     id?: string
     name?: string
     placeholder?: string | null
@@ -78,14 +89,24 @@ defineExpose({ focus })
         :aria-describedby="describedBy"
       >
         <option v-if="placeholder !== null" value="" disabled>{{ placeholder }}</option>
-        <option
-          v-for="option in options"
-          :key="option.value"
-          :value="option.value"
-          :disabled="option.disabled"
+        <template
+          v-for="entry in options"
+          :key="isOptionGroup(entry) ? `group:${entry.label}` : entry.value"
         >
-          {{ option.label }}
-        </option>
+          <optgroup v-if="isOptionGroup(entry)" :label="entry.label">
+            <option
+              v-for="option in entry.options"
+              :key="option.value"
+              :value="option.value"
+              :disabled="option.disabled"
+            >
+              {{ option.label }}
+            </option>
+          </optgroup>
+          <option v-else :value="entry.value" :disabled="entry.disabled">
+            {{ entry.label }}
+          </option>
+        </template>
       </select>
       <AppIcon class="select-field__chevron" name="chevron-down" :size="16" />
     </div>

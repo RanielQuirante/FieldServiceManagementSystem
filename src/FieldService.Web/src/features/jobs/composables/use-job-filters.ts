@@ -11,6 +11,7 @@ import {
 export interface JobFilters {
   readonly search: string
   readonly status: JobStatus | null
+  readonly technicianId: string | null
   readonly priority: JobPriority | null
   readonly page: number
 }
@@ -21,7 +22,15 @@ export const searchDelayMilliseconds = 300
 
 export const maximumPage = 10_000
 
-export const noJobFilters: JobFilters = { search: '', status: null, priority: null, page: 1 }
+export const noJobFilters: JobFilters = {
+  search: '',
+  status: null,
+  technicianId: null,
+  priority: null,
+  page: 1,
+}
+
+const technicianIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function firstValue(value: LocationQuery[string] | undefined): string | null {
   if (Array.isArray(value)) {
@@ -39,10 +48,13 @@ function pageFrom(value: string | null): number {
 
 export function filtersFromQuery(query: LocationQuery): JobFilters {
   const status = firstValue(query.status)
+  const technicianId = firstValue(query.technicianId)
   const priority = firstValue(query.priority)
   return {
     search: (firstValue(query.search) ?? '').slice(0, searchMaximumLength),
     status: isJobStatus(status) ? status : null,
+    technicianId:
+      technicianId !== null && technicianIdPattern.test(technicianId) ? technicianId : null,
     priority: isJobPriority(priority) ? priority : null,
     page: pageFrom(firstValue(query.page)),
   }
@@ -56,6 +68,9 @@ export function queryFromFilters(filters: JobFilters): LocationQueryRaw {
   if (filters.status !== null) {
     query.status = filters.status
   }
+  if (filters.technicianId !== null) {
+    query.technicianId = filters.technicianId
+  }
   if (filters.priority !== null) {
     query.priority = filters.priority
   }
@@ -66,7 +81,12 @@ export function queryFromFilters(filters: JobFilters): LocationQueryRaw {
 }
 
 export function hasActiveFilters(filters: JobFilters): boolean {
-  return filters.search.trim().length > 0 || filters.status !== null || filters.priority !== null
+  return (
+    filters.search.trim().length > 0 ||
+    filters.status !== null ||
+    filters.technicianId !== null ||
+    filters.priority !== null
+  )
 }
 
 export interface JobFilterControls {

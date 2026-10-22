@@ -18,6 +18,7 @@ const props = withDefaults(
     to?: RouteLocationRaw
     icon?: IconName
     disabled?: boolean
+    ariaDisabled?: boolean
     busy?: boolean
     busyLabel?: string
     block?: boolean
@@ -29,6 +30,7 @@ const props = withDefaults(
     to: undefined,
     icon: undefined,
     disabled: false,
+    ariaDisabled: false,
     busy: false,
     busyLabel: undefined,
     block: false,
@@ -46,10 +48,12 @@ const iconSize = computed(() => (props.size === 'small' ? 16 : 18))
 
 const showsBusyLabel = computed(() => props.busy && props.busyLabel !== undefined)
 
-const linkInactive = computed(() => props.disabled || props.busy)
+const linkInactive = computed(() => props.disabled || props.busy || props.ariaDisabled)
+
+const announcedDisabled = computed(() => props.busy || props.ariaDisabled)
 
 function blockWhileBusy(event: MouseEvent): void {
-  if (props.busy) {
+  if (announcedDisabled.value) {
     event.preventDefault()
     event.stopImmediatePropagation()
   }
@@ -93,7 +97,7 @@ defineExpose({ focus })
     :type="type"
     :class="classes"
     :disabled="disabled"
-    :aria-disabled="busy ? 'true' : undefined"
+    :aria-disabled="announcedDisabled ? 'true' : undefined"
     @click="blockWhileBusy"
   >
     <AppIcon v-if="icon" :name="icon" :size="iconSize" />

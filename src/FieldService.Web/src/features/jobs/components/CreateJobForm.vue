@@ -13,6 +13,7 @@ export type CreateJobField =
   | 'start'
   | 'end'
   | 'checklistTemplateId'
+  | 'technicianId'
 
 export const createJobLimits = {
   title: 120,
@@ -43,18 +44,30 @@ import {
 import { isApiError, type ApiError } from '@/shared/api/api-error'
 import { useAsyncState } from '@/shared/composables/use-async-state'
 import { localDateTimeToInstant } from '@/shared/format/date-time'
-import { isJobPriority, jobPriorityLabel, type JobPriority } from '@/shared/format/labels'
+import {
+  isJobPriority,
+  jobPriorityLabel,
+  tradeLabel,
+  type JobPriority,
+} from '@/shared/format/labels'
 import AppButton from '@/shared/ui/AppButton.vue'
 import Banner from '@/shared/ui/Banner.vue'
 import ErrorState from '@/shared/ui/ErrorState.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 import SegmentedControl, { type SegmentOption } from '@/shared/ui/SegmentedControl.vue'
-import SelectField, { type SelectOption } from '@/shared/ui/SelectField.vue'
+import SelectField, { type SelectEntry, type SelectOption } from '@/shared/ui/SelectField.vue'
 import TextArea from '@/shared/ui/TextArea.vue'
 import TextField from '@/shared/ui/TextField.vue'
 
-import { getChecklistTemplates, type CreateJobRequest, type JobDetails } from '../jobs-api'
+import {
+  getAssignableTechnicians,
+  getChecklistTemplates,
+  type CreateJobRequest,
+  type JobDetails,
+  type Technician,
+} from '../jobs-api'
 import { useJobsStore } from '../jobs-store'
+import { assignOrder, groupByTrade, technicianOptionLabel } from '../technician-options'
 
 interface FormFailure {
   readonly title: string
@@ -81,6 +94,13 @@ const {
   run: loadTemplates,
 } = useAsyncState(getChecklistTemplates, (items) => items.length === 0)
 
+const {
+  status: technicianStatus,
+  data: technicianData,
+  error: technicianError,
+  run: loadTechnicians,
+} = useAsyncState(getAssignableTechnicians)
+
 const form = reactive({
   title: '',
   description: '',
@@ -95,6 +115,7 @@ const form = reactive({
   start: '',
   end: '',
   checklistTemplateId: '',
+  technicianId: '',
 })
 
 const errors = ref<FieldErrors>({})
@@ -102,8 +123,16 @@ const summary = shallowRef<FormFailure | null>(null)
 const failure = shallowRef<FormFailure | null>(null)
 const attempt = ref(0)
 const busy = ref(false)
+const templatesRetried = shallowRef(false)
+const techniciansRetried = shallowRef(false)
 
 const formElement = useTemplateRef<HTMLFormElement>('formElement')
+
+const templateErrorState = useTemplateRef<InstanceType<typeof ErrorState>>('templateErrorState')
+
+const technicianErrorState = useTemplateRef<InstanceType<typeof ErrorState>>('technicianErrorState')
+
+const checklistCard = useTemplateRef<InstanceType<typeof SectionCard>>('checklistCard')
 
 const fieldOrder: readonly CreateJobField[] = [
   'title',
@@ -119,6 +148,7 @@ const fieldOrder: readonly CreateJobField[] = [
   'start',
   'end',
   'checklistTemplateId',
+  'technicianId',
 ]
 
 const fieldIds: Readonly<Record<CreateJobField, string>> = {
@@ -135,6 +165,7 @@ const fieldIds: Readonly<Record<CreateJobField, string>> = {
   start: 'job-start',
   end: 'job-end',
   checklistTemplateId: 'checklist-template',
+  technicianId: 'assign-technician',
 }
 
 const fieldLabels: Readonly<Record<CreateJobField, string>> = {
@@ -151,6 +182,7 @@ const fieldLabels: Readonly<Record<CreateJobField, string>> = {
   start: 'Start',
   end: 'End',
   checklistTemplateId: 'Checklist template',
+  technicianId: 'Assign technician',
 }
 
 const serverFields: Readonly<Record<string, CreateJobField>> = {
@@ -166,7 +198,11 @@ const serverFields: Readonly<Record<string, CreateJobField>> = {
   scheduledStart: 'start',
   scheduledEnd: 'end',
   checklistTemplateId: 'checklistTemplateId',
+  technicianId: 'technicianId',
 }
+
+const technicianUnavailableMessage =
+  'This technician is no longer available. Choose another technician or leave the job unassigned.'
 
 const priorityOptions: readonly SegmentOption[] = [
   { value: 'Low', label: jobPriorityLabel('Low'), icon: 'chevron-down', iconTone: 'muted' },
@@ -190,6 +226,49 @@ const templatePlaceholder = computed(() => {
     default:
       return 'Loading checklist templates…'
   }
+})
+
+const selectedTrade = computed<string | null>(
+  () =>
+    templateData.value?.find((template) => template.id === form.checklistTemplateId)?.trade ?? null,
+)
+
+const techniciansAvailable = computed(
+  () => technicianData.value !== null && technicianStatus.value !== 'error',
+)
+
+function technicianOption(technician: Technician): SelectOption {
+  return {
+    value: technician.id,
+    label: technicianOptionLabel(technician),
+    disabled: !technician.availableForAssignment,
+  }
+}
+
+const technicianOptions = computed<SelectEntry[]>(() => {
+  const technicians = technicianData.value
+  if (technicians === null || !techniciansAvailable.value) {
+    return []
+  }
+  const unassigned: SelectOption = { value: '', label: 'Leave unassigned' }
+  const trade = selectedTrade.value
+  const ordered = assignOrder(technicians, trade)
+  if (trade === null) {
+    return [unassigned, ...ordered.map(technicianOption)]
+  }
+  const { sameTrade, otherTrades } = groupByTrade(ordered, trade)
+  return [
+    unassigned,
+    { label: tradeLabel(trade), options: sameTrade.map(technicianOption) },
+    { label: 'Different trade', options: otherTrades.map(technicianOption) },
+  ].filter((entry) => !('options' in entry) || entry.options.length > 0)
+})
+
+const technicianPlaceholder = computed(() => {
+  if (technicianStatus.value === 'error') {
+    return 'Technicians are unavailable'
+  }
+  return technicianData.value === null ? 'Loading technicians…' : null
 })
 
 const phonePattern = new RegExp(`^(?:${contactPhonePattern})$`)
@@ -249,6 +328,15 @@ watch(
   () => form.checklistTemplateId,
   () => clearErrors('checklistTemplateId'),
 )
+watch(
+  () => form.technicianId,
+  () => clearErrors('technicianId'),
+)
+watch(technicianStatus, (status) => {
+  if (status === 'error') {
+    form.technicianId = ''
+  }
+})
 
 function isBlank(value: string): boolean {
   return value.trim().length === 0
@@ -345,6 +433,7 @@ function buildRequest(): CreateJobRequest {
     scheduledStart: localDateTimeToInstant(form.date, form.start) ?? '',
     scheduledEnd: localDateTimeToInstant(form.date, form.end) ?? '',
     checklistTemplateId: form.checklistTemplateId,
+    ...(form.technicianId !== '' ? { technicianId: form.technicianId } : {}),
   }
 }
 
@@ -381,6 +470,37 @@ function showServerFieldErrors(error: ApiError): void {
     reference: null,
   }
   focusFirstError(mapped)
+}
+
+async function retryTemplates(): Promise<void> {
+  templatesRetried.value = true
+  await loadTemplates()
+  await nextTick()
+  if (templateStatus.value === 'error') {
+    templateErrorState.value?.focusRetry()
+  } else if (templateStatus.value === 'empty') {
+    checklistCard.value?.focusHeading()
+  } else {
+    focusField('checklistTemplateId')
+  }
+}
+
+async function retryTechnicians(): Promise<void> {
+  techniciansRetried.value = true
+  await loadTechnicians()
+  await nextTick()
+  if (technicianStatus.value === 'error') {
+    technicianErrorState.value?.focusRetry()
+  } else {
+    focusField('technicianId')
+  }
+}
+
+async function showTechnicianUnavailable(): Promise<void> {
+  errors.value = { technicianId: technicianUnavailableMessage }
+  await loadTechnicians()
+  await nextTick()
+  focusField('technicianId')
 }
 
 function retryWait(error: ApiError): string {
@@ -438,6 +558,8 @@ async function submit(): Promise<void> {
     }
     if (error.code === 'request.validation-failed' || error.status === 400) {
       showServerFieldErrors(error)
+    } else if (error.status === 409 && error.code === 'technician.unavailable') {
+      await showTechnicianUnavailable()
     } else {
       failure.value = describeFailure(error)
     }
@@ -448,6 +570,7 @@ async function submit(): Promise<void> {
 
 onMounted(() => {
   void loadTemplates()
+  void loadTechnicians()
 })
 </script>
 
@@ -587,7 +710,13 @@ onMounted(() => {
         />
       </div>
     </SectionCard>
-    <SectionCard variant="form" heading="Checklist" heading-id="checklist-section-title">
+    <SectionCard
+      ref="checklistCard"
+      variant="form"
+      heading="Checklist and assignment"
+      heading-id="checklist-section-title"
+      focusable-heading
+    >
       <SelectField
         :id="fieldIds.checklistTemplateId"
         v-model="form.checklistTemplateId"
@@ -601,10 +730,32 @@ onMounted(() => {
       />
       <ErrorState
         v-if="templateStatus === 'error'"
+        ref="templateErrorState"
         title="Checklist templates could not be loaded."
         message="Check your connection, then try again."
         :reference="templateError?.correlationId ?? null"
-        @retry="loadTemplates"
+        :role="templatesRetried ? 'alert' : 'status'"
+        @retry="retryTemplates"
+      />
+      <SelectField
+        :id="fieldIds.technicianId"
+        v-model="form.technicianId"
+        label="Assign technician"
+        name="technicianId"
+        help="The technician sees the job in the app as soon as you create it."
+        :options="technicianOptions"
+        :placeholder="technicianPlaceholder"
+        :disabled="!techniciansAvailable"
+        :error="errors.technicianId"
+      />
+      <ErrorState
+        v-if="technicianStatus === 'error'"
+        ref="technicianErrorState"
+        title="Technicians could not be loaded."
+        message="You can still create the job unassigned."
+        :reference="technicianError?.correlationId ?? null"
+        :role="techniciansRetried ? 'alert' : 'status'"
+        @retry="retryTechnicians"
       />
     </SectionCard>
     <Banner

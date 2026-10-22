@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { usePageTitle } from '@/shared/composables/use-page-title'
 import { formatMoment } from '@/shared/format/date-time'
 import { formatJobNumber } from '@/shared/format/job-number'
 import AppButton from '@/shared/ui/AppButton.vue'
+import Banner from '@/shared/ui/Banner.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import ErrorState from '@/shared/ui/ErrorState.vue'
 import LoadingState from '@/shared/ui/LoadingState.vue'
@@ -14,6 +15,7 @@ import PriorityLabel from '@/shared/ui/PriorityLabel.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 import StatusChip from '@/shared/ui/StatusChip.vue'
 
+import AssignTechnicianCard, { type JobNoticeCopy } from '../components/AssignTechnicianCard.vue'
 import JobDetailsCard from '../components/JobDetailsCard.vue'
 import StatusTimeline from '../components/StatusTimeline.vue'
 import { useJobsStore } from '../jobs-store'
@@ -33,6 +35,37 @@ const job = computed(() => store.job)
 
 const retried = shallowRef(false)
 
+const header = useTemplateRef<InstanceType<typeof PageHeader>>('header')
+
+const notice = computed<JobNoticeCopy | null>(() => {
+  const current = store.jobNotice
+  if (current === null) {
+    return null
+  }
+  const number = formatJobNumber(current.jobNumber)
+  return current.code === 'job.not-assignable'
+    ? {
+        id: current.id,
+        title: `${number} can no longer be assigned.`,
+        message: 'Its status changed after you opened it. The latest version is shown.',
+      }
+    : {
+        id: current.id,
+        title: `${number} changed after you opened it.`,
+        message: 'The latest version is shown. Check it, then try again.',
+      }
+})
+
+const panelShown = computed(() => job.value?.affordances.canAssign === true)
+
+const noticeInPanel = computed(
+  () => store.jobNotice?.code === 'concurrency.conflict' && panelShown.value,
+)
+
+const pageNotice = computed(() => (noticeInPanel.value ? null : notice.value))
+
+const panelNotice = computed(() => (noticeInPanel.value ? notice.value : null))
+
 usePageTitle(() => {
   if (store.jobStatus === 'ready' && job.value !== null) {
     return formatJobNumber(job.value.number)
@@ -40,19 +73,27 @@ usePageTitle(() => {
   return store.jobStatus === 'not-found' ? 'Job not found' : null
 })
 
-async function open(): Promise<void> {
-  await store.openJob(jobId.value)
-  now.value = new Date()
-}
-
 function retry(): void {
   retried.value = true
-  void store.reloadJob(jobId.value).then(() => {
-    now.value = new Date()
-  })
+  void store.reloadJob(jobId.value)
 }
 
-void open()
+watch(job, () => {
+  now.value = new Date()
+})
+
+watch(
+  () => store.jobNotice,
+  async (current) => {
+    if (current === null || noticeInPanel.value) {
+      return
+    }
+    await nextTick()
+    header.value?.focusHeading()
+  },
+)
+
+void store.openJob(jobId.value)
 
 onBeforeUnmount(() => {
   store.closeJob()
@@ -61,7 +102,7 @@ onBeforeUnmount(() => {
 
 <template>
   <template v-if="store.jobStatus === 'ready' && job">
-    <PageHeader :title="job.title" :job-number="formatJobNumber(job.number)">
+    <PageHeader ref="header" :title="job.title" :job-number="formatJobNumber(job.number)">
       <template #meta>
         <StatusChip :status="job.status" />
         <PriorityLabel :priority="job.priority" />
@@ -70,6 +111,14 @@ onBeforeUnmount(() => {
         >
       </template>
     </PageHeader>
+    <Banner
+      v-if="pageNotice"
+      :key="`notice-${pageNotice.id}`"
+      variant="warning"
+      role="alert"
+      :title="pageNotice.title"
+      :message="pageNotice.message"
+    />
     <div class="job-detail">
       <div class="job-detail__main">
         <JobDetailsCard :job="job" :now="now" />
@@ -81,6 +130,9 @@ onBeforeUnmount(() => {
             <StatusTimeline :history="job.history" :now="now" />
           </div>
         </SectionCard>
+      </div>
+      <div v-if="panelShown" class="job-detail__side">
+        <AssignTechnicianCard :job="job" :now="now" :notice="panelNotice" />
       </div>
     </div>
   </template>
@@ -146,6 +198,11 @@ onBeforeUnmount(() => {
   flex: 999 1 520px;
   flex-direction: column;
   gap: var(--spacing-fs-16);
+  min-width: 0;
+}
+
+.job-detail__side {
+  flex: 1 1 380px;
   min-width: 0;
 }
 

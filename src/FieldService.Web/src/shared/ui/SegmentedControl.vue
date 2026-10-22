@@ -7,6 +7,7 @@ export interface SegmentOption {
   readonly icon?: IconName
   readonly iconTone?: 'muted' | 'ink-2' | 'high'
   readonly disabled?: boolean
+  readonly count?: number | null
 }
 </script>
 
@@ -14,6 +15,7 @@ export interface SegmentOption {
 import { computed, useId, useTemplateRef } from 'vue'
 
 import AppIcon from './AppIcon.vue'
+import CountCapsule from './CountCapsule.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -41,6 +43,14 @@ const group = useTemplateRef<HTMLFieldSetElement>('group')
 
 function optionId(value: string): string {
   return `${baseId.value}-${value.toLowerCase()}`
+}
+
+function hasCount(option: SegmentOption): option is SegmentOption & { count: number } {
+  return option.count !== undefined && option.count !== null
+}
+
+function countedName(option: SegmentOption): string | undefined {
+  return hasCount(option) ? `${option.label}, ${option.count}` : undefined
 }
 
 function focus(): void {
@@ -83,6 +93,7 @@ defineExpose({ focus })
           :value="option.value"
           :disabled="option.disabled"
           :aria-invalid="error ? 'true' : undefined"
+          :aria-label="countedName(option)"
         />
         <AppIcon
           v-if="option.icon"
@@ -90,6 +101,11 @@ defineExpose({ focus })
           :name="option.icon"
           :size="16"
         />{{ option.label }}
+        <CountCapsule
+          v-if="hasCount(option)"
+          :count="option.count"
+          :variant="model === option.value ? 'in-segment' : 'default'"
+        />
       </label>
     </div>
     <p v-if="error" :id="errorId" class="segmented-control__error">

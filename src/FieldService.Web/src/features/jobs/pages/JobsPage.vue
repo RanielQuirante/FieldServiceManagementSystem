@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
+import { useAsyncState } from '@/shared/composables/use-async-state'
 import AppButton from '@/shared/ui/AppButton.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import ErrorState from '@/shared/ui/ErrorState.vue'
@@ -10,11 +11,22 @@ import Pagination, { rangeSummary } from '@/shared/ui/Pagination.vue'
 import JobsTable from '../components/JobsTable.vue'
 import JobsToolbar from '../components/JobsToolbar.vue'
 import { hasActiveFilters, useJobFilters, type JobFilters } from '../composables/use-job-filters'
+import { getAssignableTechnicians } from '../jobs-api'
 import { jobsPageSize, useJobsStore } from '../jobs-store'
 
 const store = useJobsStore()
 
 const { filters, update, clear } = useJobFilters()
+
+const {
+  status: technicianStatus,
+  data: technicianData,
+  run: loadTechnicians,
+} = useAsyncState(getAssignableTechnicians)
+
+const filterTechnicians = computed(() =>
+  technicianStatus.value === 'error' ? null : technicianData.value,
+)
 
 const now = shallowRef(new Date())
 
@@ -112,6 +124,8 @@ async function clearFilters(): Promise<void> {
   await clear()
   toolbar.value?.focusSearch()
 }
+
+void loadTechnicians()
 </script>
 
 <template>
@@ -121,6 +135,7 @@ async function clearFilters(): Promise<void> {
     :filters="filters"
     :status-counts="store.statusCounts"
     :status-total="store.statusTotal"
+    :technicians="filterTechnicians"
     @change="changeFilters"
   />
   <ErrorState

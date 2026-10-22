@@ -27,6 +27,14 @@ function choose(value: string): void {
     model.value = value
   }
 }
+
+function hasCount(option: FilterChipOption): option is FilterChipOption & { count: number } {
+  return option.count !== undefined && option.count !== null
+}
+
+function countedName(option: FilterChipOption): string | undefined {
+  return hasCount(option) ? `${option.label}, ${option.count}` : undefined
+}
 </script>
 
 <template>
@@ -40,6 +48,7 @@ function choose(value: string): void {
         model === option.value ? 'filter-chip--selected' : 'filter-chip--unselected',
       ]"
       :aria-pressed="model === option.value ? 'true' : 'false'"
+      :aria-label="countedName(option)"
       @click="choose(option.value)"
     >
       <AppIcon
@@ -49,13 +58,11 @@ function choose(value: string): void {
         :size="14"
       />
       <span>{{ option.label }}</span>
-      <template v-if="option.count !== undefined && option.count !== null">
-        <span class="visually-hidden">{{ ', ' }}</span>
-        <CountCapsule
-          :count="option.count"
-          :variant="model === option.value ? 'on-gradient' : 'default'"
-        />
-      </template>
+      <CountCapsule
+        v-if="hasCount(option)"
+        :count="option.count"
+        :variant="model === option.value ? 'on-gradient' : 'default'"
+      />
     </button>
   </div>
 </template>
