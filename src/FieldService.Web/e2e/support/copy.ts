@@ -48,6 +48,45 @@ export const jobsCopy = {
   loadFailed: 'Jobs could not be loaded.',
   tryAgain: 'Try again',
   unassigned: 'Unassigned',
+  technicianFilter: 'Technician',
+  allTechnicians: 'All technicians',
+  selectedTechnician: 'Selected technician',
+} as const
+
+export const tradeLabels = {
+  Hvac: 'HVAC',
+  Electrical: 'Electrical',
+  Plumbing: 'Plumbing',
+  FireSafety: 'Fire safety',
+} as const
+
+export function openJobsLabel(count: number): string {
+  return count === 1 ? '1 open job' : `${count} open jobs`
+}
+
+export const assignCopy = {
+  heading: 'Assign technician',
+  reassignHeading: 'Reassign technician',
+  group: 'Assign technician',
+  search: 'Search technicians',
+  button: 'Assign technician',
+  busy: 'Assigning…',
+  helper: 'Choose an available technician.',
+  chooseFromList: 'Choose a technician from the list.',
+  differentTrade: 'Different trade',
+  onShift: 'On shift',
+  offShift: 'Off shift',
+  tradeFirst: (trade: string): string => `${trade} technicians first`,
+  assignTo: (name: string): string => `Assign to ${name}`,
+  reassignTo: (name: string): string => `Reassign to ${name}`,
+  willSee: (name: string): string =>
+    `${name} will see this job in the technician app straight away.`,
+  assigned: (name: string): string => `Assigned to ${name}.`,
+  assignedNow: (name: string): string =>
+    `${name} is assigned now. Choose another technician to reassign the job.`,
+  historyAssigned: (name: string): string => `Assigned to ${name}`,
+  changedTitle: (jobNumber: string): string => `${jobNumber} changed after you opened it.`,
+  changedMessage: 'The latest version is shown. Check it, then try again.',
 } as const
 
 export const statusLabels = {
@@ -64,7 +103,15 @@ export const createJobCopy = {
   jobCard: 'Job',
   customerCard: 'Customer and site',
   scheduleCard: 'Schedule and priority',
-  checklistCard: 'Checklist',
+  checklistCard: 'Checklist and assignment',
+  technician: 'Assign technician',
+  leaveUnassigned: 'Leave unassigned',
+  technicianHelp: 'The technician sees the job in the app as soon as you create it.',
+  templatesFailed: 'Checklist templates could not be loaded.',
+  noTemplates: 'No checklist templates are available',
+  techniciansFailed: 'Technicians could not be loaded.',
+  techniciansFailedHelp: 'You can still create the job unassigned.',
+  tryAgain: 'Try again',
   title: 'Title',
   description: 'Description',
   equipment: 'Equipment',

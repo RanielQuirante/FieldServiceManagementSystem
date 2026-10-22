@@ -8,6 +8,7 @@ import { demoPassword } from './support/api.ts'
 import { budgetSummary } from './support/budget.ts'
 import { logsRoot, readRunFiles } from './support/run.ts'
 import { readRunSentinels, scanFolder, type Sentinel } from './support/sentinels.ts'
+import { sessionSummary } from './support/sessions.ts'
 
 const scannedFolders = ['api', 'notifications'] as const
 
@@ -42,12 +43,19 @@ export default async function globalTeardown(config: FullConfig): Promise<void> 
   }
   const budget = budgetSummary(runId)
   problems.push(...budget.violations)
+  const sessions = sessionSummary(runId)
+  if (sessions.signedOut !== sessions.opened) {
+    problems.push(
+      `Sessions opened by the run: ${sessions.opened} (${sessions.openedBy.join('; ')}); signed out: ${sessions.signedOut} (${sessions.signedOutBy.join('; ')}). Every session must be signed out.`,
+    )
+  }
   process.stdout.write(
     [
       `e2e teardown for run ${runId}`,
       `  sentinels: ${sentinels.length}; scanned: ${scanned.join(', ')}`,
       `  CSP violations in the run: ${violations.length}`,
       `  sign-ins: ${budget.signIns}; refresh calls: ${budget.refreshes}; busiest minute: ${budget.busiestRefreshMinute}`,
+      `  sessions opened: ${sessions.opened}; signed out: ${sessions.signedOut}`,
       '',
     ].join('\n'),
   )

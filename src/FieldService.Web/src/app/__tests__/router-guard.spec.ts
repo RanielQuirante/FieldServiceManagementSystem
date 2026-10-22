@@ -243,6 +243,7 @@ describe('the application frame', () => {
     stubFetch({
       [refreshRoute]: json(sessionResponse()),
       'GET /api/jobs': json(jobList([], { totalCount: 0 })),
+      'GET /api/technicians': json({ items: [] }),
     })
     const router = guardedRouter()
     await router.push('/reports')

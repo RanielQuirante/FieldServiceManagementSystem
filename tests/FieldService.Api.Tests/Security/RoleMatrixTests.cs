@@ -18,6 +18,12 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
 
     private const string JobRoute = "/api/jobs/{jobId:guid}";
 
+    private const string AssignmentRoute = "/api/jobs/{jobId:guid}/assignment";
+
+    private const string TechniciansRoute = "/api/technicians";
+
+    private const string MyJobsRoute = "/api/technicians/me/jobs";
+
     private const string DocumentRoute = "/openapi/{documentName}.json";
 
     private static readonly string[] _callers = [Anonymous, AssignedTechnician, OtherTechnician, Administrator];
@@ -40,6 +46,14 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "GET", "/api/checklist-templates", AssignedTechnician, 403, "auth.forbidden" },
         { "GET", "/api/checklist-templates", OtherTechnician, 403, "auth.forbidden" },
         { "GET", "/api/checklist-templates", Administrator, 200, null },
+        { "GET", TechniciansRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "GET", TechniciansRoute, AssignedTechnician, 403, "auth.forbidden" },
+        { "GET", TechniciansRoute, OtherTechnician, 403, "auth.forbidden" },
+        { "GET", TechniciansRoute, Administrator, 200, null },
+        { "GET", MyJobsRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "GET", MyJobsRoute, AssignedTechnician, 200, null },
+        { "GET", MyJobsRoute, OtherTechnician, 200, null },
+        { "GET", MyJobsRoute, Administrator, 403, "auth.forbidden" },
         { "POST", "/api/jobs", Anonymous, 401, "auth.unauthenticated" },
         { "POST", "/api/jobs", AssignedTechnician, 403, "auth.forbidden" },
         { "POST", "/api/jobs", OtherTechnician, 403, "auth.forbidden" },
@@ -52,6 +66,10 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "GET", JobRoute, AssignedTechnician, 200, null },
         { "GET", JobRoute, OtherTechnician, 404, "job.not-found" },
         { "GET", JobRoute, Administrator, 200, null },
+        { "PUT", AssignmentRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "PUT", AssignmentRoute, AssignedTechnician, 403, "auth.forbidden" },
+        { "PUT", AssignmentRoute, OtherTechnician, 403, "auth.forbidden" },
+        { "PUT", AssignmentRoute, Administrator, 200, null },
         { "GET", "/health/live", Anonymous, 200, null },
         { "GET", "/health/live", AssignedTechnician, 200, null },
         { "GET", "/health/live", OtherTechnician, 200, null },
@@ -195,6 +213,7 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
             ("POST", "/api/auth/refresh") => client.PostAsync(path),
             ("POST", "/api/auth/sign-out") => client.PostAsync(path),
             ("POST", "/api/jobs") => client.PostJsonAsync(path, CreateJobBody(world.Now, Guid.NewGuid().ToString("N")[..8])),
+            ("PUT", AssignmentRoute) => client.PutJsonAsync(path, new { technicianId = world.AssignedTechnician.Id, version = 0u }),
             ("GET", _) => client.GetAsync(path),
             _ => throw new ArgumentOutOfRangeException(nameof(route), $"{method} {route} has no request in the role matrix."),
         };

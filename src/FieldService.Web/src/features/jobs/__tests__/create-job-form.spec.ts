@@ -15,9 +15,23 @@ import {
   type RouteTable,
 } from '@/shared/testing/fetch-stub'
 
-import { checklistTemplates, demoToday, historyEntry, jobDetails } from './job-fixtures'
+import {
+  aishaTechnician,
+  checklistTemplates,
+  demoTechnicians,
+  demoToday,
+  historyEntry,
+  jobDetails,
+  priyaTechnician,
+  samuelTechnician,
+  technician,
+} from './job-fixtures'
 
 const templatesRoute = 'GET /api/checklist-templates'
+
+const techniciansRoute = 'GET /api/technicians'
+
+const rooftopHvac = '01a15175-3c00-7000-8000-000102000000'
 
 const createRoute = 'POST /api/jobs'
 
@@ -47,6 +61,7 @@ async function openForm(routeTable: RouteTable = {}): Promise<OpenForm> {
   const stub = stubFetch({
     'POST /api/auth/refresh': json(sessionResponse()),
     [templatesRoute]: json({ items: checklistTemplates }),
+    [techniciansRoute]: json({ items: demoTechnicians }),
     ...routeTable,
   })
   const router = createAppRouter(createMemoryHistory())
@@ -83,6 +98,26 @@ async function fillValidJob(wrapper: VueWrapper): Promise<void> {
 async function submit(wrapper: VueWrapper): Promise<void> {
   await wrapper.find('form.create-job-form').trigger('submit')
   await flushPromises()
+}
+
+function technicianSelect(wrapper: VueWrapper): HTMLSelectElement {
+  return wrapper.find<HTMLSelectElement>('#assign-technician').element
+}
+
+interface ListedOption {
+  readonly group: string | null
+  readonly text: string
+  readonly value: string
+  readonly disabled: boolean
+}
+
+function listedOptions(select: HTMLSelectElement): ListedOption[] {
+  return Array.from(select.options, (option) => ({
+    group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : null,
+    text: option.text.trim(),
+    value: option.value,
+    disabled: option.disabled,
+  }))
 }
 
 function errorOf(wrapper: VueWrapper, id: string): string | null {
@@ -136,8 +171,9 @@ describe('the new job form', () => {
     expect(wrapper.find('form').attributes('novalidate')).toBeDefined()
   })
 
-  it('lays out the four cards with labelled fields, optional markers and no technician field', async () => {
+  it('lays out the four cards with labelled fields, optional markers and the technician select', async () => {
     const { wrapper } = await openForm()
+    const lastCard = wrapper.find('section[aria-labelledby="checklist-section-title"]')
 
     expect(wrapper.find('form').attributes('aria-labelledby')).toBe('page-title')
     expect(wrapper.find('#page-title').text()).toBe('New job')
@@ -145,12 +181,15 @@ describe('the new job form', () => {
       'Job',
       'Customer and site',
       'Schedule and priority',
-      'Checklist',
+      'Checklist and assignment',
     ])
     expect(wrapper.find('label[for="site-access-notes"]').text()).toBe('Site access notes Optional')
     expect(wrapper.find('label[for="contact-phone"]').text()).toBe('Contact phone Optional')
     expect(wrapper.find('label[for="site-address"]').text()).toBe('Site address')
-    expect(wrapper.find('#technician').exists()).toBe(false)
+    expect(lastCard.findAll('select').map((select) => select.attributes('id'))).toEqual([
+      'checklist-template',
+      'assign-technician',
+    ])
     expect(wrapper.find('fieldset legend').text()).toBe('Priority')
     expect(
       wrapper
@@ -278,6 +317,66 @@ describe('the new job form', () => {
 
     expect(stub.requestsTo(templatesRoute)).toHaveLength(2)
     expect(wrapper.findAll('#checklist-template option')).toHaveLength(6)
+  })
+
+  it('reports a template load failure as a status, and Try again moves focus to the template select', async () => {
+    const { wrapper } = await openForm({
+      [templatesRoute]: [problem(500, 'server.error'), json({ items: checklistTemplates })],
+    })
+    const card = wrapper.find('section[aria-labelledby="checklist-section-title"]')
+    const banner = card.find('.banner--error')
+    expect(banner.attributes('role')).toBe('status')
+    banner.find('button').element.focus()
+
+    await banner.find('button').trigger('click')
+    await flushPromises()
+
+    expect(card.find('.banner--error').exists()).toBe(false)
+    expect(document.activeElement?.id).toBe('checklist-template')
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('moves focus to the card heading when Try again loads an empty template list', async () => {
+    const { wrapper } = await openForm({
+      [templatesRoute]: [problem(500, 'server.error'), json({ items: [] })],
+    })
+    const card = wrapper.find('section[aria-labelledby="checklist-section-title"]')
+    card.find<HTMLButtonElement>('.banner--error button').element.focus()
+
+    await card.find('.banner--error button').trigger('click')
+    await flushPromises()
+
+    const heading = wrapper.find<HTMLHeadingElement>('#checklist-section-title')
+    const select = wrapper.find<HTMLSelectElement>('#checklist-template').element
+    expect(card.find('.banner--error').exists()).toBe(false)
+    expect(select.disabled).toBe(true)
+    expect(select.options[0]?.text.trim()).toBe('No checklist templates are available')
+    expect(heading.element.tagName).toBe('H2')
+    expect(heading.text()).toBe('Checklist and assignment')
+    expect(heading.attributes('tabindex')).toBe('-1')
+    expect(document.activeElement).toBe(heading.element)
+    expect(
+      wrapper
+        .findAll('h2')
+        .filter((item) => item.attributes('tabindex') !== undefined)
+        .map((item) => item.text()),
+    ).toEqual(['Checklist and assignment'])
+  })
+
+  it('announces a second template failure as an alert and moves focus to the new Try again', async () => {
+    const { wrapper } = await openForm({
+      [templatesRoute]: [problem(500, 'server.error'), networkFailure()],
+    })
+    const card = wrapper.find('section[aria-labelledby="checklist-section-title"]')
+    card.find<HTMLButtonElement>('.banner--error button').element.focus()
+
+    await card.find('.banner--error button').trigger('click')
+    await flushPromises()
+
+    const banner = card.find('.banner--error')
+    expect(banner.text()).toContain('Checklist templates could not be loaded.')
+    expect(banner.attributes('role')).toBe('alert')
+    expect(document.activeElement).toBe(banner.find('button').element)
   })
 
   it('checks required fields before sending and focuses the first one', async () => {
@@ -481,5 +580,249 @@ describe('the new job form', () => {
       ),
     ).toEqual([])
     expect(document.activeElement).toBe(wrapper.find('h1').element)
+  })
+})
+
+describe('the technician select on the new job form', () => {
+  it('is labelled Assign technician with its help line, and starts at Leave unassigned', async () => {
+    const { wrapper } = await openForm()
+    const select = technicianSelect(wrapper)
+
+    expect(wrapper.find('label[for="assign-technician"]').text()).toBe('Assign technician')
+    expect(select.getAttribute('aria-describedby')).toBe('assign-technician-help')
+    expect(wrapper.find('#assign-technician-help').text()).toBe(
+      'The technician sees the job in the app as soon as you create it.',
+    )
+    expect(listedOptions(select)[0]).toEqual({
+      group: null,
+      text: 'Leave unassigned',
+      value: '',
+      disabled: false,
+    })
+    expect(select.value).toBe('')
+    expect(select.disabled).toBe(false)
+    expect(select.required).toBe(false)
+  })
+
+  it('lists the technicians in the assign order, without groups, before a template is chosen', async () => {
+    const { wrapper } = await openForm()
+    const select = technicianSelect(wrapper)
+
+    expect(select.querySelectorAll('optgroup')).toHaveLength(0)
+    expect(listedOptions(select).map(({ text, disabled }) => [text, disabled])).toEqual([
+      ['Leave unassigned', false],
+      ['Lena Park — Fire safety, 1 open job', false],
+      ['Priya Natarajan — Electrical, 2 open jobs', false],
+      ['Aisha Karim — Electrical, 3 open jobs', false],
+      ['Marco Reyes — HVAC, 3 open jobs', false],
+      ['Tom Becker — Plumbing, 4 open jobs', false],
+      ['Samuel Osei — HVAC, off shift', true],
+    ])
+  })
+
+  it('groups the technicians under the template trade, then Different trade', async () => {
+    const { wrapper } = await openForm()
+
+    await wrapper.find('#checklist-template').setValue(generalElectrical)
+    const select = technicianSelect(wrapper)
+
+    expect(Array.from(select.querySelectorAll('optgroup'), (group) => group.label)).toEqual([
+      'Electrical',
+      'Different trade',
+    ])
+    expect(listedOptions(select).map(({ group, text }) => [group, text])).toEqual([
+      [null, 'Leave unassigned'],
+      ['Electrical', 'Priya Natarajan — Electrical, 2 open jobs'],
+      ['Electrical', 'Aisha Karim — Electrical, 3 open jobs'],
+      ['Different trade', 'Lena Park — Fire safety, 1 open job'],
+      ['Different trade', 'Marco Reyes — HVAC, 3 open jobs'],
+      ['Different trade', 'Tom Becker — Plumbing, 4 open jobs'],
+      ['Different trade', 'Samuel Osei — HVAC, off shift'],
+    ])
+  })
+
+  it('re-sorts for another template and keeps the chosen technician', async () => {
+    const { wrapper } = await openForm()
+    await wrapper.find('#checklist-template').setValue(generalElectrical)
+    await wrapper.find('#assign-technician').setValue(aishaTechnician.id)
+
+    await wrapper.find('#checklist-template').setValue(rooftopHvac)
+    const select = technicianSelect(wrapper)
+
+    expect(listedOptions(select).map(({ group, text }) => [group, text])).toEqual([
+      [null, 'Leave unassigned'],
+      ['HVAC', 'Marco Reyes — HVAC, 3 open jobs'],
+      ['HVAC', 'Samuel Osei — HVAC, off shift'],
+      ['Different trade', 'Lena Park — Fire safety, 1 open job'],
+      ['Different trade', 'Priya Natarajan — Electrical, 2 open jobs'],
+      ['Different trade', 'Aisha Karim — Electrical, 3 open jobs'],
+      ['Different trade', 'Tom Becker — Plumbing, 4 open jobs'],
+    ])
+    expect(select.value).toBe(aishaTechnician.id)
+  })
+
+  it('leaves out a group with nobody in it and names an inactive technician', async () => {
+    const inactive = technician({ ...samuelTechnician, isActive: false, isOnShift: true })
+    const { wrapper } = await openForm({
+      [techniciansRoute]: json({ items: [priyaTechnician, inactive] }),
+    })
+
+    await wrapper.find('#checklist-template').setValue(generalElectrical)
+    const select = technicianSelect(wrapper)
+
+    expect(
+      listedOptions(select).map(({ group, text, disabled }) => [group, text, disabled]),
+    ).toEqual([
+      [null, 'Leave unassigned', false],
+      ['Electrical', 'Priya Natarajan — Electrical, 2 open jobs', false],
+      ['Different trade', 'Samuel Osei — HVAC, inactive', true],
+    ])
+
+    await wrapper.find('#checklist-template').setValue(rooftopHvac)
+    expect(Array.from(select.querySelectorAll('optgroup'), (group) => group.label)).toEqual([
+      'HVAC',
+      'Different trade',
+    ])
+  })
+
+  it('sends technicianId only when a technician is chosen', async () => {
+    const { wrapper, stub } = await openForm({
+      [createRoute]: [problem(500, 'server.error'), problem(500, 'server.error')],
+    })
+    await fillValidJob(wrapper)
+
+    await wrapper.find('#assign-technician').setValue(aishaTechnician.id)
+    await submit(wrapper)
+    await wrapper.find('#assign-technician').setValue('')
+    await submit(wrapper)
+
+    const bodies = stub
+      .requestsTo(createRoute)
+      .map((request) => JSON.parse(request.body ?? '{}') as Record<string, unknown>)
+    expect(bodies[0]?.technicianId).toBe(aishaTechnician.id)
+    expect(bodies[1]).not.toHaveProperty('technicianId')
+  })
+
+  it('reads Loading technicians… and stays disabled while the technicians load', async () => {
+    const slow = deferred()
+    const { wrapper } = await openForm({ [techniciansRoute]: slow.reply })
+
+    expect(technicianSelect(wrapper).disabled).toBe(true)
+    expect(listedOptions(technicianSelect(wrapper)).map(({ text }) => text)).toEqual([
+      'Loading technicians…',
+    ])
+
+    slow.resolve(new Response(JSON.stringify({ items: demoTechnicians }), { status: 200 }))
+    await flushPromises()
+    expect(technicianSelect(wrapper).disabled).toBe(false)
+    expect(technicianSelect(wrapper).value).toBe('')
+  })
+
+  it('explains a technicians load failure in the card and still creates the job unassigned', async () => {
+    const { wrapper, stub } = await openForm({
+      [techniciansRoute]: [
+        problem(500, 'server.error', { correlationId: reference }),
+        json({ items: demoTechnicians }),
+      ],
+      [createRoute]: problem(500, 'server.error'),
+    })
+    const card = wrapper.find('section[aria-labelledby="checklist-section-title"]')
+    const banner = card.find('.banner--error')
+
+    expect(technicianSelect(wrapper).disabled).toBe(true)
+    expect(listedOptions(technicianSelect(wrapper)).map(({ text }) => text)).toEqual([
+      'Technicians are unavailable',
+    ])
+    expect(banner.text()).toContain(
+      'Technicians could not be loaded. You can still create the job unassigned.',
+    )
+    expect(banner.text()).toContain(`Reference ${reference}`)
+
+    await fillValidJob(wrapper)
+    await submit(wrapper)
+    expect(JSON.parse(stub.requestsTo(createRoute)[0]?.body ?? '{}')).not.toHaveProperty(
+      'technicianId',
+    )
+
+    await card.find('.banner--error button').trigger('click')
+    await flushPromises()
+    expect(stub.requestsTo(techniciansRoute)).toHaveLength(2)
+    expect(technicianSelect(wrapper).disabled).toBe(false)
+    expect(card.find('.banner--error').exists()).toBe(false)
+  })
+
+  it('reports a technicians load failure as a status, and Try again moves focus to the technician select', async () => {
+    const { wrapper } = await openForm({
+      [techniciansRoute]: [problem(500, 'server.error'), json({ items: demoTechnicians })],
+    })
+    const card = wrapper.find('section[aria-labelledby="checklist-section-title"]')
+    const banner = card.find('.banner--error')
+    expect(banner.attributes('role')).toBe('status')
+    banner.find('button').element.focus()
+
+    await banner.find('button').trigger('click')
+    await flushPromises()
+
+    expect(card.find('.banner--error').exists()).toBe(false)
+    expect(technicianSelect(wrapper).disabled).toBe(false)
+    expect(document.activeElement).toBe(technicianSelect(wrapper))
+  })
+
+  it('announces a second technicians failure as an alert and moves focus to the new Try again', async () => {
+    const { wrapper } = await openForm({
+      [techniciansRoute]: [problem(500, 'server.error'), networkFailure()],
+    })
+    const card = wrapper.find('section[aria-labelledby="checklist-section-title"]')
+    card.find<HTMLButtonElement>('.banner--error button').element.focus()
+
+    await card.find('.banner--error button').trigger('click')
+    await flushPromises()
+
+    const banner = card.find('.banner--error')
+    expect(banner.text()).toContain('Technicians could not be loaded.')
+    expect(banner.attributes('role')).toBe('alert')
+    expect(document.activeElement).toBe(banner.find('button').element)
+    expect(technicianSelect(wrapper).disabled).toBe(true)
+  })
+
+  it('marks the select, refreshes the list and focuses it when the technician is no longer available', async () => {
+    const { wrapper, stub } = await openForm({
+      [createRoute]: problem(409, 'technician.unavailable'),
+    })
+    await fillValidJob(wrapper)
+    await wrapper.find('#assign-technician').setValue(priyaTechnician.id)
+
+    await submit(wrapper)
+
+    expect(stub.requestsTo(techniciansRoute)).toHaveLength(2)
+    expect(errorOf(wrapper, 'assign-technician')).toBe(
+      'This technician is no longer available. Choose another technician or leave the job unassigned.',
+    )
+    expect(technicianSelect(wrapper).getAttribute('aria-describedby')).toBe(
+      'assign-technician-error assign-technician-help',
+    )
+    expect(wrapper.find('.create-job-form > .banner--error').exists()).toBe(false)
+    expect(document.activeElement?.id).toBe('assign-technician')
+
+    await wrapper.find('#assign-technician').setValue('')
+    expect(errorOf(wrapper, 'assign-technician')).toBeNull()
+  })
+
+  it('shows a server error about the technician on the select and names it in the summary', async () => {
+    const { wrapper } = await openForm({
+      [createRoute]: problem(400, 'request.validation-failed', {
+        errors: { technicianId: ['Choose a technician who exists.'] },
+      }),
+    })
+    await fillValidJob(wrapper)
+    await wrapper.find('#assign-technician').setValue(priyaTechnician.id)
+
+    await submit(wrapper)
+
+    expect(errorOf(wrapper, 'assign-technician')).toBe('Choose a technician who exists.')
+    expect(wrapper.find('.create-job-form > .banner--error').text()).toBe(
+      'Some details need attention. Check Assign technician.',
+    )
+    expect(document.activeElement?.id).toBe('assign-technician')
   })
 })

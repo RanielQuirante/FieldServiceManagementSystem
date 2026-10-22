@@ -54,6 +54,21 @@ public sealed class ApiClient(HttpClient client) : IDisposable
         return SendAsync(request);
     }
 
+    public Task<HttpResponseMessage> PutJsonAsync<T>(string path, T body, Action<HttpRequestMessage>? configure = null)
+    {
+        return PutAsync(path, JsonContent.Create(body, options: Json), configure);
+    }
+
+    public Task<HttpResponseMessage> PutAsync(
+        string path,
+        HttpContent? content = null,
+        Action<HttpRequestMessage>? configure = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = content };
+        configure?.Invoke(request);
+        return SendAsync(request);
+    }
+
     public Task<HttpResponseMessage> SignInAsync(string email, string password, SessionClient sessionClient)
     {
         return PostJsonAsync(SignInPath, new { email, password, client = sessionClient });
@@ -135,6 +150,30 @@ public sealed class ApiClient(HttpClient client) : IDisposable
     public static byte[] RefreshTokenHashOf(string token)
     {
         return SHA256.HashData(Base64Url.DecodeFromChars(token));
+    }
+
+    public static ByteArrayContent EmptyBodyOf(string mediaType)
+    {
+        var content = new ByteArrayContent([]);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType);
+        return content;
+    }
+
+    public static void AssertSentWithoutCredential(HttpResponseMessage response, string? mediaType)
+    {
+        var request = response.RequestMessage!;
+        if (mediaType is null)
+        {
+            Assert.Null(request.Content);
+        }
+        else
+        {
+            Assert.Equal(0, request.Content!.Headers.ContentLength);
+            Assert.Equal(mediaType, request.Content.Headers.ContentType?.ToString());
+        }
+
+        Assert.False(request.Headers.Contains(HeaderNames.Cookie));
+        Assert.False(request.Headers.Contains(CsrfHeader.Name));
     }
 
     public static async Task<JsonDocument> AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status, string code)

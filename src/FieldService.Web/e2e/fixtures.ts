@@ -1,5 +1,6 @@
 import {
   test as base,
+  type APIRequestContext,
   type BrowserContext,
   type BrowserContextOptions,
   type FullProject,
@@ -17,10 +18,14 @@ import {
   refreshCookieName,
   refreshWithCookie,
   signIn,
+  signInTechnician,
+  signOutWithCookie,
   type SentinelSink,
   type SessionUser,
+  type TechnicianApi,
 } from './support/api.ts'
 import { budgetViolations, recordAuthCall } from './support/budget.ts'
+import { recordSessionEvent } from './support/sessions.ts'
 import { currentRunId, resultsFile, writeJsonFile } from './support/run.ts'
 import { demoAccountSentinels, SentinelCollector, sentinelFile } from './support/sentinels.ts'
 
@@ -62,6 +67,10 @@ export const consolePatterns = {
   jobNotFound: failedResource(404, '/api/jobs/'),
   jobsServerError: failedResource(500, '/api/jobs'),
   createJobRejected: failedResource(400, '/api/jobs'),
+  assignmentConflict: failedResource(409, '/assignment'),
+  assignmentRejected: failedResource(400, '/assignment'),
+  techniciansServerError: failedResource(500, '/api/technicians'),
+  templatesServerError: failedResource(500, '/api/checklist-templates'),
   reportedError: (marker: string): RegExp => new RegExp(escapeForPattern(marker)),
 } as const
 
@@ -214,8 +223,25 @@ function authCallOf(request: Request): 'sign-in' | 'refresh' | null {
   return path === '/api/auth/refresh' ? 'refresh' : null
 }
 
+function isSignOut(request: Request): boolean {
+  return request.method() === 'POST' && new URL(request.url()).pathname === '/api/auth/sign-out'
+}
+
+async function observeSignOut(response: Response): Promise<void> {
+  const clearsCookie = ((await response.headerValue('set-cookie')) ?? '').includes(
+    `${refreshCookieName}=`,
+  )
+  if (response.status() === 204 && clearsCookie) {
+    recordSessionEvent('signed-out', 'Web sign-out in the browser')
+  }
+}
+
 async function observeAuthResponse(response: Response, sink: SentinelSink): Promise<void> {
   const request = response.request()
+  if (isSignOut(request) && !stubbedRequests.has(request)) {
+    await observeSignOut(response)
+    return
+  }
   const call = authCallOf(request)
   if (call === null || stubbedRequests.has(request)) {
     return
@@ -224,6 +250,9 @@ async function observeAuthResponse(response: Response, sink: SentinelSink): Prom
   sink('refresh cookie', refreshCookieFrom([(await response.headerValue('set-cookie')) ?? '']))
   if (!response.ok()) {
     return
+  }
+  if (call === 'sign-in') {
+    recordSessionEvent('opened', 'Web sign-in in the browser')
   }
   try {
     const body = (await response.json()) as { accessToken?: string; refreshToken?: string | null }
@@ -243,6 +272,28 @@ function instrumentContext(context: BrowserContext, sink: SentinelSink): void {
 async function collectCookies(context: BrowserContext, sink: SentinelSink): Promise<void> {
   for (const cookie of await context.cookies()) {
     sink('refresh cookie', cookie.name === refreshCookieName ? cookie.value : null)
+  }
+}
+
+function errorName(reason: unknown): string {
+  return reason instanceof Error ? reason.name : 'unknown error'
+}
+
+async function holdsRefreshCookie(context: BrowserContext): Promise<boolean> {
+  return (await context.cookies()).some((cookie) => cookie.name === refreshCookieName)
+}
+
+async function signOutContext(context: BrowserContext): Promise<void> {
+  if (!(await holdsRefreshCookie(context))) {
+    return
+  }
+  const status = await signOutWithCookie(context.request)
+  if (status !== 204 || (await holdsRefreshCookie(context))) {
+    throw new Error(
+      `The sign-out at teardown answered ${status} and the refresh cookie is ${
+        (await holdsRefreshCookie(context)) ? 'still held' : 'gone'
+      }.`,
+    )
   }
 }
 
@@ -268,6 +319,8 @@ export interface AdminSession {
 
 export type ContextOpener = () => Promise<BrowserContext>
 
+export type TechnicianSessions = (email: string) => Promise<TechnicianApi>
+
 interface TestFixtures {
   expectedConsole: RegExp
   expectedPageErrors: RegExp
@@ -285,6 +338,7 @@ interface WorkerFixtures {
   adminContext: BrowserContext
   adminSession: AdminSession
   api: AdminApi
+  technician: TechnicianSessions
   seededSentinels: void
 }
 
@@ -330,6 +384,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       instrumentContext(context, sentinelSink)
       await use(context)
       await collectCookies(context, sentinelSink)
+      await signOutContext(context)
       await context.close()
     },
     { scope: 'worker' },
@@ -365,6 +420,54 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           },
         }),
       )
+    },
+    { scope: 'worker' },
+  ],
+
+  technician: [
+    async ({ playwright, sentinelSink }, use, workerInfo) => {
+      const sessions = new Map<string, Promise<TechnicianApi>>()
+      const contexts: APIRequestContext[] = []
+      await use((email) => {
+        const cached = sessions.get(email)
+        if (cached !== undefined) {
+          return cached
+        }
+        const session = (async () => {
+          const request = await playwright.request.newContext({
+            baseURL: workerInfo.project.use.baseURL,
+          })
+          contexts.push(request)
+          return signInTechnician(request, email, sentinelSink)
+        })()
+        sessions.set(email, session)
+        return session
+      })
+      const signedIn = await Promise.allSettled(sessions.values())
+      const signOuts = await Promise.allSettled(
+        signedIn.flatMap((outcome) =>
+          outcome.status === 'fulfilled' ? [outcome.value.signOut()] : [],
+        ),
+      )
+      for (const context of contexts) {
+        await context.dispose()
+      }
+      const problems = [
+        ...signedIn.flatMap((outcome) =>
+          outcome.status === 'rejected'
+            ? [`a sign-in was rejected (${errorName(outcome.reason)})`]
+            : [],
+        ),
+        ...signOuts.flatMap((outcome) => {
+          if (outcome.status === 'rejected') {
+            return [`a sign-out was rejected (${errorName(outcome.reason)})`]
+          }
+          return outcome.value === 204 ? [] : [`a sign-out answered ${outcome.value}`]
+        }),
+      ]
+      if (problems.length > 0) {
+        throw new Error(`The technician sessions at teardown: ${problems.join('; ')}.`)
+      }
     },
     { scope: 'worker' },
   ],
@@ -448,6 +551,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     })
     for (const context of opened) {
       await collectCookies(context, sentinelSink)
+      await signOutContext(context)
       await context.close()
     }
   },

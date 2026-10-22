@@ -91,7 +91,7 @@ public sealed class CreateJobTests(DatabaseFixture fixture) : DatabaseTest(fixtu
                 "id", "number", "title", "description", "priority", "status", "customerName", "siteAddress",
                 "siteAccessNotes", "contactName", "contactPhone", "equipment", "scheduledStart", "scheduledEnd",
                 "checklistTemplate", "assignedTechnician", "createdBy", "createdAt", "updatedAt", "assignedAt",
-                "startedAt", "completedAt", "cancelledAt", "history", "version",
+                "startedAt", "completedAt", "cancelledAt", "history", "version", "affordances",
             ],
             root.EnumerateObject().Select(member => member.Name));
         Assert.Equal("2026-10-20T13:00:00.000Z", root.GetProperty("scheduledStart").GetString());
@@ -103,6 +103,187 @@ public sealed class CreateJobTests(DatabaseFixture fixture) : DatabaseTest(fixtu
         Assert.Equal(JsonValueKind.Null, root.GetProperty("assignedTechnician").ValueKind);
         Assert.Equal(JsonValueKind.Null, root.GetProperty("history")[0].GetProperty("fromStatus").ValueKind);
         Assert.Equal("Created", root.GetProperty("history")[0].GetProperty("action").GetString());
+        var affordances = root.GetProperty("affordances");
+        Assert.Equal(["canAssign"], affordances.EnumerateObject().Select(member => member.Name));
+        Assert.Equal(JsonValueKind.True, affordances.GetProperty("canAssign").ValueKind);
+    }
+
+    [Fact]
+    public async Task CreatingAJobWithATechnicianYieldsAssignedWithCreatedAndAssignedEntriesAtTheSameInstant()
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        var technician = await Data.CreateTechnicianAsync(Trade.Electrical, CancellationToken);
+        using var client = ClientFor(administrator);
+        var now = UtcInstant.Truncate(Fixture.Factory.Clock.GetUtcNow());
+        var body = ValidBody();
+        body["technicianId"] = technician.UserId.ToString();
+
+        using var response = await client.PostAsync(JobsPath, Json(body));
+
+        var job = await ReadJobAsync(response);
+        Assert.Equal($"/api/jobs/{job.Id}", response.Headers.Location?.OriginalString);
+        Assert.Equal(JobStatus.Assigned, job.Status);
+        Assert.Equal(new JobTechnicianReference(technician.UserId, technician.User.DisplayName, Trade.Electrical), job.AssignedTechnician);
+        Assert.Equal(now, job.CreatedAt);
+        Assert.Equal(now, job.UpdatedAt);
+        Assert.Equal(now, job.AssignedAt);
+        Assert.Equal([JobHistoryAction.Created, JobHistoryAction.Assigned], job.History.Select(entry => entry.Action));
+        Assert.All(job.History, entry => Assert.Equal(now, entry.OccurredAt));
+        Assert.All(job.History, entry => Assert.Equal(new UserReference(administrator.Id, administrator.DisplayName), entry.Actor));
+        Assert.Equal([null, JobStatus.Unassigned], job.History.Select(entry => entry.FromStatus));
+        Assert.Equal([JobStatus.Unassigned, JobStatus.Assigned], job.History.Select(entry => entry.ToStatus));
+        Assert.Equal([null, new UserReference(technician.UserId, technician.User.DisplayName)], job.History.Select(entry => entry.Technician));
+        Assert.True(job.Affordances.CanAssign);
+
+        await using var db = Fixture.CreateAppDbContext();
+        var stored = await db.Jobs.AsNoTracking().Include(entry => entry.History).SingleAsync(entry => entry.Id == job.Id, CancellationToken);
+        Assert.Equal(JobStatus.Assigned, stored.Status);
+        Assert.Equal(technician.UserId, stored.AssignedTechnicianId);
+        Assert.Equal(now, stored.AssignedAt);
+        Assert.Equal(job.Version, stored.Version);
+        Assert.Equal(
+            job.History.Select(entry => entry.Id).Order(),
+            stored.History.Select(entry => entry.Id).Order());
+        Assert.Equal(technician.UserId, stored.History.Single(entry => entry.Action == JobHistoryAction.Assigned).TechnicianId);
+    }
+
+    [Fact]
+    public async Task AJobCreatedWithATechnicianRecordsOneJobCreatedEventWithStatusAssignedAndNoJobAssignedEvent()
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        var technician = await Data.CreateTechnicianAsync(Trade.Electrical, CancellationToken);
+        using var client = ClientFor(administrator);
+        bool? committedWhenEnqueued = null;
+        Fixture.Factory.Events.OnEnqueue = jobEvent =>
+        {
+            using var db = Fixture.CreateAppDbContext();
+            committedWhenEnqueued = db.Jobs.AsNoTracking()
+                .Any(job => job.Id == jobEvent.JobId && job.AssignedTechnicianId == technician.UserId);
+        };
+        var body = ValidBody();
+        body["technicianId"] = technician.UserId.ToString();
+
+        using var response = await client.PostAsync(JobsPath, Json(body));
+
+        var job = await ReadJobAsync(response);
+        var recorded = Assert.Single(Fixture.Factory.Events.Events);
+        Assert.True(committedWhenEnqueued);
+        Assert.Equal(JobEventTypes.Created, recorded.Type);
+        Assert.Equal(job.Id, recorded.JobId);
+        Assert.Equal(JobStatus.Assigned, recorded.Status);
+        Assert.Null(recorded.PreviousStatus);
+        Assert.Equal(job.UpdatedAt, recorded.OccurredAt);
+        Assert.Equal(client.LastCorrelationId, recorded.CorrelationId);
+    }
+
+    [Fact]
+    public async Task AnExplicitNullTechnicianCreatesAnUnassignedJob()
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        using var client = ClientFor(administrator);
+        var body = ValidBody();
+        body["technicianId"] = null;
+
+        using var response = await client.PostAsync(JobsPath, Json(body));
+
+        var job = await ReadJobAsync(response);
+        Assert.Equal(JobStatus.Unassigned, job.Status);
+        Assert.Null(job.AssignedTechnician);
+        Assert.Single(job.History);
+        Assert.Equal(JobStatus.Unassigned, Fixture.Factory.Events.SingleOf(JobEventTypes.Created, job.Id).Status);
+    }
+
+    [Fact]
+    public async Task AnUnknownTechnicianOrAUserWhoIsNotATechnicianReturns400KeyedTechnicianIdAndWritesNothing()
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        using var client = ClientFor(administrator);
+
+        foreach (var technicianId in new[] { Guid.CreateVersion7(), administrator.Id, Guid.Empty })
+        {
+            var body = ValidBody();
+            body["technicianId"] = technicianId.ToString();
+
+            using var response = await client.PostAsync(JobsPath, Json(body));
+
+            await ApiClient.AssertFieldErrorsAsync(response, "technicianId");
+            Assert.Equal([AssigneeQuery.UnknownMessage], await MessagesAsync(response, "technicianId"));
+        }
+
+        await AssertNothingWrittenAsync();
+    }
+
+    [Fact]
+    public async Task AnUnknownTemplateAndAnUnknownTechnicianAreReportedTogether()
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        using var client = ClientFor(administrator);
+        var body = ValidBody();
+        body["checklistTemplateId"] = Guid.CreateVersion7().ToString();
+        body["technicianId"] = Guid.CreateVersion7().ToString();
+
+        using var response = await client.PostAsync(JobsPath, Json(body));
+
+        await ApiClient.AssertFieldErrorsAsync(response, "checklistTemplateId", "technicianId");
+        Assert.Equal([CreateJobEndpoint.UnknownTemplateMessage], await MessagesAsync(response, "checklistTemplateId"));
+        Assert.Equal([AssigneeQuery.UnknownMessage], await MessagesAsync(response, "technicianId"));
+        await AssertNothingWrittenAsync();
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public async Task AnOffShiftOrInactiveTechnicianReturns409TechnicianUnavailableAndWritesNothing(bool isOnShift, bool isActive)
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        var technician = await Data.CreateTechnicianAsync(Trade.Electrical, CancellationToken, isOnShift, isActive);
+        using var client = ClientFor(administrator);
+        var body = ValidBody();
+        body["technicianId"] = technician.UserId.ToString();
+
+        using var response = await client.PostAsync(JobsPath, Json(body));
+
+        using var problem = await ApiClient.AssertProblemAsync(response, HttpStatusCode.Conflict, "technician.unavailable");
+        Assert.Equal("The technician is not available.", problem.RootElement.GetProperty("title").GetString());
+        Assert.Equal("https://tools.ietf.org/html/rfc9110#section-15.5.10", problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal("The technician is inactive or off shift.", problem.RootElement.GetProperty("detail").GetString());
+        Assert.Equal(client.LastCorrelationId, problem.RootElement.GetProperty("correlationId").GetString());
+        await AssertNothingWrittenAsync();
+    }
+
+    [Fact]
+    public async Task AnUnknownTemplateIsReportedBeforeAnUnavailableTechnician()
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        var technician = await Data.CreateTechnicianAsync(Trade.Electrical, CancellationToken, isOnShift: false);
+        using var client = ClientFor(administrator);
+        var body = ValidBody();
+        body["checklistTemplateId"] = Guid.CreateVersion7().ToString();
+        body["technicianId"] = technician.UserId.ToString();
+
+        using var response = await client.PostAsync(JobsPath, Json(body));
+
+        await ApiClient.AssertFieldErrorsAsync(response, "checklistTemplateId");
+        await AssertNothingWrittenAsync();
+    }
+
+    [Theory]
+    [InlineData("\"not-a-uuid\"")]
+    [InlineData("5")]
+    [InlineData("true")]
+    [InlineData("\"\"")]
+    public async Task AMalformedTechnicianIdReturnsAFieldErrorKeyedTechnicianId(string technicianId)
+    {
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        using var client = ClientFor(administrator);
+        var body = ValidBody();
+        body["technicianId"] = JsonNode.Parse(technicianId);
+
+        using var response = await client.PostAsync(JobsPath, Json(body));
+
+        await ApiClient.AssertFieldErrorsAsync(response, "technicianId");
+        await AssertNothingWrittenAsync();
     }
 
     [Fact]

@@ -12,8 +12,9 @@ import {
   stubSignedOutRestore,
   test,
 } from './fixtures.ts'
-import { demoAccounts, type JobStatus } from './support/api.ts'
+import { demoAccounts, demoTechnicians, type JobStatus } from './support/api.ts'
 import {
+  assignCopy,
   createJobCopy,
   jobDetailCopy,
   jobsCopy,
@@ -23,6 +24,13 @@ import {
   statusLabels,
   toastCopy,
 } from './support/copy.ts'
+import {
+  assignRowName,
+  createUnassignedJob,
+  expectedAssignOrder,
+  momentSpansOf,
+  rowNamed,
+} from './support/jobs.ts'
 import { e2eTitle, openInApp, readJsonFile, resultsFile, writeJsonFile } from './support/run.ts'
 
 const axeTags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
@@ -110,6 +118,14 @@ function errorToast(page: Page): Locator {
     .getByRole('region', { name: shellCopy.notifications })
     .getByRole('alert')
     .filter({ hasText: toastCopy.errorTitle })
+}
+
+function assignPanel(page: Page): Locator {
+  return page.getByRole('region', { name: assignCopy.heading })
+}
+
+function assignRow(page: Page, displayName: string): Locator {
+  return assignPanel(page).getByRole('radio', { name: rowNamed(displayName) })
 }
 
 async function searchJobs(page: Page, text: string): Promise<void> {
@@ -258,6 +274,16 @@ async function tabUntilFocused(page: Page, target: Locator, limit: number): Prom
   return limit + 1
 }
 
+async function arrowDownUntilFocused(page: Page, target: Locator, limit: number): Promise<number> {
+  for (let presses = 0; presses <= limit; presses += 1) {
+    if (await target.evaluate((element) => element === document.activeElement)) {
+      return presses
+    }
+    await page.keyboard.press('ArrowDown')
+  }
+  return limit + 1
+}
+
 interface SignInFailure {
   readonly status: number
   readonly code: string
@@ -283,7 +309,7 @@ const signInConsole = anyOf(
   consolePatterns.signInServerError,
 )
 
-test.describe('E2E-19 accessibility of the W1 routes and states', () => {
+test.describe('E2E-19 accessibility of the W1 and W2 routes and states', () => {
   for (const viewport of widths) {
     test(`sign-in states pass axe at ${viewport.width} px`, async ({
       anonymousPage: page,
@@ -355,7 +381,7 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
       await expect(page).toHaveURL('/sign-in?redirect=%2Fjobs')
     })
 
-    test(`W1 routes and states pass axe at ${viewport.width} px`, async ({
+    test(`W1 and W2 routes and states pass axe at ${viewport.width} px`, async ({
       adminPage: page,
       api,
       guards,
@@ -368,9 +394,11 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
           consolePatterns.reportedError(marker),
           consolePatterns.jobNotFound,
           consolePatterns.jobsServerError,
+          consolePatterns.assignmentConflict,
         ),
       )
       const seeded = await api.findJobByNumber(1042)
+      const assignable = await createUnassignedJob(api, runId, `axe ${viewport.width}`)
       await page.setViewportSize(viewport)
       await page.goto('/jobs')
       await expect(tableRows(page)).toHaveCount(12)
@@ -400,6 +428,42 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
       await tableRows(page).getByRole('link', { name: seeded.title }).click()
       await expect(page.getByRole('heading', { level: 1, name: seeded.title })).toBeVisible()
       await audit(page, testInfo, runId, `job detail ${viewport.width}`)
+      await openInApp(page, `/jobs/${assignable.id}`)
+      const lena = assignRow(page, demoTechnicians.assignments.name)
+      await expect(lena).toBeEnabled()
+      await audit(page, testInfo, runId, `job detail with the assign panel ${viewport.width}`)
+      await lena.check()
+      const assignToLena = assignPanel(page).getByRole('button', {
+        name: assignCopy.assignTo(demoTechnicians.assignments.name),
+      })
+      await expect(assignToLena).toBeVisible()
+      await audit(page, testInfo, runId, `assign panel with a technician chosen ${viewport.width}`)
+      await fulfilStub(
+        page,
+        `**/api/jobs/${assignable.id}/assignment`,
+        {
+          status: 409,
+          body: problemBody(
+            409,
+            'concurrency.conflict',
+            'The resource was changed by someone else.',
+          ),
+        },
+        1,
+      )
+      await assignToLena.click()
+      await expect(
+        assignPanel(page)
+          .getByRole('alert')
+          .filter({ hasText: assignCopy.changedTitle(`JOB-${assignable.number}`) }),
+      ).toBeVisible()
+      await expect(assignToLena).toBeFocused()
+      await audit(
+        page,
+        testInfo,
+        runId,
+        `job detail after a stale-version conflict ${viewport.width}`,
+      )
       await page.getByRole('link', { name: shellCopy.newJob }).click()
       await expect(
         page.getByRole('combobox', { name: createJobCopy.checklistTemplate }),
@@ -428,7 +492,7 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
     })
   }
 
-  test('every W1 route and state reflows at 320 px without page scroll', async ({
+  test('every W1 and W2 route and state reflows at 320 px without page scroll', async ({
     adminPage: page,
     anonymousPage,
     api,
@@ -442,6 +506,7 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
     )
     const viewport = { width: 320, height: 800 }
     const seeded = await api.findJobByNumber(1042)
+    const assignable = await createUnassignedJob(api, runId, 'reflow 320')
     await stubSignedOutRestore(anonymousPage)
     await anonymousPage.setViewportSize(viewport)
     await anonymousPage.goto('/sign-in?redirect=%2Fjobs')
@@ -520,6 +585,32 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
     release()
     await expect(page.getByRole('heading', { level: 1, name: seeded.title })).toBeVisible()
     expect(await pageScrollWidth(page), 'job detail').toBeLessThanOrEqual(320)
+    await openInApp(page, `/jobs/${assignable.id}`)
+    const lena = assignRow(page, demoTechnicians.assignments.name)
+    await expect(lena).toBeEnabled()
+    expect(await pageScrollWidth(page), 'job detail with the assign panel').toBeLessThanOrEqual(320)
+    const moments = await momentSpansOf(
+      assignPanel(page).getByRole('group', { name: assignCopy.group }),
+    )
+    await testInfo.attach('assign row moments at 320', {
+      body: JSON.stringify(moments, null, 2),
+      contentType: 'application/json',
+    })
+    expect(moments.length, 'times and dates in the assign rows').toBeGreaterThan(0)
+    expect(
+      moments.filter((moment) => moment.whiteSpace !== 'nowrap' || moment.lineBoxes !== 1),
+      'times and dates that wrap at 320 px',
+    ).toEqual([])
+    await lena.check()
+    await expect(
+      assignPanel(page).getByRole('button', {
+        name: assignCopy.assignTo(demoTechnicians.assignments.name),
+      }),
+    ).toBeVisible()
+    expect(
+      await pageScrollWidth(page),
+      'assign panel with a technician chosen',
+    ).toBeLessThanOrEqual(320)
     await page.getByRole('link', { name: shellCopy.newJob }).click()
     await page.getByRole('button', { name: createJobCopy.create }).click()
     await expect(
@@ -569,7 +660,7 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
     }
   })
 
-  test('a job is created by keyboard alone and the date picker stop shows focus', async ({
+  test('a job is created and assigned by keyboard alone and the date picker stop shows focus', async ({
     adminPage: page,
     api,
     runId,
@@ -581,6 +672,9 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
     const startField = page.getByLabel(createJobCopy.start, { exact: true })
     const endField = page.getByLabel(createJobCopy.end, { exact: true })
     const templateField = page.getByRole('combobox', { name: createJobCopy.checklistTemplate })
+    const technicianField = page.getByRole('combobox', { name: createJobCopy.technician })
+    const technicians = await api.technicians()
+    const lena = await api.technicianNamed(demoTechnicians.assignments.name)
     await page.goto('/jobs')
     await expect(page.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeFocused()
 
@@ -648,6 +742,9 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
     await page.keyboard.type('General')
     await expect(templateField).toHaveValue(/.+/)
     await page.keyboard.press('Tab')
+    await expect(technicianField).toBeFocused()
+    await expect(technicianField).toHaveValue('')
+    await page.keyboard.press('Tab')
     await expect(page.getByRole('button', { name: createJobCopy.create })).toBeFocused()
     const created = page.waitForResponse(
       (response) => response.url().endsWith('/api/jobs') && response.request().method() === 'POST',
@@ -668,6 +765,52 @@ test.describe('E2E-19 accessibility of the W1 routes and states', () => {
     })
     expect(Date.parse(stored.scheduledStart)).toBe(Date.parse(`${date.iso}T09:00:00Z`))
     expect(Date.parse(stored.scheduledEnd)).toBe(Date.parse(`${date.iso}T11:00:00Z`))
+
+    const search = assignPanel(page).getByRole('searchbox', { name: assignCopy.search })
+    await expect(search).toBeEnabled()
+    const electricalRows = assignPanel(page)
+      .getByRole('group', { name: assignCopy.group })
+      .getByRole('radio')
+    const electricalOrder = expectedAssignOrder(technicians, stored.checklistTemplate.trade)
+    await expect(electricalRows).toHaveCount(electricalOrder.length)
+    for (const [index, member] of electricalOrder.entries()) {
+      await expect(electricalRows.nth(index)).toHaveAccessibleName(
+        assignRowName(member, stored.checklistTemplate.trade),
+      )
+    }
+    expect(
+      await tabUntilFocused(page, search, 40),
+      'Tab stops from the page to the technician search',
+    ).toBeLessThanOrEqual(40)
+    await page.keyboard.press('Tab')
+    const row = assignRow(page, lena.displayName)
+    expect(
+      await arrowDownUntilFocused(page, row, 8),
+      'ArrowDown presses from the first row to Lena Park',
+    ).toBeLessThanOrEqual(8)
+    await expect(row).toBeFocused()
+    await page.keyboard.press('Space')
+    await expect(row).toBeChecked()
+    await page.keyboard.press('Tab')
+    const assignToLena = assignPanel(page).getByRole('button', {
+      name: assignCopy.assignTo(lena.displayName),
+    })
+    await expect(assignToLena).toBeFocused()
+    const assigned = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/jobs/${job.id}/assignment`) &&
+        response.request().method() === 'PUT',
+    )
+    await page.keyboard.press('Enter')
+
+    expect((await assigned).status()).toBe(200)
+    await expect(
+      page.getByRole('status').filter({ hasText: assignCopy.assigned(lena.displayName) }),
+    ).toBeVisible()
+    expect(await api.getJob(job.id)).toMatchObject({
+      status: 'Assigned',
+      assignedTechnician: { id: lena.id },
+    })
   })
 
   test('design review checks: pagination chevrons, empty-state cell, focus after Clear filters and Try again', async ({

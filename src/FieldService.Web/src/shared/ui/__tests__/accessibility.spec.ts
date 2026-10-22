@@ -102,6 +102,15 @@ describe('AppIcon', () => {
     expect(wrapper.find('svg').attributes('stroke-width')).toBe('2.25')
     expect(wrapper.find('circle').attributes('stroke-dasharray')).toBe('3 3')
   })
+
+  it('lets every icon take its control text colour under forced colours', () => {
+    const wrapper = mount(AppIcon, { props: { name: 'user-check', size: 18 } })
+
+    expect(wrapper.find('svg').classes()).toContain('app-icon')
+    expect(
+      ruleDeclarations('app/styles/base.css', '.app-icon', '@media (forced-colors: active)'),
+    ).toEqual({ 'forced-color-adjust': 'auto' })
+  })
 })
 
 describe('StatusChip', () => {
@@ -126,6 +135,31 @@ describe('StatusChip', () => {
     expect(wrapper.text()).toBe('Escalated')
     expect(wrapper.classes()).toContain('status-chip--unknown')
   })
+
+  it.each([
+    ['on', 'On shift', 'var(--fs-gradient-chip-completed)', 'var(--color-fs-teal-700)'],
+    ['off', 'Off shift', 'var(--fs-gradient-chip-cancelled)', 'var(--color-fs-line-input)'],
+  ] as const)(
+    'shows the %s shift variant as a hidden dot and the label %s',
+    (shift, label, fill, dot) => {
+      const wrapper = mount(StatusChip, { props: { shift } })
+
+      expect(wrapper.text()).toBe(label)
+      expect(wrapper.classes()).toEqual([
+        'status-chip',
+        'status-chip--shift',
+        `status-chip--${shift}-shift`,
+      ])
+      expect(wrapper.find('svg').exists()).toBe(false)
+      expect(wrapper.find('.status-chip__dot').attributes('aria-hidden')).toBe('true')
+      expect(
+        ruleDeclarations('shared/ui/StatusChip.vue', `.status-chip--${shift}-shift`),
+      ).toMatchObject({
+        '--chip-bg': fill,
+        '--chip-dot': dot,
+      })
+    },
+  )
 })
 
 describe('TextField', () => {
@@ -295,6 +329,39 @@ describe('AppButton', () => {
     expect(wrapper.attributes('disabled')).toBeDefined()
   })
 
+  it('stays focusable and stops clicks when it is only announced as disabled', async () => {
+    const onClick = vi.fn()
+    const wrapper = mount(AppButton, {
+      props: { ariaDisabled: true },
+      slots: { default: 'Assign technician' },
+      attrs: { onClick },
+      attachTo: document.body,
+    })
+
+    await wrapper.trigger('click')
+    ;(wrapper.element as HTMLButtonElement).focus()
+
+    expect(wrapper.attributes('aria-disabled')).toBe('true')
+    expect(wrapper.attributes('disabled')).toBeUndefined()
+    expect(wrapper.classes()).not.toContain('app-button--busy')
+    expect(document.activeElement).toBe(wrapper.element)
+    expect(onClick).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('takes the announced disabled state from an aria-disabled binding', async () => {
+    const onClick = vi.fn()
+    const wrapper = mount(AppButton, {
+      attrs: { 'aria-disabled': false, onClick },
+      slots: { default: 'Assign to Priya Natarajan' },
+    })
+
+    await wrapper.trigger('click')
+
+    expect(wrapper.attributes('aria-disabled')).toBeUndefined()
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
   it('renders a link for navigation and never a button inside it', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
@@ -336,6 +403,64 @@ describe('SectionCard', () => {
     expect(wrapper.element.tagName).toBe('DIV')
     expect(wrapper.attributes('aria-labelledby')).toBeUndefined()
   })
+
+  it('puts a muted line under the heading without changing the section name', () => {
+    const wrapper = mount(SectionCard, {
+      props: { heading: 'Assign technician', subheading: 'Electrical technicians first' },
+      slots: { default: 'Body' },
+    })
+    const heading = wrapper.find('h2')
+
+    expect(wrapper.attributes('aria-labelledby')).toBe(heading.attributes('id'))
+    expect(wrapper.find('header .section-card__titles').text()).toBe(
+      'Assign technicianElectrical technicians first',
+    )
+    expect(wrapper.find('.section-card__subheading').element.tagName).toBe('P')
+    expect(declarationsOf('SectionCard.vue', '.section-card__subheading')).toMatchObject({
+      color: 'var(--color-fs-muted)',
+      'font-size': 'var(--text-fs-meta)',
+    })
+  })
+
+  it('keeps a plain heading out of focus unless the card asks for a focus target', () => {
+    const wrapper = mount(SectionCard, {
+      props: { heading: 'Job' },
+      slots: { default: 'Body' },
+      attachTo: document.body,
+    })
+    const heading = wrapper.find<HTMLHeadingElement>('h2')
+
+    expect(heading.attributes('tabindex')).toBeUndefined()
+    ;(wrapper.vm as unknown as { focusHeading(): void }).focusHeading()
+    expect(document.activeElement).not.toBe(heading.element)
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['without', null],
+    ['with', 'Electrical technicians first'],
+  ])(
+    'offers its heading as a focus target outside the Tab order, %s a subheading',
+    (_name, subheading) => {
+      const wrapper = mount(SectionCard, {
+        props: { heading: 'Checklist and assignment', subheading, focusableHeading: true },
+        slots: { default: 'Body' },
+        attachTo: document.body,
+      })
+      const heading = wrapper.find<HTMLHeadingElement>('h2')
+
+      expect(heading.attributes('tabindex')).toBe('-1')
+      expect(heading.element.tabIndex).toBe(-1)
+      ;(wrapper.vm as unknown as { focusHeading(): void }).focusHeading()
+      expect(document.activeElement).toBe(heading.element)
+      expect(wrapper.attributes('aria-labelledby')).toBe(heading.attributes('id'))
+      expect(declarationsOf('SectionCard.vue', '.section-card__title:focus')).toEqual({})
+      expect(ruleDeclarations('app/styles/base.css', ':focus-visible')).toMatchObject({
+        outline: '2px solid var(--color-fs-focus)',
+      })
+      wrapper.unmount()
+    },
+  )
 })
 
 function declarationsOf(
@@ -662,8 +787,26 @@ describe('FilterChipGroup', () => {
 
     expect(wrapper.attributes()).toMatchObject({ role: 'group', 'aria-label': 'Filter by status' })
     expect(chips.map((chip) => chip.attributes('aria-pressed'))).toEqual(['true', 'false'])
-    expect(chips.map((chip) => chip.text())).toEqual(['All, 20', 'On hold, 3'])
     expect(chips[1]?.find('svg').attributes('aria-hidden')).toBe('true')
+  })
+
+  it('names a counted chip "<label>, <count>" from the values it shows, label first', () => {
+    const wrapper = mount(FilterChipGroup, {
+      props: {
+        label: 'Filter by shift',
+        options: [...options, { value: 'none', label: 'No count' }],
+        modelValue: 'all',
+      },
+    })
+    const chips = wrapper.findAll('button')
+
+    expect(chips.map((chip) => chip.attributes('aria-label'))).toEqual([
+      'All, 20',
+      'On hold, 3',
+      undefined,
+    ])
+    expect(chips.map((chip) => chip.text())).toEqual(['All20', 'On hold3', 'No count'])
+    expect(wrapper.find('.visually-hidden').exists()).toBe(false)
   })
 
   it('selects one chip at a time and ignores a click on the selected chip', async () => {
@@ -720,6 +863,27 @@ describe('SegmentedControl', () => {
     expect(wrapper.attributes('aria-describedby')).toBe('priority-error')
     expect(wrapper.find('#priority-error').text()).toBe('Choose a priority.')
   })
+
+  it('names a counted segment "<label>, <count>" and shows the count in a capsule', () => {
+    const wrapper = mount(SegmentedControl, {
+      props: {
+        legend: 'Show jobs',
+        id: 'view',
+        options: [
+          { value: 'active', label: 'Active', count: 3 },
+          { value: 'completed', label: 'Completed' },
+        ],
+        modelValue: 'active',
+      },
+    })
+    const radios = wrapper.findAll('input[type="radio"]')
+    const capsules = wrapper.findAll('.count-capsule')
+
+    expect(radios.map((radio) => radio.attributes('aria-label'))).toEqual(['Active, 3', undefined])
+    expect(capsules.map((capsule) => capsule.text())).toEqual(['3'])
+    expect(capsules[0]?.classes()).toContain('count-capsule--in-segment')
+    expect(wrapper.findAll('label').map((label) => label.text())).toEqual(['Active 3', 'Completed'])
+  })
 })
 
 describe('SelectField', () => {
@@ -767,6 +931,37 @@ describe('SelectField', () => {
 
     expect(select.attributes('aria-invalid')).toBe('true')
     expect(select.attributes('aria-describedby')).toBe('technician-error technician-help')
+  })
+
+  it('places options in labelled groups, keeping disabled options visible', () => {
+    const wrapper = mount(SelectField, {
+      props: {
+        label: 'Assign technician',
+        id: 'assign-technician',
+        options: [
+          { value: '', label: 'Leave unassigned' },
+          { label: 'Electrical', options: [{ value: 'p', label: 'Priya Natarajan' }] },
+          {
+            label: 'Different trade',
+            options: [{ value: 's', label: 'Samuel Osei', disabled: true }],
+          },
+        ],
+        modelValue: '',
+      },
+    })
+    const groups = wrapper.findAll('optgroup')
+
+    expect(groups.map((group) => group.attributes('label'))).toEqual([
+      'Electrical',
+      'Different trade',
+    ])
+    expect(wrapper.find('select > option').text()).toBe('Leave unassigned')
+    expect(groups[1]?.find('option').attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('option').map((option) => option.text())).toEqual([
+      'Leave unassigned',
+      'Priya Natarajan',
+      'Samuel Osei',
+    ])
   })
 })
 

@@ -1,7 +1,9 @@
 import type { Page, TestInfo } from '@playwright/test'
 
 import { anyOf, consolePatterns, expect, stubSignedOutRestore, test } from './fixtures.ts'
-import { createJobCopy, jobsCopy, signInCopy } from './support/copy.ts'
+import { demoTechnicians } from './support/api.ts'
+import { assignCopy, createJobCopy, jobsCopy, signInCopy } from './support/copy.ts'
+import { createUnassignedJob, rowNamed } from './support/jobs.ts'
 import { openInApp } from './support/run.ts'
 
 const viewports = [
@@ -29,15 +31,17 @@ async function capture(page: Page, testInfo: TestInfo, name: string): Promise<vo
   })
 }
 
-test.describe('E2E-15 responsive layouts (W1 pages)', () => {
+test.describe('E2E-15 responsive layouts (W1 and W2 pages)', () => {
   test.use({ expectedConsole: anyOf(consolePatterns.anonymousRefresh) })
 
-  test('the W1 pages have no horizontal page scroll at 375, 768 and 1280 px and the jobs table scrolls in its region', async ({
+  test('the W1 and W2 pages have no horizontal page scroll at 375, 768 and 1280 px and the jobs table scrolls in its region', async ({
     adminPage: page,
     anonymousPage,
     api,
+    runId,
   }, testInfo) => {
     const seeded = await api.findJobByNumber(1042)
+    const assignable = await createUnassignedJob(api, runId, 'responsive')
     await stubSignedOutRestore(anonymousPage)
     await anonymousPage.goto('/sign-in')
     await page.goto('/jobs')
@@ -73,6 +77,19 @@ test.describe('E2E-15 responsive layouts (W1 pages)', () => {
       const detail = await pageWidths(page)
       expect(detail.scroll, `job detail at ${viewport.width}`).toBeLessThanOrEqual(detail.inner)
       await capture(page, testInfo, `job detail ${viewport.width}`)
+
+      await openInApp(page, `/jobs/${assignable.id}`)
+      await expect(
+        page
+          .getByRole('region', { name: assignCopy.heading })
+          .getByRole('radio', { name: rowNamed(demoTechnicians.assignments.name) }),
+      ).toBeEnabled()
+      const assignDetail = await pageWidths(page)
+      expect(
+        assignDetail.scroll,
+        `job detail with the assign panel at ${viewport.width}`,
+      ).toBeLessThanOrEqual(assignDetail.inner)
+      await capture(page, testInfo, `job detail with the assign panel ${viewport.width}`)
 
       await openInApp(page, '/jobs/new')
       await expect(

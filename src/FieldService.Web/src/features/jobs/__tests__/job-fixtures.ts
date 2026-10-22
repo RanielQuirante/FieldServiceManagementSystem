@@ -6,6 +6,8 @@ import type {
   JobHistoryEntry,
   JobList,
   JobSummary,
+  Technician,
+  TechnicianJobReference,
 } from '../jobs-api'
 
 export const demoToday = new Date(2026, 9, 19, 10, 42)
@@ -33,6 +35,105 @@ export const tom = {
   displayName: 'Tom Becker',
   trade: 'Plumbing',
 } as const
+
+function jobReference(
+  number: number,
+  status: TechnicianJobReference['status'],
+  start: string,
+  end: string,
+): TechnicianJobReference {
+  return {
+    id: `01a15400-0000-7000-8000-00000000${number}`,
+    number,
+    status,
+    scheduledStart: start,
+    scheduledEnd: end,
+  }
+}
+
+export function technician(overrides: Partial<Technician> = {}): Technician {
+  return {
+    id: '01a0f6b1-3a08-7fbf-89df-c40260fc01fa',
+    displayName: 'Aisha Karim',
+    email: 'aisha.karim@fieldservice.example',
+    phoneNumber: '(555) 014-7810',
+    trade: 'Electrical',
+    isActive: true,
+    isOnShift: true,
+    availableForAssignment: true,
+    openJobCount: 3,
+    currentJob: null,
+    nextJob: jobReference(1055, 'Assigned', onDemoDay(0, 13, 0), onDemoDay(0, 14, 30)),
+    ...overrides,
+  }
+}
+
+export const aishaTechnician = technician()
+
+export const lenaTechnician = technician({
+  id: '01a0f6b1-3620-7891-8f84-8b8ca5e5e243',
+  displayName: 'Lena Park',
+  email: 'lena.park@fieldservice.example',
+  phoneNumber: '(555) 014-5521',
+  trade: 'FireSafety',
+  openJobCount: 1,
+  nextJob: jobReference(1045, 'Assigned', onDemoDay(0, 11, 30), onDemoDay(0, 13, 0)),
+})
+
+export const marcoTechnician = technician({
+  id: marco.id,
+  displayName: marco.displayName,
+  email: 'marco.reyes@fieldservice.example',
+  phoneNumber: '(555) 014-2231',
+  trade: 'Hvac',
+  openJobCount: 3,
+  currentJob: jobReference(1042, 'InProgress', onDemoDay(0, 9, 0), onDemoDay(0, 11, 0)),
+  nextJob: jobReference(1047, 'Assigned', onDemoDay(0, 13, 30), onDemoDay(0, 15, 0)),
+})
+
+export const priyaTechnician = technician({
+  id: priya.id,
+  displayName: priya.displayName,
+  email: 'priya.natarajan@fieldservice.example',
+  phoneNumber: '(555) 014-6604',
+  trade: 'Electrical',
+  openJobCount: 2,
+  currentJob: jobReference(1049, 'InProgress', onDemoDay(0, 10, 0), onDemoDay(0, 12, 0)),
+  nextJob: jobReference(1046, 'Assigned', onDemoDay(1, 9, 0), onDemoDay(1, 10, 30)),
+})
+
+export const samuelTechnician = technician({
+  id: '01a0f6b1-3df0-7802-8952-7b3a85cffa38',
+  displayName: 'Samuel Osei',
+  email: 'samuel.osei@fieldservice.example',
+  phoneNumber: '(555) 014-9148',
+  trade: 'Hvac',
+  isOnShift: false,
+  availableForAssignment: false,
+  openJobCount: 0,
+  currentJob: null,
+  nextJob: null,
+})
+
+export const tomTechnician = technician({
+  id: tom.id,
+  displayName: tom.displayName,
+  email: 'tom.becker@fieldservice.example',
+  phoneNumber: '(555) 014-3392',
+  trade: 'Plumbing',
+  openJobCount: 4,
+  currentJob: jobReference(1044, 'OnHold', onDemoDay(0, 8, 0), onDemoDay(0, 10, 0)),
+  nextJob: jobReference(1048, 'Assigned', onDemoDay(1, 8, 0), onDemoDay(1, 9, 30)),
+})
+
+export const demoTechnicians: readonly Technician[] = [
+  aishaTechnician,
+  lenaTechnician,
+  marcoTechnician,
+  priyaTechnician,
+  samuelTechnician,
+  tomTechnician,
+]
 
 export const checklistTemplates: readonly ChecklistTemplate[] = [
   {
@@ -165,6 +266,7 @@ export function jobDetails(overrides: Partial<JobDetails> = {}): JobDetails {
     cancelledAt: null,
     history: [historyEntry()],
     version: 48101,
+    affordances: { canAssign: true },
     ...overrides,
   }
 }
@@ -215,6 +317,7 @@ export function assignedInProgressJob(): JobDetails {
       }),
     ],
     version: 48213,
+    affordances: { canAssign: false },
   })
 }
 
@@ -270,5 +373,6 @@ export function onHoldJob(): JobDetails {
         occurredAt: onDemoDay(-3, 13, 50),
       }),
     ],
+    affordances: { canAssign: false },
   })
 }

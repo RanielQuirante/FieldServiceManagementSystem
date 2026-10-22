@@ -1,7 +1,9 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FieldService.Api.Domain;
+using FieldService.Api.Features.Technicians.GetAssignedJobs;
 using FieldService.Api.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,9 +12,11 @@ namespace FieldService.Api.Tests.Security;
 [Collection(DatabaseCollection.Name)]
 public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : DatabaseTest(fixture)
 {
+    private const string MyJobsPath = "/api/technicians/me/jobs";
+
     private static readonly string[] _requestMembers = ["instance", "traceId", "correlationId"];
 
-    public static TheoryData<JobStatus> AssignedStatuses =>
+    private static readonly JobStatus[] _assignedStatuses =
     [
         JobStatus.Assigned,
         JobStatus.InProgress,
@@ -20,6 +24,18 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
         JobStatus.Completed,
         JobStatus.Cancelled,
     ];
+
+    public static TheoryData<JobStatus> AssignedStatuses => [.. _assignedStatuses];
+
+    public static TheoryData<string?, bool> MyJobsQueries => new()
+    {
+        { null, false },
+        { "active", false },
+        { "completed", false },
+        { null, true },
+        { "active", true },
+        { "completed", true },
+    };
 
     [Theory]
     [MemberData(nameof(AssignedStatuses))]
@@ -68,6 +84,113 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
 
         using var problem = await ApiClient.AssertProblemAsync(hidden, HttpStatusCode.NotFound, "job.not-found");
         Assert.Equal(HttpStatusCode.OK, visible.StatusCode);
+    }
+
+    [Theory]
+    [MemberData(nameof(MyJobsQueries))]
+    public async Task MyJobsNeverListsAnotherTechniciansJobInAnyStatusEvenWithTheirIdInTheQuery(string? view, bool withOwnersId)
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var caller = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var ownersJobs = new Dictionary<JobStatus, Guid>();
+        foreach (var status in _assignedStatuses)
+        {
+            ownersJobs[status] = (await ArrangeJobAsync(data, administrator, owner, status)).Id;
+        }
+
+        var unassigned = await data.CreateJobAsync(administrator.Id, TestData.HvacTemplateId, CancellationToken);
+        var callersActive = await ArrangeJobAsync(data, administrator, caller, JobStatus.Assigned);
+        var callersCompleted = await ArrangeJobAsync(data, administrator, caller, JobStatus.Cancelled);
+        var completedView = view == "completed";
+        Fixture.Factory.Events.Clear();
+        using var callerClient = Fixture.Factory.CreateApiClient();
+        callerClient.AccessToken = TestTokens.For(Fixture.Factory, caller.User);
+        using var ownerClient = Fixture.Factory.CreateApiClient();
+        ownerClient.AccessToken = TestTokens.For(Fixture.Factory, owner.User);
+
+        using var listed = await callerClient.GetAsync(MyJobsPath + MyJobsQuery(view, withOwnersId ? owner.UserId : null));
+        using var ownersList = await ownerClient.GetAsync(MyJobsPath + MyJobsQuery(view, technicianId: null));
+
+        var callersIds = await ReadMyJobIdsAsync(listed);
+        Assert.Equal([completedView ? callersCompleted.Id : callersActive.Id], callersIds);
+        Assert.Empty(callersIds.Intersect(ownersJobs.Values.Append(unassigned.Id)));
+        var expectedOwners = ownersJobs
+            .Where(entry => IsFinished(entry.Key) == completedView)
+            .Select(entry => entry.Value)
+            .Order();
+        Assert.Equal(expectedOwners, (await ReadMyJobIdsAsync(ownersList)).Order());
+        Fixture.Factory.Events.AssertEmpty();
+    }
+
+    [Fact]
+    public async Task AJobReassignedAwayFromATechnicianIsA404ForThemAndLeavesTheirListWhileTheNewAssigneeReadsIt()
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var previous = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var next = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await ArrangeJobAsync(data, administrator, previous, JobStatus.Assigned);
+        using var previousClient = Fixture.Factory.CreateApiClient();
+        previousClient.AccessToken = TestTokens.For(Fixture.Factory, previous.User);
+        using var nextClient = Fixture.Factory.CreateApiClient();
+        nextClient.AccessToken = TestTokens.For(Fixture.Factory, next.User);
+        using var administratorClient = Fixture.Factory.CreateApiClient();
+        administratorClient.AccessToken = TestTokens.For(Fixture.Factory, administrator);
+        using var readBefore = await previousClient.GetAsync($"/api/jobs/{job.Id}");
+        Assert.Equal(HttpStatusCode.OK, readBefore.StatusCode);
+        using var reassigned = await administratorClient.PutJsonAsync(
+            $"/api/jobs/{job.Id}/assignment",
+            new { technicianId = next.UserId, version = job.Version });
+        Assert.Equal(HttpStatusCode.OK, reassigned.StatusCode);
+        using var reassignedBody = JsonDocument.Parse(await reassigned.Content.ReadAsStringAsync(CancellationToken));
+        Assert.Equal(next.UserId, reassignedBody.RootElement.GetProperty("assignedTechnician").GetProperty("id").GetGuid());
+        var after = await ReadRowAsync(job.Id);
+        Fixture.Factory.Events.Clear();
+
+        using var foreign = await previousClient.GetAsync($"/api/jobs/{job.Id}");
+        using var missing = await previousClient.GetAsync($"/api/jobs/{Guid.CreateVersion7()}");
+        using var previousActive = await previousClient.GetAsync(MyJobsPath);
+        using var previousCompleted = await previousClient.GetAsync(MyJobsPath + "?view=completed");
+        using var own = await nextClient.GetAsync($"/api/jobs/{job.Id}");
+        using var nextActive = await nextClient.GetAsync(MyJobsPath);
+
+        using var foreignProblem = await ApiClient.AssertProblemAsync(foreign, HttpStatusCode.NotFound, "job.not-found");
+        using var missingProblem = await ApiClient.AssertProblemAsync(missing, HttpStatusCode.NotFound, "job.not-found");
+        Assert.Equal(WithoutRequestMembers(missingProblem), WithoutRequestMembers(foreignProblem));
+        Assert.Empty(await ReadMyJobIdsAsync(previousActive));
+        Assert.Empty(await ReadMyJobIdsAsync(previousCompleted));
+        Assert.Equal(HttpStatusCode.OK, own.StatusCode);
+        Assert.Equal([job.Id], await ReadMyJobIdsAsync(nextActive));
+        Assert.Equal(after, await ReadRowAsync(job.Id));
+        Fixture.Factory.Events.AssertEmpty();
+    }
+
+    private static bool IsFinished(JobStatus status) => status is JobStatus.Completed or JobStatus.Cancelled;
+
+    private static string MyJobsQuery(string? view, Guid? technicianId)
+    {
+        var parameters = new List<string>();
+        if (view is not null)
+        {
+            parameters.Add($"view={view}");
+        }
+
+        if (technicianId is { } id)
+        {
+            parameters.Add($"technicianId={id}");
+        }
+
+        return parameters.Count == 0 ? string.Empty : "?" + string.Join('&', parameters);
+    }
+
+    private async Task<List<Guid>> ReadMyJobIdsAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<GetAssignedJobsResponse>(ApiClient.Json, CancellationToken);
+        Assert.NotNull(body);
+        return [.. body.Items.Select(item => item.Id)];
     }
 
     private static async Task<Job> ArrangeJobAsync(TestData data, User administrator, Technician owner, JobStatus status)

@@ -23,6 +23,7 @@ import {
   assignedInProgressJob,
   demoStatusCounts,
   demoSummaries,
+  demoTechnicians,
   demoToday,
   jobDetails,
   jobList,
@@ -30,9 +31,12 @@ import {
   marco,
   onDemoDay,
   onHoldJob,
+  priya,
 } from './job-fixtures'
 
 const listRoute = 'GET /api/jobs'
+
+const techniciansRoute = 'GET /api/technicians'
 
 const reference = 'dd85f06c-7606-4dfc-a702-fa39647047d8'
 
@@ -64,7 +68,11 @@ function lastQuery(stub: FetchStub): Record<string, string> {
 }
 
 async function openApp(path: string, routeTable: RouteTable): Promise<OpenApp> {
-  const stub = stubFetch({ 'POST /api/auth/refresh': json(sessionResponse()), ...routeTable })
+  const stub = stubFetch({
+    'POST /api/auth/refresh': json(sessionResponse()),
+    [techniciansRoute]: json({ items: demoTechnicians }),
+    ...routeTable,
+  })
   const router = createAppRouter(createMemoryHistory())
   installNavigationGuards(router)
   await router.push(path)
@@ -78,12 +86,24 @@ function firstPage(): ReturnType<typeof json> {
   return json(jobList(demoSummaries(12)))
 }
 
-function chipTexts(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('[aria-label="Filter by status"] button').map((chip) => chip.text())
+function chipNames(wrapper: VueWrapper): (string | undefined)[] {
+  return wrapper
+    .findAll('[aria-label="Filter by status"] button')
+    .map((chip) => chip.attributes('aria-label'))
 }
 
 function pressedChip(wrapper: VueWrapper): string | undefined {
-  return wrapper.find('[aria-label="Filter by status"] button[aria-pressed="true"]').text()
+  return wrapper
+    .find('[aria-label="Filter by status"] button[aria-pressed="true"]')
+    .attributes('aria-label')
+}
+
+function technicianFilter(wrapper: VueWrapper): HTMLSelectElement {
+  return wrapper.find<HTMLSelectElement>('select[aria-label="Technician"]').element
+}
+
+function optionTexts(select: HTMLSelectElement): string[] {
+  return Array.from(select.options, (option) => option.text.trim())
 }
 
 describe('the jobs store', () => {
@@ -92,13 +112,20 @@ describe('the jobs store', () => {
     const store = useJobsStore()
 
     await store.loadJobs(noJobFilters)
-    await store.loadJobs({ search: '  elm street  ', status: 'OnHold', priority: 'High', page: 2 })
+    await store.loadJobs({
+      search: '  elm street  ',
+      status: 'OnHold',
+      technicianId: priya.id,
+      priority: 'High',
+      page: 2,
+    })
 
     expect(jobsPageSize).toBe(12)
     expect(queryOf(stub.requests[0])).toEqual({ page: '1', pageSize: '12' })
     expect(queryOf(stub.requests[1])).toEqual({
       search: 'elm street',
       status: 'OnHold',
+      technicianId: priya.id,
       priority: 'High',
       page: '2',
       pageSize: '12',
@@ -189,7 +216,7 @@ describe('the jobs page', () => {
 
     expect(wrapper.find('h1').text()).toBe('Jobs')
     expect(wrapper.find('.page-header__subline').text()).toBe('20 jobs')
-    expect(chipTexts(wrapper)).toEqual([
+    expect(chipNames(wrapper)).toEqual([
       'All, 20',
       'Unassigned, 4',
       'Assigned, 8',
@@ -322,6 +349,165 @@ describe('the jobs page', () => {
 
     expect(router.currentRoute.value.query.priority).toBe('Urgent')
     expect(lastQuery(stub).priority).toBe('Urgent')
+  })
+
+  it('lists All technicians, then every technician by name as the API orders them, with no Unassigned option', async () => {
+    const { wrapper } = await openApp('/jobs', { [listRoute]: firstPage() })
+    const select = technicianFilter(wrapper)
+
+    expect(optionTexts(select)).toEqual([
+      'All technicians',
+      'Aisha Karim',
+      'Lena Park',
+      'Marco Reyes',
+      'Priya Natarajan',
+      'Samuel Osei',
+      'Tom Becker',
+    ])
+    expect(optionTexts(select)).not.toContain('Unassigned')
+    expect(select.value).toBe('')
+    expect(select.disabled).toBe(false)
+    expect(Array.from(select.options).some((option) => option.disabled)).toBe(false)
+  })
+
+  it('keeps the API order of the technicians and never sorts their names itself', async () => {
+    const [aisha, lena, , , samuel, tomTech] = demoTechnicians
+    const { wrapper } = await openApp('/jobs', {
+      [listRoute]: firstPage(),
+      [techniciansRoute]: json({ items: [tomTech, samuel, lena, aisha] }),
+    })
+
+    expect(optionTexts(technicianFilter(wrapper))).toEqual([
+      'All technicians',
+      'Tom Becker',
+      'Samuel Osei',
+      'Lena Park',
+      'Aisha Karim',
+    ])
+  })
+
+  it('filters by technician, sends technicianId, and starts again at page 1', async () => {
+    const { wrapper, router, stub } = await openApp('/jobs?page=2', { [listRoute]: firstPage() })
+
+    await wrapper.find('select[aria-label="Technician"]').setValue(priya.id)
+    await flushPromises()
+
+    expect(router.currentRoute.value.query).toEqual({ technicianId: priya.id })
+    expect(lastQuery(stub)).toEqual({ technicianId: priya.id, page: '1', pageSize: '12' })
+    expect(technicianFilter(wrapper).value).toBe(priya.id)
+
+    await wrapper.find('select[aria-label="Technician"]').setValue('')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/jobs')
+    expect(lastQuery(stub)).toEqual({ page: '1', pageSize: '12' })
+  })
+
+  it('reads the technician from the address', async () => {
+    const { wrapper, stub } = await openApp(`/jobs?technicianId=${priya.id}&status=Assigned`, {
+      [listRoute]: firstPage(),
+    })
+
+    expect(lastQuery(stub)).toEqual({
+      status: 'Assigned',
+      technicianId: priya.id,
+      page: '1',
+      pageSize: '12',
+    })
+    expect(technicianFilter(wrapper).value).toBe(priya.id)
+  })
+
+  it('shows an id the list does not hold as Unknown technician until Clear filters', async () => {
+    const unknownId = '01a0f6b1-9999-7000-8000-000000000999'
+    const { wrapper, router } = await openApp(`/jobs?technicianId=${unknownId}`, {
+      [listRoute]: [json(jobList([], { totalCount: 0 })), firstPage()],
+    })
+    const select = technicianFilter(wrapper)
+
+    expect(optionTexts(select).slice(0, 2)).toEqual(['All technicians', 'Unknown technician'])
+    expect(select.value).toBe(unknownId)
+
+    await wrapper.find('tbody td[colspan="7"] button').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/jobs')
+    expect(technicianFilter(wrapper).value).toBe('')
+    expect(optionTexts(technicianFilter(wrapper))).not.toContain('Unknown technician')
+  })
+
+  it('ignores a technician value that is not an id', async () => {
+    const { stub } = await openApp('/jobs?technicianId=marco', { [listRoute]: firstPage() })
+
+    expect(lastQuery(stub)).toEqual({ page: '1', pageSize: '12' })
+  })
+
+  it('holds only All technicians, disabled, while the technicians load, and the jobs still list', async () => {
+    const slow = deferred()
+    const { wrapper } = await openApp('/jobs', {
+      [listRoute]: firstPage(),
+      [techniciansRoute]: slow.reply,
+    })
+
+    expect(optionTexts(technicianFilter(wrapper))).toEqual(['All technicians'])
+    expect(technicianFilter(wrapper).value).toBe('')
+    expect(technicianFilter(wrapper).disabled).toBe(true)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(12)
+
+    slow.resolve(new Response(JSON.stringify({ items: demoTechnicians }), { status: 200 }))
+    await flushPromises()
+    expect(technicianFilter(wrapper).disabled).toBe(false)
+    expect(technicianFilter(wrapper).value).toBe('')
+  })
+
+  it('reads Selected technician, disabled, while the technicians load with a technician in the address', async () => {
+    const slow = deferred()
+    const { wrapper, stub } = await openApp(`/jobs?technicianId=${priya.id}`, {
+      [listRoute]: firstPage(),
+      [techniciansRoute]: slow.reply,
+    })
+
+    expect(optionTexts(technicianFilter(wrapper))).toEqual(['Selected technician'])
+    expect(technicianFilter(wrapper).value).toBe(priya.id)
+    expect(technicianFilter(wrapper).disabled).toBe(true)
+    expect(lastQuery(stub)).toEqual({ technicianId: priya.id, page: '1', pageSize: '12' })
+    expect(wrapper.findAll('tbody tr')).toHaveLength(12)
+
+    slow.resolve(new Response(JSON.stringify({ items: demoTechnicians }), { status: 200 }))
+    await flushPromises()
+    expect(technicianFilter(wrapper).disabled).toBe(false)
+    expect(technicianFilter(wrapper).value).toBe(priya.id)
+    expect(technicianFilter(wrapper).selectedOptions[0]?.text.trim()).toBe('Priya Natarajan')
+    expect(optionTexts(technicianFilter(wrapper))).not.toContain('Selected technician')
+  })
+
+  it('reads Selected technician after the technicians fail with a technician in the address, until Clear filters', async () => {
+    const { wrapper, router } = await openApp(`/jobs?technicianId=${priya.id}`, {
+      [listRoute]: [json(jobList([], { totalCount: 0 })), firstPage()],
+      [techniciansRoute]: problem(500, 'server.error'),
+    })
+
+    expect(optionTexts(technicianFilter(wrapper))).toEqual(['Selected technician'])
+    expect(technicianFilter(wrapper).value).toBe(priya.id)
+    expect(technicianFilter(wrapper).disabled).toBe(true)
+
+    await wrapper.find('tbody td[colspan="7"] button').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/jobs')
+    expect(optionTexts(technicianFilter(wrapper))).toEqual(['All technicians'])
+    expect(technicianFilter(wrapper).value).toBe('')
+    expect(technicianFilter(wrapper).disabled).toBe(true)
+  })
+
+  it('holds only All technicians, disabled, after the technicians fail to load', async () => {
+    const { wrapper } = await openApp('/jobs', {
+      [listRoute]: firstPage(),
+      [techniciansRoute]: problem(500, 'server.error'),
+    })
+
+    expect(optionTexts(technicianFilter(wrapper))).toEqual(['All technicians'])
+    expect(technicianFilter(wrapper).disabled).toBe(true)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(12)
+    expect(wrapper.find('.banner--error').exists()).toBe(false)
   })
 
   it('searches once typing pauses, and at once on Enter', async () => {

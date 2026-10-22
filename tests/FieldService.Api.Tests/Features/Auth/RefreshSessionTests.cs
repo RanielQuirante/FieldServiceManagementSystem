@@ -223,7 +223,7 @@ public sealed class RefreshSessionTests(DatabaseFixture fixture) : DatabaseTest(
         using var forged = await signedIn.Client.PostAsync(ApiClient.RefreshPath, content: null);
         using var refresh = await signedIn.RefreshAsync();
 
-        AssertSentWithoutCredential(forged, mediaType: null);
+        ApiClient.AssertSentWithoutCredential(forged, mediaType: null);
         using var problem = await ApiClient.AssertProblemAsync(forged, HttpStatusCode.Unauthorized, "auth.session-expired");
         Assert.Empty(ApiClient.SetCookieHeadersOf(forged));
         AssertRotated(refresh, signedIn.RefreshToken);
@@ -237,37 +237,13 @@ public sealed class RefreshSessionTests(DatabaseFixture fixture) : DatabaseTest(
         await using var factory = Fixture.CreateFactory(factory => factory.UseKestrel(0));
         using var signedIn = await SignInAsync(factory, SessionClient.Web);
 
-        using var forged = await signedIn.Client.PostAsync(ApiClient.RefreshPath, EmptyBodyOf(mediaType));
+        using var forged = await signedIn.Client.PostAsync(ApiClient.RefreshPath, ApiClient.EmptyBodyOf(mediaType));
         using var refresh = await signedIn.RefreshAsync();
 
-        AssertSentWithoutCredential(forged, mediaType);
+        ApiClient.AssertSentWithoutCredential(forged, mediaType);
         using var problem = await ApiClient.AssertProblemAsync(forged, HttpStatusCode.UnsupportedMediaType, "request.unsupported-media-type");
         Assert.Empty(ApiClient.SetCookieHeadersOf(forged));
         AssertRotated(refresh, signedIn.RefreshToken);
-    }
-
-    public static ByteArrayContent EmptyBodyOf(string mediaType)
-    {
-        var content = new ByteArrayContent([]);
-        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType);
-        return content;
-    }
-
-    internal static void AssertSentWithoutCredential(HttpResponseMessage response, string? mediaType)
-    {
-        var request = response.RequestMessage!;
-        if (mediaType is null)
-        {
-            Assert.Null(request.Content);
-        }
-        else
-        {
-            Assert.Equal(0, request.Content!.Headers.ContentLength);
-            Assert.Equal(mediaType, request.Content.Headers.ContentType?.ToString());
-        }
-
-        Assert.False(request.Headers.Contains(HeaderNames.Cookie));
-        Assert.False(request.Headers.Contains(CsrfHeader.Name));
     }
 
     private static void AssertRotated(HttpResponseMessage refresh, string presented)

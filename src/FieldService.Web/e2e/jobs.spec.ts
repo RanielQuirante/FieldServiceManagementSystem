@@ -1,10 +1,19 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Page, Request } from '@playwright/test'
+import type { Locator, Page, Request } from '@playwright/test'
 
-import { consolePatterns, expect, test } from './fixtures.ts'
-import type { JobStatus } from './support/api.ts'
+import { anyOf, consolePatterns, expect, fulfilStub, problemBody, test } from './fixtures.ts'
 import {
+  demoTechnicians,
+  readProblem,
+  type AdminApi,
+  type JobDetails,
+  type JobStatus,
+  type JobSummary,
+  type Technician,
+} from './support/api.ts'
+import {
+  assignCopy,
   createJobCopy,
   documentTitle,
   jobDetailCopy,
@@ -12,7 +21,18 @@ import {
   notFoundCopy,
   shellCopy,
   statusLabels,
+  tradeLabels,
 } from './support/copy.ts'
+import {
+  assignRowName,
+  createUnassignedJob,
+  expectedAssignOrder,
+  fireSafetyJob,
+  notAssignableStatuses,
+  rowNamed,
+  technicianOptionLabel,
+  tomorrowInUtc,
+} from './support/jobs.ts'
 import { e2eTitle, openInApp } from './support/run.ts'
 
 const createExample = {
@@ -36,10 +56,6 @@ const statuses: readonly JobStatus[] = [
   'Completed',
   'Cancelled',
 ]
-
-function tomorrowInUtc(): string {
-  return new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
-}
 
 function field(page: Page, name: string, exact = true) {
   return page.getByRole('textbox', { name, exact })
@@ -98,6 +114,154 @@ function summaryOf(page: Page) {
 
 function rowsOf(page: Page) {
   return page.getByRole('region', { name: jobsCopy.table }).locator('tbody tr')
+}
+
+function isAssignment(request: Request, jobId: string): boolean {
+  return (
+    request.method() === 'PUT' &&
+    new URL(request.url()).pathname === `/api/jobs/${jobId}/assignment`
+  )
+}
+
+function isJobRead(request: Request, jobId: string): boolean {
+  return request.method() === 'GET' && new URL(request.url()).pathname === `/api/jobs/${jobId}`
+}
+
+async function captureNextBody(page: Page, url: string): Promise<() => unknown> {
+  let body: unknown = null
+  await page.route(
+    url,
+    async (route) => {
+      body = route.request().postDataJSON()
+      await route.continue()
+    },
+    { times: 1 },
+  )
+  return () => body
+}
+
+interface HeldRequest {
+  readonly body: () => unknown
+  readonly release: () => void
+}
+
+async function holdNextRequest(page: Page, url: string): Promise<HeldRequest> {
+  let body: unknown = null
+  let release: () => void = () => undefined
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route(
+    url,
+    async (route) => {
+      body = route.request().postDataJSON()
+      await held
+      await route.continue()
+    },
+    { times: 1 },
+  )
+  return { body: () => body, release: () => release() }
+}
+
+function isTechniciansRead(request: Request): boolean {
+  return request.method() === 'GET' && new URL(request.url()).pathname === '/api/technicians'
+}
+
+interface RowLook {
+  readonly rowBackground: string
+  readonly rowShadow: string
+  readonly rowOpacity: string
+  readonly radioOpacity: string
+  readonly radioAccent: string
+  readonly radioDisabled: boolean
+}
+
+async function rowLook(radio: Locator): Promise<RowLook> {
+  return radio.evaluate((element) => {
+    const row = element.closest('label') ?? element
+    const rowStyle = getComputedStyle(row)
+    const radioStyle = getComputedStyle(element)
+    return {
+      rowBackground: rowStyle.backgroundColor,
+      rowShadow: rowStyle.boxShadow,
+      rowOpacity: rowStyle.opacity,
+      radioOpacity: radioStyle.opacity,
+      radioAccent: radioStyle.accentColor,
+      radioDisabled: (element as HTMLInputElement).disabled,
+    }
+  })
+}
+
+interface Margins {
+  readonly left: number
+  readonly top: number
+  readonly right: number
+  readonly bottom: number
+}
+
+async function marginsInViewport(page: Page, locator: Locator): Promise<Margins> {
+  const box = await locator.boundingBox()
+  const viewport = page.viewportSize()
+  if (box === null || viewport === null) {
+    throw new Error('The element or the viewport has no size.')
+  }
+  return {
+    left: box.x,
+    top: box.y,
+    right: viewport.width - (box.x + box.width),
+    bottom: viewport.height - (box.y + box.height),
+  }
+}
+
+const serverError = {
+  status: 500,
+  body: problemBody(500, 'server.error', 'An unexpected error occurred.'),
+} as const
+
+interface OptionGroup {
+  readonly label: string
+  readonly options: readonly string[]
+}
+
+async function optionGroupsOf(select: Locator): Promise<OptionGroup[]> {
+  return select.evaluate((element) =>
+    [...element.querySelectorAll('optgroup')].map((group) => ({
+      label: group.label,
+      options: [...group.querySelectorAll('option')].map((option) =>
+        (option.textContent ?? '').trim(),
+      ),
+    })),
+  )
+}
+
+function technicianNamed(technicians: readonly Technician[], displayName: string): Technician {
+  const match = technicians.find((technician) => technician.displayName === displayName)
+  if (match === undefined) {
+    throw new Error(`GET /api/technicians has no technician named ${displayName}.`)
+  }
+  return match
+}
+
+async function firstJobWithStatus(api: AdminApi, status: JobStatus): Promise<JobSummary> {
+  const sample = (await api.getJobs({ status, pageSize: 1 })).items[0]
+  if (sample === undefined) {
+    throw new Error(`GET /api/jobs has no ${status} job to open.`)
+  }
+  return sample
+}
+
+function historyItems(page: Page) {
+  return page.getByRole('region', { name: jobDetailCopy.history }).getByRole('listitem')
+}
+
+async function fillFireSafetyForm(page: Page, title: string, date: string): Promise<void> {
+  await field(page, createJobCopy.title).fill(title)
+  await field(page, createJobCopy.description).fill(fireSafetyJob.description)
+  await field(page, createJobCopy.customer).fill(fireSafetyJob.customer)
+  await field(page, createJobCopy.siteAddress).fill(fireSafetyJob.siteAddress)
+  await page.getByLabel(createJobCopy.date, { exact: true }).fill(date)
+  await page.getByLabel(createJobCopy.start, { exact: true }).fill('09:00')
+  await page.getByLabel(createJobCopy.end, { exact: true }).fill('11:00')
 }
 
 test.describe('E2E-06 create a job', () => {
@@ -338,5 +502,396 @@ test.describe('E2E-18 deep links and not found (W1 part)', () => {
     await page.getByRole('link', { name: notFoundCopy.goToJobs }).click()
     await expect(page).toHaveURL('/jobs')
     await expect(page.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
+  })
+})
+
+test.describe('E2E-07 assign a job', () => {
+  test.use({
+    expectedConsole: anyOf(
+      consolePatterns.assignmentRejected,
+      consolePatterns.techniciansServerError,
+    ),
+  })
+
+  test('the panel lists technicians in assign order with Samuel Osei off shift, assigning Lena Park makes the job hers alone, and the technician filter finds it', async ({
+    adminPage: page,
+    adminSession,
+    api,
+    technician,
+    runId,
+  }) => {
+    const job = await createUnassignedJob(api, runId, 'assign')
+    const technicians = await api.technicians()
+    const ordered = expectedAssignOrder(technicians, job.checklistTemplate.trade)
+    const lena = technicianNamed(technicians, demoTechnicians.assignments.name)
+    const priya = technicianNamed(technicians, demoTechnicians.inspections.name)
+    const samuel = technicianNamed(technicians, demoTechnicians.offShift.name)
+    expect(lena.availableForAssignment, 'Lena Park can be assigned').toBe(true)
+    expect(samuel.availableForAssignment, 'Samuel Osei is off shift').toBe(false)
+    expect(job.affordances.canAssign).toBe(true)
+
+    await page.goto(`/jobs/${job.id}`)
+
+    const panel = page.getByRole('region', { name: assignCopy.heading })
+    await expect(panel).toContainText(
+      assignCopy.tradeFirst(tradeLabels[job.checklistTemplate.trade]),
+    )
+    const group = panel.getByRole('group', { name: assignCopy.group })
+    const radios = group.getByRole('radio')
+    await expect(radios).toHaveCount(ordered.length)
+    for (const [index, member] of ordered.entries()) {
+      const radio = radios.nth(index)
+      await expect(radio).toHaveAccessibleName(assignRowName(member, job.checklistTemplate.trade))
+      await expect(radio).not.toBeChecked()
+      await expect(radio).toBeEnabled({ enabled: member.availableForAssignment })
+    }
+    await expect(
+      group.getByText(tradeLabels[job.checklistTemplate.trade], { exact: true }),
+    ).toBeVisible()
+    await expect(group.getByText(assignCopy.differentTrade, { exact: true })).toBeVisible()
+    const samuelRow = group.getByRole('radio', { name: rowNamed(samuel.displayName) })
+    await expect(samuelRow).toBeDisabled()
+    await expect(samuelRow).toHaveAccessibleName(new RegExp(assignCopy.offShift))
+    await expect(radios.last()).toHaveAccessibleName(rowNamed(samuel.displayName))
+    const assignButton = panel.getByRole('button', { name: assignCopy.button, exact: true })
+    await expect(assignButton).toHaveAttribute('aria-disabled', 'true')
+    await expect(assignButton).toHaveAccessibleDescription(assignCopy.helper)
+    const search = panel.getByRole('searchbox', { name: assignCopy.search })
+    await search.fill('PARK')
+    await expect(radios).toHaveCount(1)
+    await expect(radios.first()).toHaveAccessibleName(rowNamed(lena.displayName))
+    await search.fill('')
+    await expect(radios).toHaveCount(ordered.length)
+
+    const lenaRow = group.getByRole('radio', { name: rowNamed(lena.displayName) })
+    const assignToLena = panel.getByRole('button', { name: assignCopy.assignTo(lena.displayName) })
+    await lenaRow.check()
+    await fulfilStub(
+      page,
+      `**/api/jobs/${job.id}/assignment`,
+      {
+        status: 400,
+        body: problemBody(400, 'validation.failed', 'One or more fields are invalid.', {
+          errors: { technicianId: [assignCopy.chooseFromList] },
+        }),
+      },
+      1,
+    )
+    const refetchAfterRejection = page.waitForRequest(isTechniciansRead)
+    await assignToLena.click()
+
+    await refetchAfterRejection
+    await expect(radios.first()).toBeEnabled()
+    await expect(radios.first()).toBeFocused()
+    await expect(group).toHaveAccessibleDescription(assignCopy.chooseFromList)
+
+    await lenaRow.check()
+    await expect(assignToLena).toHaveAccessibleDescription(assignCopy.willSee(lena.displayName))
+    await assignToLena.focus()
+    const lookBefore = await rowLook(lenaRow)
+    const held = await holdNextRequest(page, `**/api/jobs/${job.id}/assignment`)
+    const assigned = page.waitForResponse((response) => isAssignment(response.request(), job.id))
+    await assignToLena.click()
+
+    await expect(panel.getByRole('button', { name: assignCopy.busy })).toBeVisible()
+    await expect(group).toHaveAttribute('inert')
+    await expect(lenaRow).toBeChecked()
+    expect(await rowLook(lenaRow), 'the chosen row keeps its look while busy').toEqual(lookBefore)
+    const refetchAfterSuccess = page.waitForRequest(isTechniciansRead)
+    held.release()
+    const response = await assigned
+    expect(response.status()).toBe(200)
+    expect(held.body()).toEqual({ technicianId: lena.id, version: job.version })
+    await refetchAfterSuccess
+    await expect(group).not.toHaveAttribute('inert')
+    const body = (await response.json()) as JobDetails
+    await expect(
+      page.getByRole('status').filter({ hasText: assignCopy.assigned(lena.displayName) }),
+    ).toBeVisible()
+    const reassignPanel = page.getByRole('region', { name: assignCopy.reassignHeading })
+    await expect(
+      reassignPanel.getByRole('radio', { name: rowNamed(lena.displayName) }),
+    ).toBeChecked()
+    const reassignButton = reassignPanel.getByRole('button', {
+      name: assignCopy.reassignHeading,
+      exact: true,
+    })
+    await expect(reassignButton).toHaveAttribute('aria-disabled', 'true')
+    await expect(reassignButton).toBeFocused()
+    await expect(
+      page.getByRole('main').getByText(statusLabels.Assigned, { exact: true }).first(),
+    ).toBeVisible()
+    await expect(page.getByRole('region', { name: jobDetailCopy.detailsCard })).toContainText(
+      lena.displayName,
+    )
+    await expect(historyItems(page)).toHaveCount(2)
+    await expect(historyItems(page).last()).toContainText(
+      assignCopy.historyAssigned(lena.displayName),
+    )
+    const stored = await api.getJob(job.id)
+    expect(stored).toMatchObject({
+      status: 'Assigned',
+      assignedTechnician: { id: lena.id, displayName: lena.displayName },
+      version: body.version,
+    })
+    expect(stored.version).toBeGreaterThan(job.version)
+    expect(stored.assignedAt).not.toBeNull()
+    expect(stored.history.map((entry) => entry.action)).toEqual(['Created', 'Assigned'])
+    expect(stored.history[1]).toMatchObject({
+      fromStatus: 'Unassigned',
+      toStatus: 'Assigned',
+      technician: { id: lena.id },
+      actor: { id: adminSession.user.id },
+    })
+
+    const lenaApi = await technician(demoTechnicians.assignments.email)
+    expect(lenaApi.user.id).toBe(lena.id)
+    const lenaActive = await lenaApi.assignedJobs('active')
+    expect(lenaActive.find((item) => item.id === job.id)).toMatchObject({
+      number: job.number,
+      status: 'Assigned',
+      version: stored.version,
+    })
+    const lenaRead = await lenaApi.getJob(job.id)
+    expect(lenaRead.status()).toBe(200)
+    expect(((await lenaRead.json()) as JobDetails).affordances.canAssign).toBe(false)
+    const priyaApi = await technician(demoTechnicians.inspections.email)
+    expect(priyaApi.user.id).toBe(priya.id)
+    for (const view of ['active', 'completed'] as const) {
+      const items = await priyaApi.assignedJobs(view)
+      expect(
+        items.map((item) => item.id),
+        `Priya Natarajan's ${view} list`,
+      ).not.toContain(job.id)
+    }
+    expect(await readProblem(await priyaApi.getJob(job.id))).toMatchObject({
+      status: 404,
+      code: 'job.not-found',
+    })
+
+    await page
+      .getByRole('navigation', { name: shellCopy.breadcrumb })
+      .getByRole('link', { name: jobsCopy.heading })
+      .click()
+    await expect(page).toHaveURL('/jobs')
+    const filter = page.getByRole('combobox', { name: jobsCopy.technicianFilter })
+    await expect(filter).toBeEnabled()
+    await expect(filter.getByRole('option')).toHaveText([
+      jobsCopy.allTechnicians,
+      ...technicians.map((member) => member.displayName),
+    ])
+    await filter.selectOption({ label: lena.displayName })
+    await expect(page).toHaveURL(`/jobs?technicianId=${lena.id}`)
+    const lenaJobs = await api.getJobs({ technicianId: lena.id, pageSize: 12 })
+    await expect(rowsOf(page)).toHaveCount(lenaJobs.items.length)
+    await expect(summaryOf(page)).toContainText(`of ${lenaJobs.totalCount} job`)
+    await expect(rowsOf(page).filter({ hasNotText: lena.displayName })).toHaveCount(0)
+    await expect(
+      rowsOf(page).first().getByRole('link', { name: stored.title, exact: true }),
+    ).toBeVisible()
+
+    for (const status of notAssignableStatuses) {
+      const sample = await firstJobWithStatus(api, status)
+      expect((await api.getJob(sample.id)).affordances.canAssign, `canAssign on ${status}`).toBe(
+        false,
+      )
+      await openInApp(page, `/jobs/${sample.id}`)
+      await expect(page.getByRole('heading', { level: 1, name: sample.title })).toBeVisible()
+      await expect(page.getByRole('region', { name: jobDetailCopy.history })).toBeVisible()
+      await expect(page.getByRole('region', { name: assignCopy.heading })).toHaveCount(0)
+      await expect(page.getByRole('region', { name: assignCopy.reassignHeading })).toHaveCount(0)
+      await expect(page.getByRole('radio')).toHaveCount(0)
+    }
+
+    await fulfilStub(page, '**/api/technicians', serverError, 1)
+    await openInApp(page, `/jobs?technicianId=${lena.id}`)
+
+    const unloadedFilter = page.getByRole('combobox', { name: jobsCopy.technicianFilter })
+    await expect(rowsOf(page)).toHaveCount(lenaJobs.items.length)
+    await expect(unloadedFilter).toBeDisabled()
+    await expect(unloadedFilter.getByRole('option')).toHaveText([jobsCopy.selectedTechnician])
+    await expect(unloadedFilter).toHaveValue(lena.id)
+  })
+})
+
+test.describe('W2 technician at creation and E2E-14 stale edit conflict (W2 part)', () => {
+  test.use({ expectedConsole: consolePatterns.assignmentConflict })
+
+  test('a job created with Lena Park opens Assigned with Created and Assigned entries, a reassignment from a stale page is refused, refetched and explained, and the New job banners move focus', async ({
+    adminPage: page,
+    api,
+    guards,
+    runId,
+  }) => {
+    const technicians = await api.technicians()
+    const lena = technicianNamed(technicians, demoTechnicians.assignments.name)
+    const priya = technicianNamed(technicians, demoTechnicians.inspections.name)
+    const samuel = technicianNamed(technicians, demoTechnicians.offShift.name)
+    const tom = technicianNamed(technicians, demoTechnicians.conflicting.name)
+    for (const member of [lena, priya, tom]) {
+      expect(member.availableForAssignment, `${member.displayName} can be assigned`).toBe(true)
+    }
+    const title = e2eTitle(runId, `${fireSafetyJob.title} (created assigned)`)
+    const date = tomorrowInUtc()
+
+    await page.goto('/jobs/new')
+
+    const card = page.getByRole('region', { name: createJobCopy.checklistCard })
+    const select = card.getByRole('combobox', { name: createJobCopy.technician })
+    await expect(select).toBeEnabled()
+    await expect(select).toHaveValue('')
+    await expect(select).toHaveAccessibleDescription(createJobCopy.technicianHelp)
+    await expect(select.getByRole('option')).toHaveText([
+      createJobCopy.leaveUnassigned,
+      ...expectedAssignOrder(technicians, null).map(technicianOptionLabel),
+    ])
+    expect(await optionGroupsOf(select)).toEqual([])
+    await expect(select.getByRole('option', { name: technicianOptionLabel(samuel) })).toBeDisabled()
+    await card
+      .getByRole('combobox', { name: createJobCopy.checklistTemplate })
+      .selectOption({ label: fireSafetyJob.template })
+    const fireSafetyOrder = expectedAssignOrder(technicians, fireSafetyJob.trade)
+    await expect(select.getByRole('option')).toHaveText([
+      createJobCopy.leaveUnassigned,
+      ...fireSafetyOrder.map(technicianOptionLabel),
+    ])
+    expect(await optionGroupsOf(select)).toEqual([
+      {
+        label: tradeLabels[fireSafetyJob.trade],
+        options: fireSafetyOrder
+          .filter((member) => member.trade === fireSafetyJob.trade)
+          .map(technicianOptionLabel),
+      },
+      {
+        label: assignCopy.differentTrade,
+        options: fireSafetyOrder
+          .filter((member) => member.trade !== fireSafetyJob.trade)
+          .map(technicianOptionLabel),
+      },
+    ])
+    await expect(select).toHaveValue('')
+    await fillFireSafetyForm(page, title, date)
+    await select.selectOption(lena.id)
+    const sentCreate = await captureNextBody(page, '**/api/jobs')
+    const created = page.waitForResponse((response) => isCreateJob(response.request()))
+    await page.getByRole('button', { name: createJobCopy.create }).click()
+
+    const response = await created
+    expect(response.status()).toBe(201)
+    expect(sentCreate()).toMatchObject({ technicianId: lena.id })
+    const job = (await response.json()) as JobDetails
+    await expect(page).toHaveURL(`/jobs/${job.id}`)
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
+    const details = page.getByRole('region', { name: jobDetailCopy.detailsCard })
+    await expect(details).toContainText(lena.displayName)
+    await expect(
+      page.getByRole('main').getByText(statusLabels.Assigned, { exact: true }).first(),
+    ).toBeVisible()
+    const stored = await api.getJob(job.id)
+    expect(stored).toMatchObject({
+      status: 'Assigned',
+      assignedTechnician: { id: lena.id },
+      version: job.version,
+    })
+    expect(stored.assignedAt).not.toBeNull()
+    expect(stored.history.map((entry) => entry.action)).toEqual(['Created', 'Assigned'])
+    expect(stored.history[1]?.technician?.id).toBe(lena.id)
+    expect(stored.history[1]?.occurredAt).toBe(stored.history[0]?.occurredAt)
+    await expect(historyItems(page)).toHaveCount(2)
+    await expect(historyItems(page).first()).toContainText(
+      `Created by ${stored.createdBy.displayName}`,
+    )
+    await expect(historyItems(page).last()).toContainText(
+      assignCopy.historyAssigned(lena.displayName),
+    )
+    const panel = page.getByRole('region', { name: assignCopy.reassignHeading })
+    await expect(panel.getByRole('radio', { name: rowNamed(lena.displayName) })).toBeChecked()
+    const reassign = panel.getByRole('button', { name: assignCopy.reassignHeading, exact: true })
+    await expect(reassign).toHaveAttribute('aria-disabled', 'true')
+    await expect(reassign).toHaveAccessibleDescription(assignCopy.assignedNow(lena.displayName))
+
+    const moved = await api.assignJob(job.id, tom.id, stored.version)
+    expect(moved.assignedTechnician?.id).toBe(tom.id)
+    await page.setViewportSize({ width: 375, height: 667 })
+    await panel.getByRole('radio', { name: rowNamed(priya.displayName) }).check()
+    const reassignToPriya = panel.getByRole('button', {
+      name: assignCopy.reassignTo(priya.displayName),
+    })
+    const sentAssignment = await captureNextBody(page, `**/api/jobs/${job.id}/assignment`)
+    const refused = page.waitForResponse((answer) => isAssignment(answer.request(), job.id))
+    const refetched = page.waitForResponse((answer) => isJobRead(answer.request(), job.id))
+    const techniciansAgain = page.waitForRequest(isTechniciansRead)
+    await reassignToPriya.click()
+
+    const conflict = await refused
+    expect(conflict.status()).toBe(409)
+    expect(((await conflict.json()) as { code?: string }).code).toBe('concurrency.conflict')
+    expect(sentAssignment()).toEqual({ technicianId: priya.id, version: stored.version })
+    expect((await refetched).status()).toBe(200)
+    await techniciansAgain
+    const notice = panel
+      .getByRole('alert')
+      .filter({ hasText: assignCopy.changedTitle(`JOB-${job.number}`) })
+    await expect(notice).toContainText(assignCopy.changedMessage)
+    await expect(details).toContainText(tom.displayName)
+    await expect(historyItems(page)).toHaveCount(3)
+    await expect(historyItems(page).last()).toContainText(
+      assignCopy.historyAssigned(tom.displayName),
+    )
+    await expect(panel.getByRole('radio', { name: rowNamed(priya.displayName) })).toBeChecked()
+    await expect(reassignToPriya).toBeFocused()
+    const margins = await marginsInViewport(page, reassignToPriya)
+    expect(
+      Math.min(margins.left, margins.top, margins.right, margins.bottom),
+      'the button and 4 px around it lie inside the 375 × 667 viewport after the conflict',
+    ).toBeGreaterThanOrEqual(4)
+    await expect(notice).toBeInViewport()
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const after = await api.getJob(job.id)
+    expect(after).toMatchObject({
+      status: 'Assigned',
+      assignedTechnician: { id: tom.id },
+      version: moved.version,
+    })
+    expect(
+      after.history
+        .filter((entry) => entry.action === 'Assigned')
+        .map((entry) => entry.technician?.id),
+    ).toEqual([lena.id, tom.id])
+
+    guards.allowConsole(
+      consolePatterns.techniciansServerError,
+      consolePatterns.templatesServerError,
+    )
+    await fulfilStub(page, '**/api/technicians', serverError, 2)
+    await fulfilStub(page, '**/api/checklist-templates', serverError, 2)
+    await openInApp(page, '/jobs/new')
+
+    const newCard = page.getByRole('region', { name: createJobCopy.checklistCard })
+    const techniciansBanner = (role: 'status' | 'alert') =>
+      newCard.getByRole(role).filter({ hasText: createJobCopy.techniciansFailed })
+    const templatesBanner = (role: 'status' | 'alert') =>
+      newCard.getByRole(role).filter({ hasText: createJobCopy.templatesFailed })
+    const retry = (banner: Locator) => banner.getByRole('button', { name: createJobCopy.tryAgain })
+    await expect(techniciansBanner('status')).toContainText(createJobCopy.techniciansFailedHelp)
+    await expect(templatesBanner('status')).toBeVisible()
+    await retry(techniciansBanner('status')).click()
+    await expect(retry(techniciansBanner('alert'))).toBeFocused()
+    await retry(techniciansBanner('alert')).click()
+    await expect(newCard.getByRole('combobox', { name: createJobCopy.technician })).toBeFocused()
+    await retry(templatesBanner('status')).click()
+    await expect(retry(templatesBanner('alert'))).toBeFocused()
+    await fulfilStub(page, '**/api/checklist-templates', { status: 200, body: { items: [] } }, 1)
+    await retry(templatesBanner('alert')).click()
+
+    const cardHeading = newCard.getByRole('heading', {
+      level: 2,
+      name: createJobCopy.checklistCard,
+    })
+    await expect(cardHeading).toBeFocused()
+    await expect(cardHeading).toHaveAttribute('tabindex', '-1')
+    const templateSelect = newCard.getByRole('combobox', { name: createJobCopy.checklistTemplate })
+    await expect(templateSelect).toBeDisabled()
+    await expect(templateSelect).toContainText(createJobCopy.noTemplates)
   })
 })

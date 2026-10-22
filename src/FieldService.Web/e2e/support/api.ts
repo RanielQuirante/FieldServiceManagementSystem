@@ -3,6 +3,7 @@ import process from 'node:process'
 import type { APIRequestContext, APIResponse } from '@playwright/test'
 
 import { recordAuthCall } from './budget.ts'
+import { recordSessionEvent } from './sessions.ts'
 
 export type SessionClient = 'Web' | 'Mobile'
 
@@ -10,6 +11,10 @@ export type JobStatus =
   'Unassigned' | 'Assigned' | 'InProgress' | 'OnHold' | 'Completed' | 'Cancelled'
 
 export type JobPriority = 'Low' | 'Normal' | 'High' | 'Urgent'
+
+export type Trade = 'Hvac' | 'Electrical' | 'Plumbing' | 'FireSafety'
+
+export type AssignedJobsView = 'active' | 'completed'
 
 export interface SessionUser {
   readonly id: string
@@ -58,8 +63,10 @@ export interface JobSummary {
 export interface JobHistoryEntry {
   readonly id: string
   readonly action: string
+  readonly fromStatus: JobStatus | null
   readonly toStatus: JobStatus
   readonly actor: PersonReference
+  readonly technician: TechnicianReference | null
   readonly occurredAt: string
 }
 
@@ -69,11 +76,43 @@ export interface JobDetails extends JobSummary {
   readonly contactName: string | null
   readonly contactPhone: string | null
   readonly equipment: string | null
-  readonly checklistTemplate: { readonly id: string; readonly name: string; readonly trade: string }
+  readonly checklistTemplate: { readonly id: string; readonly name: string; readonly trade: Trade }
   readonly createdBy: PersonReference
   readonly createdAt: string
   readonly assignedAt: string | null
   readonly history: readonly JobHistoryEntry[]
+  readonly affordances: { readonly canAssign: boolean }
+}
+
+export interface TechnicianJobReference {
+  readonly id: string
+  readonly number: number
+  readonly status: JobStatus
+  readonly scheduledStart: string
+  readonly scheduledEnd: string
+}
+
+export interface Technician {
+  readonly id: string
+  readonly displayName: string
+  readonly email: string
+  readonly phoneNumber: string
+  readonly trade: Trade
+  readonly isActive: boolean
+  readonly isOnShift: boolean
+  readonly availableForAssignment: boolean
+  readonly openJobCount: number
+  readonly currentJob: TechnicianJobReference | null
+  readonly nextJob: TechnicianJobReference | null
+}
+
+export interface AssignedJob {
+  readonly id: string
+  readonly number: number
+  readonly title: string
+  readonly status: JobStatus
+  readonly scheduledStart: string
+  readonly version: number
 }
 
 export interface StatusCount {
@@ -102,6 +141,7 @@ export interface CreateJobBody {
   readonly scheduledStart: string
   readonly scheduledEnd: string
   readonly checklistTemplateId: string
+  readonly technicianId?: string
 }
 
 export interface Problem {
@@ -114,6 +154,13 @@ export interface Problem {
 export const demoAccounts = {
   administrator: 'dana.whitfield@fieldservice.example',
   technician: 'marco.reyes@fieldservice.example',
+} as const
+
+export const demoTechnicians = {
+  assignments: { name: 'Lena Park', email: 'lena.park@fieldservice.example' },
+  inspections: { name: 'Priya Natarajan', email: 'priya.natarajan@fieldservice.example' },
+  offShift: { name: 'Samuel Osei', email: 'samuel.osei@fieldservice.example' },
+  conflicting: { name: 'Tom Becker', email: 'tom.becker@fieldservice.example' },
 } as const
 
 export const refreshCookieName = 'fs_refresh'
@@ -177,7 +224,29 @@ export async function signIn(
     data: { email, password: demoPassword(), client },
   })
   await recordSession(response, sink)
+  if (response.ok()) {
+    recordSessionEvent('opened', `${client} sign-in through the API`)
+  }
   return response
+}
+
+export async function signOutWithCookie(request: APIRequestContext): Promise<number> {
+  const response = await request.post('/api/auth/sign-out', { headers: { ...csrfHeader } })
+  if (response.status() === 204) {
+    recordSessionEvent('signed-out', 'Web sign-out with the refresh cookie')
+  }
+  return response.status()
+}
+
+export async function signOutWithToken(
+  request: APIRequestContext,
+  refreshToken: string,
+): Promise<number> {
+  const response = await request.post('/api/auth/sign-out', { data: { refreshToken } })
+  if (response.status() === 204) {
+    recordSessionEvent('signed-out', 'Mobile sign-out with the refresh token')
+  }
+  return response.status()
 }
 
 export async function refreshWithCookie(
@@ -217,13 +286,15 @@ export interface AccessTokens {
   renew(): Promise<string>
 }
 
+export type ApiMethod = 'GET' | 'POST' | 'PUT'
+
 export class AdminApi {
   constructor(
     private readonly request: APIRequestContext,
     private readonly tokens: AccessTokens,
   ) {}
 
-  async send(method: 'GET' | 'POST', path: string, data?: unknown): Promise<APIResponse> {
+  async send(method: ApiMethod, path: string, data?: unknown): Promise<APIResponse> {
     const attempt = (token: string): Promise<APIResponse> =>
       this.request.fetch(path, {
         method,
@@ -237,7 +308,7 @@ export class AdminApi {
     return attempt(await this.tokens.renew())
   }
 
-  private async read<T>(method: 'GET' | 'POST', path: string, data?: unknown): Promise<T> {
+  private async read<T>(method: ApiMethod, path: string, data?: unknown): Promise<T> {
     const response = await this.send(method, path, data)
     if (!response.ok()) {
       const problem = await readProblem(response)
@@ -276,4 +347,74 @@ export class AdminApi {
   createJob(body: CreateJobBody): Promise<JobDetails> {
     return this.read<JobDetails>('POST', '/api/jobs', body)
   }
+
+  async technicians(): Promise<Technician[]> {
+    const body = await this.read<{ items: Technician[] }>('GET', '/api/technicians')
+    return body.items
+  }
+
+  async technicianNamed(displayName: string): Promise<Technician> {
+    const match = (await this.technicians()).find(
+      (technician) => technician.displayName === displayName,
+    )
+    if (match === undefined) {
+      throw new Error(`No technician is named ${displayName}.`)
+    }
+    return match
+  }
+
+  assignJob(jobId: string, technicianId: string, version: number): Promise<JobDetails> {
+    return this.read<JobDetails>('PUT', `/api/jobs/${jobId}/assignment`, {
+      technicianId,
+      version,
+    })
+  }
+}
+
+export class TechnicianApi {
+  constructor(
+    private readonly request: APIRequestContext,
+    readonly user: SessionUser,
+    private readonly accessToken: string,
+    private readonly refreshToken: string,
+  ) {}
+
+  signOut(): Promise<number> {
+    return signOutWithToken(this.request, this.refreshToken)
+  }
+
+  private get(path: string): Promise<APIResponse> {
+    return this.request.get(path, { headers: { Authorization: `Bearer ${this.accessToken}` } })
+  }
+
+  async assignedJobs(view: AssignedJobsView): Promise<AssignedJob[]> {
+    const response = await this.get(`/api/technicians/me/jobs?view=${view}`)
+    if (!response.ok()) {
+      const problem = await readProblem(response)
+      throw new Error(`GET /api/technicians/me/jobs failed with ${problem.status} ${problem.code}.`)
+    }
+    return ((await response.json()) as { items: AssignedJob[] }).items
+  }
+
+  getJob(id: string): Promise<APIResponse> {
+    return this.get(`/api/jobs/${id}`)
+  }
+}
+
+export async function signInTechnician(
+  request: APIRequestContext,
+  email: string,
+  sink: SentinelSink,
+): Promise<TechnicianApi> {
+  const session = await readSession(
+    await signIn(request, email, 'Mobile', sink),
+    'A technician sign-in with the mobile client',
+  )
+  if (session.user.role !== 'Technician') {
+    throw new Error('The technician sign-in returned another role.')
+  }
+  if (session.refreshToken === null) {
+    throw new Error('The mobile sign-in returned no refresh token.')
+  }
+  return new TechnicianApi(request, session.user, session.accessToken, session.refreshToken)
 }

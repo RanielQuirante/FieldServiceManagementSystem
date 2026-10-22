@@ -38,6 +38,9 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         ["job.not-found"] = (404, "rfc9110#section-15.5.5", "The job was not found."),
         ["resource.not-found"] = (404, "rfc9110#section-15.5.5", "The resource was not found."),
         ["request.method-not-allowed"] = (405, "rfc9110#section-15.5.6", "The method is not allowed for this resource."),
+        ["concurrency.conflict"] = (409, "rfc9110#section-15.5.10", "The job was changed by someone else."),
+        ["job.not-assignable"] = (409, "rfc9110#section-15.5.10", "The job can no longer be assigned."),
+        ["technician.unavailable"] = (409, "rfc9110#section-15.5.10", "The technician is not available."),
         ["request.too-large"] = (413, "rfc9110#section-15.5.14", "The request body is too large."),
         ["request.unsupported-media-type"] = (415, "rfc9110#section-15.5.16", "The request body must be JSON."),
         ["rate-limit.exceeded"] = (429, "rfc6585#section-4", "Too many requests."),
@@ -62,6 +65,10 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         { "GetJobById on another technician's job", "job.not-found", "" },
         { "a job route whose id is not a GUID", "resource.not-found", "" },
         { "DELETE on a job", "request.method-not-allowed", "" },
+        { "AssignJob with a stale version", "concurrency.conflict", "" },
+        { "AssignJob on a Completed job", "job.not-assignable", "" },
+        { "AssignJob to an off-shift technician", "technician.unavailable", "" },
+        { "CreateJob with an off-shift technician", "technician.unavailable", "" },
         { "a job request of 1 MB + 1", "request.too-large", "" },
         { "CreateJob with a text/plain body", "request.unsupported-media-type", "" },
         { "the eleventh sign-in in a minute", "rate-limit.exceeded", "" },
@@ -296,6 +303,21 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
                 path = $"/api/jobs/{Guid.CreateVersion7()}";
                 response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"{path}?probe={marker}"));
                 break;
+            case "AssignJob with a stale version":
+                (path, response) = await AssignAsync(client, data, JobStatus.Unassigned, assigneeOnShift: true, staleVersion: true, marker);
+                break;
+            case "AssignJob on a Completed job":
+                (path, response) = await AssignAsync(client, data, JobStatus.Completed, assigneeOnShift: true, staleVersion: false, marker);
+                break;
+            case "AssignJob to an off-shift technician":
+                (path, response) = await AssignAsync(client, data, JobStatus.Unassigned, assigneeOnShift: false, staleVersion: false, marker);
+                break;
+            case "CreateJob with an off-shift technician":
+                var offShift = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken, isOnShift: false);
+                client.AccessToken = TestTokens.For(Fixture.Factory, await data.CreateAdministratorAsync(CancellationToken));
+                path = "/api/jobs";
+                response = await client.PostAsync(path, JobBody(now, body => body["technicianId"] = offShift.UserId.ToString()));
+                break;
             case "CreateJob with a text/plain body":
                 client.AccessToken = administratorToken;
                 path = "/api/jobs";
@@ -318,6 +340,26 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         {
             return await ObservedProblem.ReadAsync(response, client, path, marker);
         }
+    }
+
+    private async Task<(string Path, HttpResponseMessage Response)> AssignAsync(
+        ApiClient client,
+        TestData data,
+        JobStatus status,
+        bool assigneeOnShift,
+        bool staleVersion,
+        string marker)
+    {
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var assignee = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken, isOnShift: assigneeOnShift);
+        var created = await data.CreateJobAsync(administrator.Id, TestData.HvacTemplateId, CancellationToken);
+        var job = await data.MoveToAsync(created, owner, status, CancellationToken);
+        client.AccessToken = TestTokens.For(Fixture.Factory, administrator);
+        var path = $"/api/jobs/{job.Id}/assignment";
+        var version = staleVersion ? unchecked(job.Version + 1) : job.Version;
+        var response = await client.PutJsonAsync($"{path}?probe={marker}", new { technicianId = assignee.UserId, version });
+        return (path, response);
     }
 
     private static string RefreshTokenOf43Characters() =>

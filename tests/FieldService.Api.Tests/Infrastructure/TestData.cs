@@ -26,20 +26,25 @@ public sealed class TestData(DatabaseFixture fixture, DateTimeOffset now)
 
     public static string PasswordHash => _passwordHash.Value;
 
-    public static User NewUser(UserRole role, DateTimeOffset now, string? passwordHash = null)
+    public static User NewUser(UserRole role, DateTimeOffset now, string? passwordHash = null, string? displayName = null)
     {
-        var displayName = role == UserRole.Administrator ? "Test Administrator" : "Test Technician";
+        var defaultName = role == UserRole.Administrator ? "Test Administrator" : "Test Technician";
         return User.Create(
             $"user-{Guid.NewGuid():N}@fieldservice.example",
-            $"{displayName} {Marker()}",
+            displayName ?? $"{defaultName} {Marker()}",
             passwordHash ?? PasswordHash,
             role,
             now);
     }
 
-    public static Technician NewTechnician(Trade trade, DateTimeOffset now, bool isOnShift = true, bool isActive = true)
+    public static Technician NewTechnician(
+        Trade trade,
+        DateTimeOffset now,
+        bool isOnShift = true,
+        bool isActive = true,
+        string? displayName = null)
     {
-        var user = NewUser(UserRole.Technician, now);
+        var user = NewUser(UserRole.Technician, now, displayName: displayName);
         var technician = Technician.Create(
             user,
             trade,
@@ -173,9 +178,10 @@ public sealed class TestData(DatabaseFixture fixture, DateTimeOffset now)
         Trade trade,
         CancellationToken cancellationToken,
         bool isOnShift = true,
-        bool isActive = true)
+        bool isActive = true,
+        string? displayName = null)
     {
-        var technician = NewTechnician(trade, Now, isOnShift, isActive);
+        var technician = NewTechnician(trade, Now, isOnShift, isActive, displayName);
         await using var context = fixture.CreateAppDbContext();
         context.Users.Add(technician.User);
         context.Technicians.Add(technician);
@@ -201,13 +207,56 @@ public sealed class TestData(DatabaseFixture fixture, DateTimeOffset now)
         return job;
     }
 
-    public async Task<Job> CreateJobAsync(Guid createdByUserId, JobDetails details, CancellationToken cancellationToken)
+    public async Task<Job> CreateJobAsync(
+        Guid createdByUserId,
+        JobDetails details,
+        CancellationToken cancellationToken,
+        long? number = null)
     {
         var job = Job.Create(details, createdByUserId, Now);
         await using var context = fixture.CreateAppDbContext();
         context.Jobs.Add(job);
+        if (number is { } explicitNumber)
+        {
+            context.Entry(job).Property(entry => entry.Number).CurrentValue = explicitNumber;
+        }
+
         await context.SaveChangesAsync(cancellationToken);
         return job;
+    }
+
+    public async Task<Job> MoveToAsync(
+        Job job,
+        Technician technician,
+        JobStatus status,
+        CancellationToken cancellationToken)
+    {
+        if (status == JobStatus.Unassigned)
+        {
+            return job;
+        }
+
+        if (status == JobStatus.Completed)
+        {
+            await CreateInspectionAsync(job, technician, submitted: true, cancellationToken);
+            return await LoadJobAsync(job.Id, cancellationToken);
+        }
+
+        var current = await AssignJobAsync(job, technician, cancellationToken);
+        if (status == JobStatus.Cancelled)
+        {
+            return await CancelJobAsync(current, cancellationToken);
+        }
+
+        if (status == JobStatus.Assigned)
+        {
+            return current;
+        }
+
+        current = await ChangeStatusAsync(current, JobStatus.InProgress, cancellationToken);
+        return status == JobStatus.OnHold
+            ? await ChangeStatusAsync(current, JobStatus.OnHold, cancellationToken, HoldNote)
+            : current;
     }
 
     public Task<Job> AssignJobAsync(Job job, Technician technician, CancellationToken cancellationToken) =>

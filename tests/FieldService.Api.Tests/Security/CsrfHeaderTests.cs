@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using FieldService.Api.Domain;
 using FieldService.Api.Shared.Security;
-using FieldService.Api.Tests.Features.Auth;
 using FieldService.Api.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -120,9 +119,9 @@ public sealed class CsrfHeaderTests(DatabaseFixture fixture) : DatabaseTest(fixt
         await using var factory = Fixture.CreateFactory(factory => factory.UseKestrel(0));
         using var victim = await SignInAsync(SessionClient.Web, factory);
 
-        using var forged = await victim.Client.PostAsync(path, RefreshSessionTests.EmptyBodyOf(mediaType));
+        using var forged = await victim.Client.PostAsync(path, ApiClient.EmptyBodyOf(mediaType));
 
-        RefreshSessionTests.AssertSentWithoutCredential(forged, mediaType);
+        ApiClient.AssertSentWithoutCredential(forged, mediaType);
         using var problem = await ApiClient.AssertProblemAsync(
             forged,
             HttpStatusCode.UnsupportedMediaType,
@@ -141,7 +140,7 @@ public sealed class CsrfHeaderTests(DatabaseFixture fixture) : DatabaseTest(fixt
 
         using var forged = await victim.Client.PostAsync(path, content: null);
 
-        RefreshSessionTests.AssertSentWithoutCredential(forged, mediaType: null);
+        ApiClient.AssertSentWithoutCredential(forged, mediaType: null);
         if (path == ApiClient.RefreshPath)
         {
             using var problem = await ApiClient.AssertProblemAsync(forged, HttpStatusCode.Unauthorized, "auth.session-expired");

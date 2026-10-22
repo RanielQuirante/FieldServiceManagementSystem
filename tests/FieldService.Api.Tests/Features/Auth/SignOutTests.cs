@@ -85,7 +85,7 @@ public sealed class SignOutTests(DatabaseFixture fixture) : DatabaseTest(fixture
 
         using var forged = await signedIn.Client.PostAsync(ApiClient.SignOutPath, content: null);
 
-        RefreshSessionTests.AssertSentWithoutCredential(forged, mediaType: null);
+        ApiClient.AssertSentWithoutCredential(forged, mediaType: null);
         Assert.Equal(HttpStatusCode.NoContent, forged.StatusCode);
         Assert.Empty(ApiClient.SetCookieHeadersOf(forged));
         await AssertTheSessionStillRefreshesAndSignsOutAsync(signedIn);
@@ -99,9 +99,9 @@ public sealed class SignOutTests(DatabaseFixture fixture) : DatabaseTest(fixture
         await using var factory = Fixture.CreateFactory(factory => factory.UseKestrel(0));
         using var signedIn = await SignInAsync(factory, SessionClient.Web);
 
-        using var forged = await signedIn.Client.PostAsync(ApiClient.SignOutPath, RefreshSessionTests.EmptyBodyOf(mediaType));
+        using var forged = await signedIn.Client.PostAsync(ApiClient.SignOutPath, ApiClient.EmptyBodyOf(mediaType));
 
-        RefreshSessionTests.AssertSentWithoutCredential(forged, mediaType);
+        ApiClient.AssertSentWithoutCredential(forged, mediaType);
         using var problem = await ApiClient.AssertProblemAsync(forged, HttpStatusCode.UnsupportedMediaType, "request.unsupported-media-type");
         Assert.Empty(ApiClient.SetCookieHeadersOf(forged));
         await AssertTheSessionStillRefreshesAndSignsOutAsync(signedIn);

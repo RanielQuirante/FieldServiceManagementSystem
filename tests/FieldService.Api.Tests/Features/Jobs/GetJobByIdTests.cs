@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FieldService.Api.Domain;
 using FieldService.Api.Features;
 using FieldService.Api.Features.Jobs;
@@ -208,6 +209,60 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
             first.RootElement.EnumerateObject().Select(member => member.Name),
             second.RootElement.EnumerateObject().Select(member => member.Name));
         Assert.Equal(first.RootElement.GetProperty("title").GetString(), second.RootElement.GetProperty("title").GetString());
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Unassigned, false, true)]
+    [InlineData(JobStatus.Assigned, false, true)]
+    [InlineData(JobStatus.InProgress, false, false)]
+    [InlineData(JobStatus.OnHold, false, false)]
+    [InlineData(JobStatus.Completed, false, false)]
+    [InlineData(JobStatus.Cancelled, false, false)]
+    [InlineData(JobStatus.Assigned, true, false)]
+    [InlineData(JobStatus.InProgress, true, false)]
+    [InlineData(JobStatus.OnHold, true, false)]
+    [InlineData(JobStatus.Completed, true, false)]
+    [InlineData(JobStatus.Cancelled, true, false)]
+    public async Task CanAssignFollowsTheTransitionTableForTheCallerAndTheJobStatus(
+        JobStatus status,
+        bool asAssignee,
+        bool canAssign)
+    {
+        var data = new TestData(Fixture, Now);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await data.MoveToAsync(
+            await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken),
+            technician,
+            status,
+            CancellationToken);
+        using var client = ClientFor(asAssignee ? technician.User : administrator);
+
+        using var response = await client.GetAsync(PathOf(job.Id));
+
+        var details = await ReadJobAsync(response);
+        Assert.Equal(status, details.Status);
+        Assert.Equal(canAssign, details.Affordances.CanAssign);
+        Assert.Equal(new JobAffordances(canAssign), details.Affordances);
+    }
+
+    [Fact]
+    public async Task TheAffordancesMemberIsLastAndHoldsOnlyCanAssign()
+    {
+        var data = new TestData(Fixture, Now);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var job = await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken);
+        using var client = ClientFor(administrator);
+
+        using var response = await client.GetAsync(PathOf(job.Id));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken));
+        var members = document.RootElement.EnumerateObject().Select(member => member.Name).ToList();
+        Assert.Equal(["version", "affordances"], members.TakeLast(2));
+        Assert.Equal(
+            ["canAssign"],
+            document.RootElement.GetProperty("affordances").EnumerateObject().Select(member => member.Name));
     }
 
     [Fact]

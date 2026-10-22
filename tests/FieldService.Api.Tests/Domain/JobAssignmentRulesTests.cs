@@ -91,7 +91,7 @@ public sealed class JobAssignmentRulesTests
         var error = arrangement.Job.AssignTo(technician, arrangement.AdministratorActor, arrangement.Later);
 
         Assert.Equal(DomainErrors.TechnicianUnavailableCode, error?.Code);
-        Assert.False(technician.IsAvailableForAssignment);
+        Assert.False(JobAssignee.Of(technician).IsAvailableForAssignment);
         Assert.Equal(JobStatus.Unassigned, arrangement.Job.Status);
         Assert.Null(arrangement.Job.AssignedTechnicianId);
         Assert.Single(arrangement.Job.History);
