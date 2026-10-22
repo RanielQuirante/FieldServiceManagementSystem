@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.JobCard"
+             x:Name="Root"
+             x:DataType="controls:JobCard">
+    <Grid BindingContext="{x:Reference Root}">
+        <Border x:Name="SelectionHalo"
+                Margin="-6"
+                StrokeThickness="0"
+                StrokeShape="RoundRectangle 24"
+                Background="{StaticResource FsSelectedHaloBrush}"
+                IsVisible="{Binding ShowsSelection}"
+                InputTransparent="True"
+                AutomationProperties.IsInAccessibleTree="False" />
+        <Border x:Name="Card"
+                IsVisible="{Binding ShowsContent}"
+                Style="{StaticResource FsJobCard}"
+                AutomationProperties.ExcludedWithChildren="True">
+            <VerticalStackLayout x:Name="CardStack"
+                                 Spacing="{StaticResource FsSpace12}">
+                <VerticalStackLayout x:Name="Summary"
+                                     Padding="{StaticResource FsPaddingJobCardInner}"
+                                     Spacing="{StaticResource FsSpace10}">
+                    <Grid ColumnDefinitions="*,Auto"
+                          ColumnSpacing="{StaticResource FsSpace12}">
+                        <Label Text="{Binding JobNumber}"
+                               Style="{StaticResource FsTextMono}"
+                               VerticalOptions="Center" />
+                        <controls:StatusChip Grid.Column="1"
+                                             Status="{Binding Status}"
+                                             IsCompact="{Binding IsCompact}" />
+                    </Grid>
+                    <Label x:Name="TitleLabel"
+                           Text="{Binding Title}" />
+                    <VerticalStackLayout Spacing="{StaticResource FsSpace6}">
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="{StaticResource FsSpace8}">
+                            <controls:Icon PathData="{StaticResource FsIconBuilding}"
+                                           Size="16"
+                                           Color="{StaticResource FsMuted}"
+                                           VerticalOptions="Center" />
+                            <Label x:Name="CustomerLabel"
+                                   Grid.Column="1"
+                                   Text="{Binding CustomerName}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="{StaticResource FsSpace8}">
+                            <controls:Icon PathData="{StaticResource FsIconMapPin}"
+                                           Size="16"
+                                           Color="{StaticResource FsMuted}"
+                                           VerticalOptions="Center" />
+                            <Label x:Name="SiteLabel"
+                                   Grid.Column="1"
+                                   Text="{Binding SiteAddress}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+                <Border x:Name="Well"
+                        StrokeThickness="0"
+                        Padding="{StaticResource FsPaddingWell}">
+                    <Grid ColumnDefinitions="*,Auto,Auto"
+                          ColumnSpacing="{StaticResource FsSpace10}">
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="{StaticResource FsSpace8}"
+                              VerticalOptions="Center">
+                            <controls:Icon PathData="{StaticResource FsIconClock}"
+                                           Size="16"
+                                           Color="{StaticResource FsTeal700}"
+                                           VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding TimeWindow}"
+                                   Style="{StaticResource FsTextWell}"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <controls:PriorityLabel Grid.Column="1"
+                                                Priority="{Binding Priority}"
+                                                IsCompact="{Binding IsCompact}" />
+                        <controls:Icon Grid.Column="2"
+                                       PathData="{StaticResource FsIconChevronRight}"
+                                       Size="20"
+                                       Color="{StaticResource FsMuted}"
+                                       VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+        </Border>
+        <Border IsVisible="{Binding IsLoading}"
+                Style="{StaticResource FsJobCard}"
+                InputTransparent="True"
+                AutomationProperties.IsInAccessibleTree="False"
+                AutomationProperties.ExcludedWithChildren="True">
+            <VerticalStackLayout Spacing="{StaticResource FsSpace12}">
+                <VerticalStackLayout Padding="{StaticResource FsPaddingJobCardInner}"
+                                     Spacing="{StaticResource FsSpace12}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <BoxView WidthRequest="84"
+                                 HeightRequest="14"
+                                 CornerRadius="7"
+                                 Background="{StaticResource FsSkeletonBrush}"
+                                 HorizontalOptions="Start"
+                                 VerticalOptions="Center"
+                                 AutomationProperties.IsInAccessibleTree="False" />
+                        <BoxView Grid.Column="1"
+                                 WidthRequest="104"
+                                 HeightRequest="28"
+                                 CornerRadius="14"
+                                 Background="{StaticResource FsSkeletonBrush}"
+                                 AutomationProperties.IsInAccessibleTree="False" />
+                    </Grid>
+                    <BoxView HeightRequest="18"
+                             CornerRadius="9"
+                             Background="{StaticResource FsSkeletonBrush}"
+                             Margin="0,0,72,0"
+                             AutomationProperties.IsInAccessibleTree="False" />
+                    <BoxView HeightRequest="14"
+                             CornerRadius="7"
+                             Background="{StaticResource FsSkeletonBrush}"
+                             Margin="0,0,144,0"
+                             AutomationProperties.IsInAccessibleTree="False" />
+                    <BoxView HeightRequest="14"
+                             CornerRadius="7"
+                             Background="{StaticResource FsSkeletonBrush}"
+                             Margin="0,0,120,0"
+                             AutomationProperties.IsInAccessibleTree="False" />
+                </VerticalStackLayout>
+                <BoxView HeightRequest="{StaticResource FsHeightWell}"
+                         CornerRadius="14"
+                         Background="{StaticResource FsWellBrush}"
+                         AutomationProperties.IsInAccessibleTree="False" />
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

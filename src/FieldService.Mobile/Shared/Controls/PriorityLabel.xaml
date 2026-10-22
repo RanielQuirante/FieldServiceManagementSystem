@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.PriorityLabel"
+             x:Name="Root"
+             x:DataType="controls:PriorityLabel"
+             HorizontalOptions="Start"
+             VerticalOptions="Center">
+    <Grid BindingContext="{x:Reference Root}"
+          InputTransparent="True"
+          AutomationProperties.ExcludedWithChildren="True">
+        <Border x:Name="Badge"
+                IsVisible="{Binding IsBadge}"
+                Style="{StaticResource FsUrgentBadge}"
+                HorizontalOptions="Start"
+                VerticalOptions="Center"
+                InputTransparent="True"
+                AutomationProperties.IsInAccessibleTree="False">
+            <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                                   VerticalOptions="Center">
+                <controls:Icon x:Name="BadgeIcon"
+                               PathData="{StaticResource FsIconAlertTriangle}"
+                               Size="16"
+                               StrokeWidthOverride="2.5"
+                               Color="{StaticResource FsNavy900}"
+                               VerticalOptions="Center" />
+                <Label x:Name="BadgeLabel"
+                       Text="Urgent"
+                       Style="{StaticResource FsTextUrgent}" />
+            </HorizontalStackLayout>
+        </Border>
+        <Border x:Name="Pill"
+                IsVisible="{Binding IsGlyph}"
+                StrokeShape="RoundRectangle 16"
+                HorizontalOptions="Start"
+                VerticalOptions="Center"
+                InputTransparent="True"
+                AutomationProperties.IsInAccessibleTree="False">
+            <HorizontalStackLayout x:Name="PillContent"
+                                   VerticalOptions="Center">
+                <controls:Icon x:Name="GlyphIcon"
+                               Size="16"
+                               VerticalOptions="Center" />
+                <Label x:Name="GlyphLabel"
+                       Text="{Binding Label}"
+                       Style="{StaticResource FsTextPriority}" />
+            </HorizontalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

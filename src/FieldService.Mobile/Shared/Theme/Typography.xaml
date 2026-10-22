@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <x:Double x:Key="FsFontSizeSignInTitle">32</x:Double>
+    <x:Double x:Key="FsFontSizeScreenTitle">28</x:Double>
+    <x:Double x:Key="FsFontSizePushedTitle">17</x:Double>
+    <x:Double x:Key="FsFontSizeHeroJobTitle">24</x:Double>
+    <x:Double x:Key="FsFontSizeNumeral">40</x:Double>
+    <x:Double x:Key="FsFontSizeSection">18</x:Double>
+    <x:Double x:Key="FsFontSizePrompt">17</x:Double>
+    <x:Double x:Key="FsFontSizeBody">16</x:Double>
+    <x:Double x:Key="FsFontSizeMeta">15</x:Double>
+    <x:Double x:Key="FsFontSizeFieldLabel">14</x:Double>
+    <x:Double x:Key="FsFontSizeFieldError">14</x:Double>
+    <x:Double x:Key="FsFontSizeInfoLabel">13</x:Double>
+    <x:Double x:Key="FsFontSizeEyebrow">13</x:Double>
+    <x:Double x:Key="FsFontSizeButton">17</x:Double>
+    <x:Double x:Key="FsFontSizeButtonDesktop">14</x:Double>
+    <x:Double x:Key="FsFontSizeQuietButton">16</x:Double>
+    <x:Double x:Key="FsFontSizeInput">16</x:Double>
+    <x:Double x:Key="FsFontSizeMono">14</x:Double>
+    <x:Double x:Key="FsFontSizeMonoWell">15</x:Double>
+    <x:Double x:Key="FsFontSizeMonoSmall">13</x:Double>
+    <x:Double x:Key="FsFontSizeCount">13</x:Double>
+
+    <x:Double x:Key="FsFontSizeLargeHeading">20</x:Double>
+    <x:Double x:Key="FsFontSizeChip">14</x:Double>
+    <x:Double x:Key="FsFontSizeChipCompact">13</x:Double>
+    <x:Double x:Key="FsFontSizePriority">15</x:Double>
+    <x:Double x:Key="FsFontSizePriorityCompact">14</x:Double>
+    <x:Double x:Key="FsFontSizeUrgent">13</x:Double>
+    <x:Double x:Key="FsFontSizeUrgentCompact">12</x:Double>
+    <x:Double x:Key="FsFontSizeSync">14</x:Double>
+    <x:Double x:Key="FsFontSizeCompactTitle">16</x:Double>
+    <x:Double x:Key="FsFontSizeCompactMeta">14</x:Double>
+    <x:Double x:Key="FsFontSizePaneTitle">24</x:Double>
+    <x:Double x:Key="FsFontSizePaneHeroTitle">26</x:Double>
+    <x:Double x:Key="FsFontSizeScheduleOnDark">16</x:Double>
+    <x:Double x:Key="FsFontSizeAvatar">14</x:Double>
+    <x:Double x:Key="FsFontSizeSegment">16</x:Double>
+    <x:Double x:Key="FsFontSizeSegmentCompact">15</x:Double>
+
+    <x:Double x:Key="FsTrackingSignInTitle">-0.40</x:Double>
+    <x:Double x:Key="FsTrackingButton">-0.08</x:Double>
+    <x:Double x:Key="FsTrackingLargeHeading">-0.24</x:Double>
+    <x:Double x:Key="FsTrackingTitle">-0.32</x:Double>
+    <x:Double x:Key="FsTrackingUrgent">0.80</x:Double>
+    <x:Double x:Key="FsTrackingAvatar">0.32</x:Double>
+    <x:Double x:Key="FsTrackingMonoOnDark">0.32</x:Double>
+
+    <Style TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextSignInTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeSignInTitle}" />        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingSignInTitle}" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+    </Style>
+
+    <Style x:Key="FsTextScreenTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeScreenTitle}" />        <Setter Property="CharacterSpacing" Value="-0.32" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+    </Style>
+
+    <Style x:Key="FsTextPushedTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizePushedTitle}" />        <Setter Property="CharacterSpacing" Value="-0.16" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+    </Style>
+
+    <Style x:Key="FsTextHeroJobTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeHeroJobTitle}" />        <Setter Property="CharacterSpacing" Value="-0.32" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+    </Style>
+
+    <Style x:Key="FsTextNumeral" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeNumeral}" />        <Setter Property="CharacterSpacing" Value="-0.48" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextSection" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeSection}" />        <Setter Property="CharacterSpacing" Value="-0.16" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextPrompt" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizePrompt}" />
+        <Setter Property="LineHeight" Value="1.05" />
+        <Setter Property="CharacterSpacing" Value="-0.16" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextBody" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="LineHeight" Value="1.15" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextBodyOnDark" TargetType="Label" BasedOn="{StaticResource FsTextBody}">
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark2}" />
+    </Style>
+
+    <Style x:Key="FsTextMeta" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMeta}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk2}" />
+    </Style>
+
+    <Style x:Key="FsTextHint" TargetType="Label" BasedOn="{StaticResource FsTextMeta}">
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextFieldLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeFieldLabel}" />        <Setter Property="TextColor" Value="{StaticResource FsInk2}" />
+    </Style>
+
+    <Style x:Key="FsTextFieldError" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeFieldError}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsDanger}" />
+    </Style>
+
+    <Style x:Key="FsTextInfoLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeInfoLabel}" />        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextEyebrow" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeEyebrow}" />        <Setter Property="CharacterSpacing" Value="1.28" />
+        <Setter Property="TextTransform" Value="Uppercase" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextMono" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMonoMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMono}" />        <Setter Property="CharacterSpacing" Value="0.16" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextMonoSmall" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMonoMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMonoSmall}" />        <Setter Property="CharacterSpacing" Value="0.32" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextCount" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMonoSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeCount}" />        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextLargeHeading" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeLargeHeading}" />        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingLargeHeading}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextBodySecondary" TargetType="Label" BasedOn="{StaticResource FsTextBody}">
+        <Setter Property="TextColor" Value="{StaticResource FsInk2}" />
+    </Style>
+
+    <Style x:Key="FsTextCardMeta" TargetType="Label" BasedOn="{StaticResource FsTextMeta}">
+        <Setter Property="LineBreakMode" Value="WordWrap" />
+    </Style>
+
+    <Style x:Key="FsTextCompactTitle" TargetType="Label" BasedOn="{StaticResource FsTextSection}">
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeCompactTitle}" />
+    </Style>
+
+    <Style x:Key="FsTextCompactMeta" TargetType="Label" BasedOn="{StaticResource FsTextMeta}">
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeCompactMeta}" />
+    </Style>
+
+    <Style x:Key="FsTextWell" TargetType="Label" BasedOn="{StaticResource FsTextMono}">
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMonoWell}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextInfoValue" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextInfoSecondary" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeFieldLabel}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextChip" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeChip}" />        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextPriority" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizePriority}" />        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextUrgent" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeUrgent}" />        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingUrgent}" />
+        <Setter Property="TextTransform" Value="Uppercase" />
+        <Setter Property="TextColor" Value="{StaticResource FsNavy900}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextBanner" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMeta}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+        <Setter Property="LineBreakMode" Value="WordWrap" />
+    </Style>
+
+    <Style x:Key="FsTextTimeline" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMeta}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextTimelineNote" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeInfoLabel}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk2}" />
+    </Style>
+
+    <Style x:Key="FsTextEyebrowOnDark" TargetType="Label" BasedOn="{StaticResource FsTextEyebrow}">
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark2}" />
+    </Style>
+
+    <Style x:Key="FsTextSyncOnDark" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeSync}" />        <Setter Property="TextColor" Value="{StaticResource FsOnDark2}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextMetaOnDark" TargetType="Label" BasedOn="{StaticResource FsTextMeta}">
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark2}" />
+        <Setter Property="LineBreakMode" Value="WordWrap" />
+    </Style>
+
+    <Style x:Key="FsTextMonoOnDark" TargetType="Label" BasedOn="{StaticResource FsTextMonoSmall}">
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark2}" />
+    </Style>
+
+    <Style x:Key="FsTextScheduleOnDark" TargetType="Label" BasedOn="{StaticResource FsTextMono}">
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeScheduleOnDark}" />
+        <Setter Property="CharacterSpacing" Value="0" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextTopBarTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizePushedTitle}" />        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingTitle}" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextPaneTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizePaneTitle}" />        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingTitle}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextPaneHeroTitle" TargetType="Label" BasedOn="{StaticResource FsTextHeroJobTitle}">
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizePaneHeroTitle}" />
+    </Style>
+
+    <Style x:Key="FsTextAvatar" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeAvatar}" />
+        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingAvatar}" />
+        <Setter Property="TextColor" Value="{StaticResource FsNavy800}" />
+        <Setter Property="HorizontalOptions" Value="Center" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextButtonLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeButton}" />
+        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingButton}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextButtonLabelDesktop" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeButtonDesktop}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+</ResourceDictionary>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             xmlns:signIn="clr-namespace:FieldService.Mobile.Features.SignIn"
+             x:Class="FieldService.Mobile.Features.SignIn.SignInPage"
+             x:DataType="signIn:SignInViewModel"
+             Title="Sign in"
+             Shell.NavBarIsVisible="False"
+             SafeAreaEdges="None">
+    <Grid SafeAreaEdges="None">
+        <ScrollView x:Name="SignInScroll"
+                    SafeAreaEdges="None,None,None,SoftInput">
+            <Grid RowDefinitions="Auto,Auto">
+                <controls:AppHeader x:Name="SignInHeader"
+                                    Grid.Row="0"
+                                    Title="FieldService Tech"
+                                    Subtitle="Sign in to see the jobs assigned to you." />
+                <Border Grid.Row="1"
+                        Style="{StaticResource FsGlassCard}"
+                        StrokeShape="RoundRectangle 24"
+                        Padding="{StaticResource FsPaddingSignInCard}"
+                        Margin="16,-56,16,24">
+                    <VerticalStackLayout Spacing="{StaticResource FsSpace20}">
+                        <controls:Banner Variant="Error"
+                                         IsVisible="{Binding HasFailure}"
+                                         Title="{Binding Failure.Title}"
+                                         Message="{Binding Failure.Message}"
+                                         Reference="{Binding Failure.Reference}" />
+                        <controls:Banner Variant="Info"
+                                         IconKey="FsIconClock"
+                                         IsVisible="{Binding ShowsSessionNotice}"
+                                         Title="{x:Static signIn:SignInViewModel.SessionEndedTitle}"
+                                         Message="{x:Static signIn:SignInViewModel.SessionEndedMessage}" />
+                        <controls:FormField Label="Email"
+                                            FocusRequest="{Binding EmailFocusRequest}"
+                                            Text="{Binding Email}"
+                                            IconData="{StaticResource FsIconMail}"
+                                            ErrorText="{Binding EmailError}"
+                                            Keyboard="Email"
+                                            ReturnType="Next"
+                                            MaxLength="{x:Static signIn:SignInViewModel.MaxCredentialLength}"
+                                            IsSpellCheckEnabled="False"
+                                            IsTextPredictionEnabled="False" />
+                        <controls:FormField Label="Password"
+                                            FocusRequest="{Binding PasswordFocusRequest}"
+                                            Text="{Binding Password}"
+                                            IconData="{StaticResource FsIconLock}"
+                                            ErrorText="{Binding PasswordError}"
+                                            IsPassword="True"
+                                            HidePasswordRequest="{Binding PasswordHideRequest}"
+                                            ReturnType="Go"
+                                            ReturnCommand="{Binding SignInCommand}"
+                                            MaxLength="{x:Static signIn:SignInViewModel.MaxCredentialLength}"
+                                            IsSpellCheckEnabled="False"
+                                            IsTextPredictionEnabled="False" />
+                        <controls:PrimaryButton Text="Sign in"
+                                                BusyText="Signing in…"
+                                                IsBusy="{Binding IsBusy}"
+                                                Command="{Binding SignInCommand}" />
+                        <Label Text="Trouble signing in? Contact your dispatcher."
+                               Style="{StaticResource FsTextHint}" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </ScrollView>
+        <controls:StatusBarProtection ScrollSource="{x:Reference SignInScroll}" />
+    </Grid>
+</ContentPage>

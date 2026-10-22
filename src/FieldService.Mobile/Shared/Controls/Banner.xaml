@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.Banner"
+             x:Name="Root"
+             x:DataType="controls:Banner">
+    <Border x:Name="Surface"
+            BindingContext="{x:Reference Root}"
+            StrokeThickness="1"
+            StrokeShape="RoundRectangle 16">
+        <VerticalStackLayout Spacing="{StaticResource FsSpace12}">
+            <Grid ColumnDefinitions="Auto,*"
+                  ColumnSpacing="{StaticResource FsSpace12}">
+                <Border x:Name="Tile"
+                        Grid.Column="0"
+                        WidthRequest="{StaticResource FsSizeBannerTile}"
+                        HeightRequest="{StaticResource FsSizeBannerTile}"
+                        StrokeShape="RoundRectangle 10"
+                        StrokeThickness="1"
+                        VerticalOptions="Start"
+                        InputTransparent="True"
+                        AutomationProperties.IsInAccessibleTree="False">
+                    <controls:Icon x:Name="TileIcon"
+                                   Size="18"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Column="1"
+                                     Spacing="{StaticResource FsSpace6}"
+                                     VerticalOptions="Center"
+                                     SemanticProperties.Description="{Binding SpokenText}">
+                    <Label Style="{StaticResource FsTextBanner}"
+                           AutomationProperties.IsInAccessibleTree="False">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="{Binding Title}"
+                                      FontFamily="GeistSemiBold"
+                                      LineHeight="1.1"
+                                      TextColor="{StaticResource FsInk}" />
+                                <Span Text="{Binding MessageSeparator}"
+                                      LineHeight="1.1" />
+                                <Span Text="{Binding Message}"
+                                      LineHeight="1.1"
+                                      TextColor="{StaticResource FsInk2}" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                    <Label IsVisible="{Binding HasReference}"
+                           LineBreakMode="WordWrap"
+                           LineHeight="1.1"
+                           AutomationProperties.IsInAccessibleTree="False">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="Reference "
+                                      FontFamily="GeistRegular"
+                                      FontSize="{StaticResource FsFontSizeFieldLabel}"
+                                      TextColor="{StaticResource FsInk2}" />
+                                <Span Text="{Binding Reference}"
+                                      FontFamily="GeistMonoMedium"
+                                      FontSize="{StaticResource FsFontSizeMonoSmall}"
+                                      TextColor="{StaticResource FsInk2}" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                </VerticalStackLayout>
+            </Grid>
+            <Grid IsVisible="{Binding HasAction}">
+                <Button Style="{StaticResource FsSecondaryButton}"
+                        Command="{Binding ActionCommand}"
+                        SemanticProperties.Description="{Binding ActionText}" />
+                <HorizontalStackLayout Spacing="{StaticResource FsSpace10}"
+                                       HorizontalOptions="Center"
+                                       InputTransparent="True"
+                                       AutomationProperties.ExcludedWithChildren="True">
+                    <controls:Icon PathData="{StaticResource FsIconRefresh}"
+                                   Size="20"
+                                   Color="{StaticResource FsTeal700}"
+                                   VerticalOptions="Center" />
+                    <Label Text="{Binding ActionText}"
+                           Style="{StaticResource FsTextButtonLabel}" />
+                </HorizontalStackLayout>
+            </Grid>
+        </VerticalStackLayout>
+    </Border>
+</ContentView>

@@ -1,0 +1,569 @@
+using System.Net;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using FieldService.Mobile.Shared.Connectivity;
+using FieldService.Mobile.Shared.Controls;
+using FieldService.Mobile.Shared.Formatting;
+using FieldService.Mobile.Shared.Http;
+using FieldService.Mobile.Shared.Navigation;
+using FieldService.Mobile.Shared.Screens;
+using FieldService.Mobile.Shared.Session;
+using Microsoft.Extensions.Logging;
+
+namespace FieldService.Mobile.Features.Jobs;
+
+public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttributable
+{
+    public const string PageTitle = "Job details";
+    public const string LoadFailedTitle = "The job could not be loaded.";
+    public const string OfflineTitle = "You're offline.";
+    public const string MapSearchAddress = "https://www.bing.com/maps?q=";
+
+    public static readonly TimeSpan MetaRefreshInterval = TimeSpan.FromMinutes(1);
+
+    private readonly JobsApiClient _jobs;
+    private readonly ISessionService _session;
+    private readonly IMap _map;
+    private readonly IPhoneDialer _phoneDialer;
+    private readonly ILauncher _launcher;
+    private readonly INavigator _navigator;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<JobDetailsViewModel> _logger;
+    private CancellationTokenSource? _load;
+    private ITimer? _timer;
+    private SynchronizationContext? _context;
+    private DateTimeOffset? _loadedAt;
+    private Guid _jobId;
+
+    public JobDetailsViewModel(
+        JobsApiClient jobs,
+        ISessionService session,
+        IMap map,
+        IPhoneDialer phoneDialer,
+        ILauncher launcher,
+        INavigator navigator,
+        NetworkStatus network,
+        TimeProvider clock,
+        ILogger<JobDetailsViewModel> logger)
+        : base(network)
+    {
+        _jobs = jobs;
+        _session = session;
+        _map = map;
+        _phoneDialer = phoneDialer;
+        _launcher = launcher;
+        _navigator = navigator;
+        _clock = clock;
+        _logger = logger;
+        Timeline = [];
+    }
+
+    public event EventHandler? JobUnavailable;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(HasJob),
+        nameof(JobNumber),
+        nameof(Title),
+        nameof(Status),
+        nameof(Priority),
+        nameof(IsAssigned),
+        nameof(ScheduleLine),
+        nameof(AssignedLine),
+        nameof(HasAssignedLine),
+        nameof(StatusLine),
+        nameof(HasStatusLine),
+        nameof(PaneMeta),
+        nameof(CustomerName),
+        nameof(SiteAddress),
+        nameof(AccessNotes),
+        nameof(HasAccessNotes),
+        nameof(ContactValue),
+        nameof(ContactSecondary),
+        nameof(HasContact),
+        nameof(HasContactSecondary),
+        nameof(ContactDescription),
+        nameof(ScheduledText),
+        nameof(ShowsScheduledRow),
+        nameof(Equipment),
+        nameof(HasEquipment),
+        nameof(ChecklistName),
+        nameof(Description),
+        nameof(ShowsRowActions),
+        nameof(ShowsDock),
+        nameof(ShowsHeroActions),
+        nameof(CanCall),
+        nameof(ShowsRowCall),
+        nameof(CallLabel),
+        nameof(NavigateLabel),
+        nameof(NavigateColumnSpan),
+        nameof(ShowsPaneHero),
+        nameof(ShowsPaneMeta))]
+    [NotifyCanExecuteChangedFor(nameof(NavigateCommand), nameof(CallCommand))]
+    public partial JobDetailsResponse? Job { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(ShowsDock),
+        nameof(ShowsHeroActions),
+        nameof(ShowsPushedHeader),
+        nameof(ShowsPaneHero),
+        nameof(ContentPadding),
+        nameof(InfoColumnSpan),
+        nameof(DetailsRow),
+        nameof(DetailsColumn),
+        nameof(DetailsColumnSpan))]
+    public partial bool IsInPane { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStartsLine))]
+    public partial string? StartsLine { get; private set; }
+
+    [ObservableProperty]
+    public partial string? OfflineMessage { get; private set; }
+
+    [ObservableProperty]
+    public partial IReadOnlyList<TimelineEntry> Timeline { get; private set; }
+
+    public Guid JobId => _jobId;
+
+    public bool HasJob => Job is not null;
+
+    public string JobNumber => Job is null ? string.Empty : DisplayFormats.JobNumber(Job.Number);
+
+    public string Title => Job?.Title ?? string.Empty;
+
+    public JobStatus Status => Job?.Status ?? JobStatus.Unknown;
+
+    public JobPriority Priority => Job?.Priority ?? JobPriority.Unknown;
+
+    public bool IsAssigned => Job?.Status == JobStatus.Assigned;
+
+    public bool HasStartsLine => !string.IsNullOrEmpty(StartsLine);
+
+    public string ScheduleLine => Job is null
+        ? string.Empty
+        : DisplayFormats.ScheduleLine(Job.ScheduledStart, Job.ScheduledEnd, Zone, Today);
+
+    public string AssignedLine
+    {
+        get
+        {
+            var assigned = Job?.History.LastOrDefault(entry => entry.Action == JobHistoryAction.Assigned);
+            return assigned is null
+                ? string.Empty
+                : "Assigned to you by " + assigned.Actor.DisplayName + " " + DisplayFormats.AtMoment(assigned.OccurredAt, Zone, Today);
+        }
+    }
+
+    public bool HasAssignedLine => !string.IsNullOrEmpty(AssignedLine);
+
+    public string StatusLine => Job is null ? string.Empty : BuildStatusLine(Job, Zone, Today);
+
+    public bool HasStatusLine => !string.IsNullOrEmpty(StatusLine);
+
+    public string PaneMeta => HasStatusLine ? StatusLine + DisplayFormats.Separator + CustomerName : CustomerName;
+
+    public string CustomerName => Job?.CustomerName ?? string.Empty;
+
+    public string SiteAddress => Job?.SiteAddress ?? string.Empty;
+
+    public string? AccessNotes => Blank(Job?.SiteAccessNotes);
+
+    public bool HasAccessNotes => AccessNotes is not null;
+
+    public string ContactValue => ContactName ?? ContactPhone ?? string.Empty;
+
+    public string? ContactSecondary => ContactName is null ? null : ContactPhone;
+
+    public bool HasContact => ContactName is not null || ContactPhone is not null;
+
+    public bool HasContactSecondary => ContactSecondary is not null;
+
+    public string ContactDescription => HasContactSecondary ? ContactValue + ", " + ContactSecondary : ContactValue;
+
+    public string ScheduledText => Job is null
+        ? string.Empty
+        : DisplayFormats.Scheduled(Job.ScheduledStart, Job.ScheduledEnd, Zone, Today);
+
+    public bool ShowsScheduledRow => Job is not null && !IsAssigned;
+
+    public string? Equipment => Blank(Job?.Equipment);
+
+    public bool HasEquipment => Equipment is not null;
+
+    public string ChecklistName => Job?.ChecklistTemplate.Name ?? string.Empty;
+
+    public string Description => Job?.Description ?? string.Empty;
+
+    public bool ShowsRowActions => Job is not null && !IsAssigned;
+
+    public bool ShowsDock => IsAssigned && !IsInPane;
+
+    public bool ShowsHeroActions => IsAssigned && IsInPane;
+
+    public bool CanCall => _phoneDialer.IsSupported && ContactPhone is not null;
+
+    public bool ShowsRowCall => ShowsRowActions && CanCall;
+
+    public string CallLabel => "Call " + (ContactName ?? CustomerName);
+
+    public string NavigateLabel => "Navigate to " + SiteAddress;
+
+    public int NavigateColumnSpan => CanCall ? 1 : 2;
+
+    public bool ShowsPushedHeader => !IsInPane;
+
+    public bool ShowsPaneHero => IsInPane && Job is not null;
+
+    public bool ShowsPaneMeta => !IsAssigned && Job is not null;
+
+    public Thickness ContentPadding => IsInPane ? Thickness.Zero : new Thickness(16, 20, 16, 24);
+
+    public int InfoColumnSpan => IsInPane ? 1 : 2;
+
+    public int DetailsRow => IsInPane ? 0 : 1;
+
+    public int DetailsColumn => IsInPane ? 1 : 0;
+
+    public int DetailsColumnSpan => IsInPane ? 1 : 2;
+
+    private string? ContactName => Blank(Job?.ContactName);
+
+    private string? ContactPhone => Blank(Job?.ContactPhone);
+
+    private TimeZoneInfo Zone => _clock.LocalTimeZone;
+
+    private DateOnly Today => DisplayFormats.LocalDay(_clock.GetUtcNow(), Zone);
+
+    public static string Sentence(JobHistoryEntryResponse entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        var actor = entry.Actor.DisplayName;
+        return entry.Action switch
+        {
+            JobHistoryAction.Created => "Created by " + actor,
+            JobHistoryAction.Assigned => entry.Technician is null ? "Assigned by " + actor : "Assigned to " + entry.Technician.DisplayName,
+            JobHistoryAction.Started => "Started by " + actor,
+            JobHistoryAction.PutOnHold => "Put on hold by " + actor,
+            JobHistoryAction.Resumed => "Resumed by " + actor,
+            JobHistoryAction.Completed => "Completed by " + actor,
+            JobHistoryAction.Cancelled => "Cancelled by " + actor,
+            _ => "Updated by " + actor,
+        };
+    }
+
+    public static IReadOnlyList<TimelineEntry> BuildTimeline(JobDetailsResponse job, TimeZoneInfo zone, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        var history = job.History;
+        return [.. history.Select((entry, index) =>
+        {
+            var day = DisplayFormats.LocalDay(entry.OccurredAt, zone);
+            return new TimelineEntry(
+                day == today ? null : DisplayFormats.ShortDate(day, today),
+                DisplayFormats.Time(entry.OccurredAt, zone),
+                Sentence(entry),
+                Blank(entry.Note),
+                index == history.Count - 1);
+        })];
+    }
+
+    public static string BuildStatusLine(JobDetailsResponse job, TimeZoneInfo zone, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        switch (job.Status)
+        {
+            case JobStatus.InProgress:
+            case JobStatus.OnHold:
+                var since = job.History.LastOrDefault(entry => entry.ToStatus == job.Status)?.OccurredAt
+                    ?? (job.Status == JobStatus.InProgress ? job.StartedAt : null);
+                return since is { } moment
+                    ? DisplayFormats.StatusLabel(job.Status) + " since " + DisplayFormats.Moment(moment, zone, today)
+                    : DisplayFormats.StatusLabel(job.Status);
+            case JobStatus.Completed when job.CompletedAt is { } completed:
+                return "Completed " + DisplayFormats.AtMoment(completed, zone, today);
+            case JobStatus.Cancelled when job.CancelledAt is { } cancelled:
+                return "Cancelled " + DisplayFormats.AtMoment(cancelled, zone, today);
+            default:
+                return string.Empty;
+        }
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        if (!query.TryGetValue(Routes.JobIdParameter, out var value))
+        {
+            return;
+        }
+
+        var jobId = value switch
+        {
+            Guid id => id,
+            string text when Guid.TryParse(text, out var parsed) => parsed,
+            _ => Guid.Empty,
+        };
+        if (jobId != Guid.Empty)
+        {
+            _ = ShowJobAsync(jobId);
+        }
+    }
+
+    public Task ShowJobAsync(Guid jobId)
+    {
+        if (jobId != _jobId)
+        {
+            _jobId = jobId;
+            Job = null;
+            Timeline = [];
+            _loadedAt = null;
+        }
+
+        return LoadJobAsync();
+    }
+
+    public void Reset()
+    {
+        _load?.Cancel();
+        _load = null;
+        _jobId = Guid.Empty;
+        _loadedAt = null;
+        Job = null;
+        Timeline = [];
+        StartsLine = null;
+        OfflineMessage = null;
+        Error = null;
+        State = ScreenState.Loading;
+    }
+
+    public static Uri MapSearchUri(string address) => new(MapSearchAddress + Uri.EscapeDataString(address));
+
+    protected override Task ReloadAsync(CancellationToken cancellationToken) => LoadJobAsync();
+
+    protected override void OnActivated()
+    {
+        _context = SynchronizationContext.Current;
+        _session.SessionEnded += OnSessionEnded;
+        _timer?.Dispose();
+        _timer = _clock.CreateTimer(_ => OnMinute(), null, MetaRefreshInterval, MetaRefreshInterval);
+        UpdateStartsLine();
+    }
+
+    protected override void OnDeactivated()
+    {
+        _session.SessionEnded -= OnSessionEnded;
+        _timer?.Dispose();
+        _timer = null;
+    }
+
+    protected override void OnConnectivityChanged(bool isOnline)
+    {
+        if (!isOnline && State == ScreenState.Content)
+        {
+            ShowOffline();
+        }
+        else if (isOnline && State is ScreenState.Offline or ScreenState.Error)
+        {
+            _ = LoadJobAsync();
+        }
+    }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    [RelayCommand]
+    private void Appearing() => Activate();
+
+    [RelayCommand]
+    private void Disappearing() => Deactivate();
+
+    [RelayCommand]
+    private Task LoadAsync() => LoadJobAsync();
+
+    [RelayCommand]
+    private async Task BackAsync()
+    {
+        try
+        {
+            await _navigator.GoToAsync(Routes.Back);
+        }
+        catch (Exception exception)
+        {
+            LogNavigateFailed(_logger, _jobId, exception.GetType().Name);
+        }
+    }
+
+    private bool CanNavigate() => Job is not null;
+
+    [RelayCommand(CanExecute = nameof(CanNavigate))]
+    private async Task NavigateAsync()
+    {
+        var address = SiteAddress;
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return;
+        }
+
+        try
+        {
+            var opened = await _map.TryOpenAsync(new Placemark { Thoroughfare = address }, new MapLaunchOptions());
+            if (!opened)
+            {
+                LogMapFallback(_logger, _jobId);
+                await _launcher.OpenAsync(MapSearchUri(address));
+            }
+        }
+        catch (Exception exception)
+        {
+            LogNavigateFailed(_logger, _jobId, exception.GetType().Name);
+        }
+    }
+
+    private bool CanCallContact() => CanCall;
+
+    [RelayCommand(CanExecute = nameof(CanCallContact))]
+    private void Call()
+    {
+        if (!CanCall || ContactPhone is not { } phone)
+        {
+            return;
+        }
+
+        try
+        {
+            _phoneDialer.Open(phone);
+        }
+        catch (Exception exception)
+        {
+            LogCallFailed(_logger, _jobId, exception.GetType().Name);
+        }
+    }
+
+    private async Task LoadJobAsync()
+    {
+        _load?.Cancel();
+        var load = new CancellationTokenSource();
+        _load = load;
+        var token = load.Token;
+        if (_jobId == Guid.Empty)
+        {
+            return;
+        }
+
+        if (!IsOnline)
+        {
+            ShowOffline();
+            return;
+        }
+
+        if (Job is null)
+        {
+            State = ScreenState.Loading;
+        }
+
+        try
+        {
+            var job = await _jobs.GetJobAsync(_jobId, token);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _loadedAt = _clock.GetUtcNow();
+            Job = job;
+            Timeline = BuildTimeline(job, Zone, Today);
+            Error = null;
+            OfflineMessage = null;
+            State = ScreenState.Content;
+            UpdateStartsLine();
+        }
+        catch (Exception) when (token.IsCancellationRequested)
+        {
+        }
+        catch (ApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            await NoLongerAssignedAsync();
+        }
+        catch (Exception exception) when (IsFailure(exception, token))
+        {
+            Error = Describe(exception, LoadFailedTitle);
+            State = ScreenState.Error;
+        }
+    }
+
+    private void ShowOffline()
+    {
+        if (Job is not null && _loadedAt is { } loadedAt)
+        {
+            OfflineMessage = "Showing this job as of " + DisplayFormats.Time(loadedAt, Zone) + ".";
+            Error = null;
+            State = ScreenState.Offline;
+            return;
+        }
+
+        Error = new ScreenError(LoadFailedTitle, CheckConnectionMessage, null);
+        State = ScreenState.Error;
+    }
+
+    private async Task NoLongerAssignedAsync()
+    {
+        LogNoLongerAssigned(_logger, _jobId);
+        if (IsInPane)
+        {
+            JobUnavailable?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        try
+        {
+            await _navigator.GoToAsync(Routes.Back, new Dictionary<string, object> { [Routes.NoticeParameter] = Routes.JobUnassignedNotice });
+        }
+        catch (Exception exception)
+        {
+            LogNavigateFailed(_logger, _jobId, exception.GetType().Name);
+        }
+    }
+
+    private void OnSessionEnded(object? sender, EventArgs e)
+    {
+        if (_context is { } context && !ReferenceEquals(SynchronizationContext.Current, context))
+        {
+            context.Post(_ => Reset(), null);
+            return;
+        }
+
+        Reset();
+    }
+
+    private void OnMinute()
+    {
+        if (_context is { } context && !ReferenceEquals(SynchronizationContext.Current, context))
+        {
+            context.Post(_ => UpdateStartsLine(), null);
+            return;
+        }
+
+        UpdateStartsLine();
+    }
+
+    private void UpdateStartsLine() =>
+        StartsLine = Job is { Status: JobStatus.Assigned } job
+            ? DisplayFormats.StartsLine(job.ScheduledStart, _clock.GetUtcNow(), Zone)
+            : null;
+
+    [LoggerMessage(EventName = "jobs.no-longer-assigned", Level = LogLevel.Information, Message = "jobs.no-longer-assigned {JobId}")]
+    private static partial void LogNoLongerAssigned(ILogger logger, Guid jobId);
+
+    [LoggerMessage(EventName = "jobs.map-fallback", Level = LogLevel.Information, Message = "jobs.map-fallback {JobId}")]
+    private static partial void LogMapFallback(ILogger logger, Guid jobId);
+
+    [LoggerMessage(EventName = "jobs.navigate-failed", Level = LogLevel.Warning, Message = "jobs.navigate-failed {JobId} {Failure}")]
+    private static partial void LogNavigateFailed(ILogger logger, Guid jobId, string failure);
+
+    [LoggerMessage(EventName = "jobs.call-failed", Level = LogLevel.Warning, Message = "jobs.call-failed {JobId} {Failure}")]
+    private static partial void LogCallFailed(ILogger logger, Guid jobId, string failure);
+}

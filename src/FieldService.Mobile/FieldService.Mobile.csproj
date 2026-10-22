@@ -40,12 +40,19 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Extensions.Logging" />
     <PackageReference Include="Serilog.Formatting.Compact" />
     <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
+
+  <Target Name="IsolateDesignTimeResourceDesigner" BeforeTargets="_SetupDesignerProperties" Condition="'$(DesignTimeBuild)' == 'true' and '$(AndroidUseDesignerAssembly)' == 'true'">
+    <PropertyGroup>
+      <_DesignerIntermediateOutputPath>$(IntermediateOutputPath)designtime\</_DesignerIntermediateOutputPath>
+    </PropertyGroup>
+  </Target>
 
   <Target Name="ValidateApiBaseUrl" BeforeTargets="BeforeBuild" Condition="'$(Configuration)' == 'Release' and '$(TargetPlatformIdentifier)' != ''">
     <Error Condition="!$(ApiBaseUrl.ToLowerInvariant().StartsWith('https://'))" Text="Release builds of the $(TargetPlatformIdentifier) head need an https ApiBaseUrl, for example -p:ApiBaseUrl=https://fieldservice.example." />

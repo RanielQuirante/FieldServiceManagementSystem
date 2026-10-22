@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.Avatar"
+             x:Name="Root"
+             x:DataType="controls:Avatar"
+             InputTransparent="True"
+             AutomationProperties.IsInAccessibleTree="False"
+             AutomationProperties.ExcludedWithChildren="True">
+    <Border BindingContext="{x:Reference Root}"
+            WidthRequest="{StaticResource FsSizeAvatar}"
+            HeightRequest="{StaticResource FsSizeAvatar}"
+            Background="{StaticResource FsTintNeutralBrush}"
+            Stroke="{StaticResource FsHairlineBrush}"
+            StrokeThickness="1"
+            StrokeShape="RoundRectangle 20"
+            Shadow="{StaticResource FsShadowAvatar}"
+            HorizontalOptions="Start"
+            VerticalOptions="Center"
+            InputTransparent="True"
+            AutomationProperties.IsInAccessibleTree="False">
+        <Label Text="{Binding Initials}"
+               Style="{StaticResource FsTextAvatar}" />
+    </Border>
+</ContentView>

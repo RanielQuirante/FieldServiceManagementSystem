@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.ActionDock"
+             x:DataType="controls:ActionDock"
+             SafeAreaEdges="None">
+    <ContentView.ControlTemplate>
+        <ControlTemplate x:DataType="controls:ActionDock">
+            <Border Style="{StaticResource FsDock}"
+                    SafeAreaEdges="None"
+                    Margin="-1,0,-1,-1"
+                    Padding="{TemplateBinding DockPadding}">
+                <VerticalStackLayout Spacing="{StaticResource FsSpace10}">
+                    <ContentPresenter />
+                    <Label Text="{TemplateBinding HelperText}"
+                           IsVisible="{TemplateBinding HasHelperText}"
+                           Style="{StaticResource FsTextInfoSecondary}"
+                           FontSize="{StaticResource FsFontSizeFieldLabel}"
+                           LineHeight="1.1" />
+                </VerticalStackLayout>
+            </Border>
+        </ControlTemplate>
+    </ContentView.ControlTemplate>
+</ContentView>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.SegmentedControl"
+             x:Name="Root"
+             x:DataType="controls:SegmentedControl">
+    <Border x:Name="Track"
+            BindingContext="{x:Reference Root}"
+            StrokeShape="RoundRectangle 16">
+        <Grid ColumnDefinitions="*,*"
+              ColumnSpacing="{StaticResource FsSpace4}">
+            <Grid Grid.Column="0">
+                <Border x:Name="FirstSurface"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 12"
+                        InputTransparent="True"
+                        AutomationProperties.IsInAccessibleTree="False" />
+                <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       InputTransparent="True"
+                                       AutomationProperties.ExcludedWithChildren="True">
+                    <Label x:Name="FirstLabel"
+                           Text="{Binding FirstText}"
+                           VerticalOptions="Center" />
+                    <controls:CountCapsule x:Name="FirstCapsule"
+                                           Text="{Binding FirstCount}"
+                                           IsVisible="{Binding HasFirstCount}" />
+                </HorizontalStackLayout>
+                <Button x:Name="FirstButton"
+                        MinimumHeightRequest="{StaticResource FsHeightSegment}"
+                        CornerRadius="12"
+                        Command="{Binding Command}"
+                        CommandParameter="{Binding FirstParameter}"
+                        SemanticProperties.Description="{Binding FirstDescription}" />
+            </Grid>
+            <Grid Grid.Column="1">
+                <Border x:Name="SecondSurface"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 12"
+                        InputTransparent="True"
+                        AutomationProperties.IsInAccessibleTree="False" />
+                <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       InputTransparent="True"
+                                       AutomationProperties.ExcludedWithChildren="True">
+                    <Label x:Name="SecondLabel"
+                           Text="{Binding SecondText}"
+                           VerticalOptions="Center" />
+                    <controls:CountCapsule x:Name="SecondCapsule"
+                                           Text="{Binding SecondCount}"
+                                           IsVisible="{Binding HasSecondCount}" />
+                </HorizontalStackLayout>
+                <Button x:Name="SecondButton"
+                        MinimumHeightRequest="{StaticResource FsHeightSegment}"
+                        CornerRadius="12"
+                        Command="{Binding Command}"
+                        CommandParameter="{Binding SecondParameter}"
+                        SemanticProperties.Description="{Binding SecondDescription}" />
+            </Grid>
+        </Grid>
+    </Border>
+</ContentView>

@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             xmlns:jobs="clr-namespace:FieldService.Mobile.Features.Jobs"
+             x:Class="FieldService.Mobile.Features.Jobs.MyJobsPage"
+             x:DataType="jobs:MyJobsViewModel"
+             Title="{x:Static jobs:MyJobsViewModel.PageTitle}"
+             Shell.NavBarIsVisible="False"
+             SafeAreaEdges="None">
+    <Grid SafeAreaEdges="None">
+        <Grid SafeAreaEdges="None"
+              AutomationProperties.ExcludedWithChildren="{Binding IsAccountSheetOpen}">
+            <RefreshView IsVisible="{Binding ShowsSinglePane}"
+                         SafeAreaEdges="None"
+                         IsRefreshing="{Binding IsRefreshing}"
+                         Command="{Binding RefreshCommand}"
+                         RefreshColor="{StaticResource FsTeal700}">
+                <CollectionView x:Name="JobsList"
+                                ItemsSource="{Binding Groups}"
+                                IsGrouped="True"
+                                SelectionMode="Single"
+                                SelectedItem="{Binding SelectedJob}"
+                                SelectionChangedCommand="{Binding OpenJobCommand}"
+                                SelectionChangedCommandParameter="{Binding SelectedItem, Source={RelativeSource Self}, x:DataType=CollectionView}">
+                    <CollectionView.Header>
+                        <VerticalStackLayout>
+                            <controls:AppHeader x:Name="ListHeader"
+                                                Variant="List"
+                                                Eyebrow="{Binding Eyebrow}"
+                                                Title="{x:Static jobs:MyJobsViewModel.PageTitle}"
+                                                AvatarText="{Binding Initials}"
+                                                AvatarCommand="{Binding OpenAccountSheetCommand}"
+                                                SyncText="{Binding SyncText}"
+                                                SyncIndicator="{Binding SyncIndicator}"
+                                                RefreshCommand="{Binding RefreshCommand}">
+                                <controls:AppHeader.Accessory>
+                                    <controls:SegmentedControl IsOnDark="True"
+                                                               FirstText="Active"
+                                                               FirstCount="{Binding ActiveCountText}"
+                                                               FirstDescription="{Binding ActiveSegmentDescription}"
+                                                               FirstParameter="{x:Static jobs:AssignedJobsView.Active}"
+                                                               IsFirstSelected="{Binding IsActiveSelected}"
+                                                               SecondText="Completed"
+                                                               SecondDescription="{Binding CompletedSegmentDescription}"
+                                                               SecondParameter="{x:Static jobs:AssignedJobsView.Completed}"
+                                                               Command="{Binding SelectViewCommand}" />
+                                </controls:AppHeader.Accessory>
+                            </controls:AppHeader>
+                            <VerticalStackLayout Padding="16,2,16,6"
+                                                 Spacing="{StaticResource FsSpace16}">
+                                <controls:Banner Variant="Info"
+                                                 IconKey="FsIconList"
+                                                 IsVisible="{Binding HasNotice}"
+                                                 Title="{Binding Notice}" />
+                                <controls:Banner Variant="Offline"
+                                                 IsVisible="{Binding IsOffline}"
+                                                 Title="{x:Static jobs:MyJobsViewModel.OfflineTitle}"
+                                                 Message="{Binding OfflineMessage}"
+                                                 ActionText="Try again"
+                                                 ActionCommand="{Binding RetryCommand}" />
+                                <controls:Banner Variant="Error"
+                                                 IsVisible="{Binding IsError}"
+                                                 Title="{Binding Error.Title}"
+                                                 Message="{Binding Error.Message}"
+                                                 Reference="{Binding Error.Reference}"
+                                                 ActionText="Try again"
+                                                 ActionCommand="{Binding RetryCommand}" />
+                                <VerticalStackLayout IsVisible="{Binding IsLoading}"
+                                                     Padding="0,22,0,0"
+                                                     Spacing="{StaticResource FsSpace12}">
+                                    <controls:JobCard IsLoading="True" />
+                                    <controls:JobCard IsLoading="True" />
+                                    <controls:JobCard IsLoading="True" />
+                                </VerticalStackLayout>
+                                <controls:EmptyState IsVisible="{Binding IsEmpty}"
+                                                     IconData="{StaticResource FsIconClipboardCheck}"
+                                                     Title="{Binding EmptyTitle}"
+                                                     Message="{Binding EmptyMessage}"
+                                                     ActionText="Refresh"
+                                                     ActionDescription="Refresh jobs"
+                                                     ActionCommand="{Binding RefreshCommand}"
+                                                     Margin="0,22,0,0" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </CollectionView.Header>
+                    <CollectionView.GroupHeaderTemplate>
+                        <DataTemplate x:DataType="jobs:JobDayGroup">
+                            <Label Text="{Binding Heading}"
+                                   Style="{StaticResource FsTextEyebrow}"
+                                   Padding="16,22,16,6"
+                                   SemanticProperties.HeadingLevel="Level2" />
+                        </DataTemplate>
+                    </CollectionView.GroupHeaderTemplate>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="jobs:JobListItem">
+                            <Grid Padding="16,6">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroupList>
+                                        <VisualStateGroup x:Name="CommonStates">
+                                            <VisualState x:Name="Normal">
+                                                <VisualState.Setters>
+                                                    <Setter Property="BackgroundColor" Value="{StaticResource FsTransparent}" />
+                                                </VisualState.Setters>
+                                            </VisualState>
+                                            <VisualState x:Name="Selected">
+                                                <VisualState.Setters>
+                                                    <Setter Property="BackgroundColor" Value="{StaticResource FsTransparent}" />
+                                                </VisualState.Setters>
+                                            </VisualState>
+                                        </VisualStateGroup>
+                                    </VisualStateGroupList>
+                                </VisualStateManager.VisualStateGroups>
+                                <controls:JobCard JobNumber="{Binding JobNumber}"
+                                                  Title="{Binding Title}"
+                                                  Status="{Binding Status}"
+                                                  Priority="{Binding Priority}"
+                                                  CustomerName="{Binding CustomerName}"
+                                                  SiteAddress="{Binding SiteAddress}"
+                                                  TimeWindow="{Binding TimeWindow}"
+                                                  Description="{Binding Description}" />
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                    <CollectionView.Footer>
+                        <VerticalStackLayout>
+                            <BoxView HeightRequest="{StaticResource FsSpace32}"
+                                     Color="{StaticResource FsTransparent}"
+                                     AutomationProperties.IsInAccessibleTree="False" />
+                            <controls:SystemBarSpacer />
+                        </VerticalStackLayout>
+                    </CollectionView.Footer>
+                </CollectionView>
+            </RefreshView>
+
+            <Grid IsVisible="{Binding IsTwoPane}"
+                  RowDefinitions="Auto,*">
+                <controls:AppHeader Grid.Row="0"
+                                    Variant="DesktopTopBar"
+                                    Title="FieldService Tech"
+                                    UpdatedText="{Binding UpdatedText}"
+                                    AvatarText="{Binding Initials}"
+                                    AvatarCommand="{Binding OpenAccountSheetCommand}" />
+                <Grid Grid.Row="1"
+                      ColumnDefinitions="400,*"
+                      ColumnSpacing="{StaticResource FsSpace24}"
+                      Padding="{StaticResource FsPaddingPane}">
+                    <Grid Grid.Column="0"
+                          RowDefinitions="Auto,Auto,*"
+                          RowSpacing="{StaticResource FsSpace16}">
+                        <Grid ColumnDefinitions="*,Auto"
+                              ColumnSpacing="{StaticResource FsSpace12}">
+                            <Label Text="{x:Static jobs:MyJobsViewModel.PageTitle}"
+                                   Style="{StaticResource FsTextPaneTitle}"
+                                   VerticalOptions="Center"
+                                   SemanticProperties.HeadingLevel="Level1" />
+                            <Grid Grid.Column="1">
+                                <Button Style="{StaticResource FsIconButton}"
+                                        Command="{Binding RefreshCommand}"
+                                        SemanticProperties.Description="Refresh jobs" />
+                                <controls:Icon PathData="{StaticResource FsIconRefresh}"
+                                               Size="20"
+                                               Color="{StaticResource FsTeal700}"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                            </Grid>
+                        </Grid>
+                        <controls:SegmentedControl Grid.Row="1"
+                                                   IsCompact="True"
+                                                   FirstText="Active"
+                                                   FirstCount="{Binding ActiveCountText}"
+                                                   FirstDescription="{Binding ActiveSegmentDescription}"
+                                                   FirstParameter="{x:Static jobs:AssignedJobsView.Active}"
+                                                   IsFirstSelected="{Binding IsActiveSelected}"
+                                                   SecondText="Completed"
+                                                   SecondDescription="{Binding CompletedSegmentDescription}"
+                                                   SecondParameter="{x:Static jobs:AssignedJobsView.Completed}"
+                                                   Command="{Binding SelectViewCommand}" />
+                        <CollectionView Grid.Row="2"
+                                        ItemsSource="{Binding Groups}"
+                                        IsGrouped="True"
+                                        SelectionMode="Single"
+                                        SelectedItem="{Binding SelectedJob}"
+                                        SelectionChangedCommand="{Binding OpenJobCommand}"
+                                        SelectionChangedCommandParameter="{Binding SelectedItem, Source={RelativeSource Self}, x:DataType=CollectionView}">
+                            <CollectionView.Header>
+                                <VerticalStackLayout Spacing="{StaticResource FsSpace16}">
+                                    <controls:Banner Variant="Info"
+                                                     IconKey="FsIconList"
+                                                     IsVisible="{Binding HasNotice}"
+                                                     Title="{Binding Notice}" />
+                                    <controls:Banner Variant="Offline"
+                                                     IsVisible="{Binding IsOffline}"
+                                                     Title="{x:Static jobs:MyJobsViewModel.OfflineTitle}"
+                                                     Message="{Binding OfflineMessage}"
+                                                     ActionText="Try again"
+                                                     ActionCommand="{Binding RetryCommand}" />
+                                    <controls:Banner Variant="Error"
+                                                     IsVisible="{Binding IsError}"
+                                                     Title="{Binding Error.Title}"
+                                                     Message="{Binding Error.Message}"
+                                                     Reference="{Binding Error.Reference}"
+                                                     ActionText="Try again"
+                                                     ActionCommand="{Binding RetryCommand}" />
+                                    <controls:JobCard IsLoading="True"
+                                                      IsCompact="True"
+                                                      IsVisible="{Binding IsLoading}" />
+                                    <controls:EmptyState IsVisible="{Binding IsEmpty}"
+                                                         IconData="{StaticResource FsIconClipboardCheck}"
+                                                         Title="{Binding EmptyTitle}"
+                                                         Message="{Binding EmptyMessage}"
+                                                         ActionText="Refresh"
+                                                         ActionDescription="Refresh jobs"
+                                                         ActionCommand="{Binding RefreshCommand}" />
+                                </VerticalStackLayout>
+                            </CollectionView.Header>
+                            <CollectionView.GroupHeaderTemplate>
+                                <DataTemplate x:DataType="jobs:JobDayGroup">
+                                    <Label Text="{Binding Heading}"
+                                           Style="{StaticResource FsTextEyebrow}"
+                                           Padding="0,16,0,6"
+                                           SemanticProperties.HeadingLevel="Level2" />
+                                </DataTemplate>
+                            </CollectionView.GroupHeaderTemplate>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="jobs:JobListItem">
+                                    <Grid Padding="6">
+                                        <VisualStateManager.VisualStateGroups>
+                                            <VisualStateGroupList>
+                                                <VisualStateGroup x:Name="CommonStates">
+                                                    <VisualState x:Name="Normal">
+                                                        <VisualState.Setters>
+                                                            <Setter Property="BackgroundColor" Value="{StaticResource FsTransparent}" />
+                                                        </VisualState.Setters>
+                                                    </VisualState>
+                                                    <VisualState x:Name="Selected">
+                                                        <VisualState.Setters>
+                                                            <Setter Property="BackgroundColor" Value="{StaticResource FsTransparent}" />
+                                                            <Setter TargetName="CompactCard" Property="controls:JobCard.IsSelected" Value="True" />
+                                                        </VisualState.Setters>
+                                                    </VisualState>
+                                                </VisualStateGroup>
+                                            </VisualStateGroupList>
+                                        </VisualStateManager.VisualStateGroups>
+                                        <controls:JobCard x:Name="CompactCard"
+                                                          IsCompact="True"
+                                                          JobNumber="{Binding JobNumber}"
+                                                          Title="{Binding Title}"
+                                                          Status="{Binding Status}"
+                                                          Priority="{Binding Priority}"
+                                                          CustomerName="{Binding CustomerName}"
+                                                          SiteAddress="{Binding SiteAddress}"
+                                                          TimeWindow="{Binding TimeWindow}"
+                                                          Description="{Binding Description}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </Grid>
+                    <Grid Grid.Column="1">
+                        <Grid IsVisible="{Binding HasSelection}">
+                            <jobs:JobDetailsView BindingContext="{Binding Details}" />
+                        </Grid>
+                        <controls:EmptyState IsVisible="{Binding ShowsNoSelection}"
+                                             IconData="{StaticResource FsIconList}"
+                                             Title="Select a job"
+                                             Message="Choose a job from the list to see its details."
+                                             VerticalOptions="Start" />
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <controls:StatusBarProtection ScrollSource="{x:Reference JobsList}" />
+
+        <controls:BottomSheet IsOpen="{Binding IsAccountSheetOpen}"
+                              Title="{Binding DisplayName}"
+                              CloseCommand="{Binding CloseAccountSheetCommand}">
+            <jobs:AccountSheet />
+        </controls:BottomSheet>
+    </Grid>
+</ContentPage>

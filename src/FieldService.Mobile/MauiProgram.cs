@@ -1,4 +1,7 @@
-﻿using FieldService.Mobile.Shared.Http;
+﻿using FieldService.Mobile.Features.Jobs;
+using FieldService.Mobile.Features.SignIn;
+using FieldService.Mobile.Shared;
+using FieldService.Mobile.Shared.Http;
 using FieldService.Mobile.Shared.Logging;
 using Microsoft.Extensions.Logging;
 using Serilog.Events;
@@ -18,14 +21,28 @@ public static class MauiProgram
         var logger = MobileLogging.CreateLogger(FileSystem.Current.AppDataDirectory, MinimumLevel);
 
         var builder = MauiApp.CreateBuilder();
-        builder.UseMauiApp<App>();
+        builder
+            .UseMauiApp<App>()
+            .ConfigureFonts(fonts =>
+            {
+                fonts.AddFont("Geist-Regular.ttf", "GeistRegular");
+                fonts.AddFont("Geist-Medium.ttf", "GeistMedium");
+                fonts.AddFont("Geist-SemiBold.ttf", "GeistSemiBold");
+                fonts.AddFont("Geist-Bold.ttf", "GeistBold");
+                fonts.AddFont("GeistMono-Medium.ttf", "GeistMonoMedium");
+                fonts.AddFont("GeistMono-SemiBold.ttf", "GeistMonoSemiBold");
+            });
         builder.AddMobileLogging(logger, MinimumLevel);
 
 #if DEBUG
         builder.Logging.AddDebug();
 #endif
 
-        builder.Services.AddSingleton(ApiBaseUrl.FromAssembly(typeof(MauiProgram).Assembly));
+        builder.Services
+            .AddSharedServices(ApiBaseUrl.FromAssembly(typeof(MauiProgram).Assembly))
+            .AddSessionFeature()
+            .AddJobsFeature();
+        builder.Services.AddSingleton<AppShell>();
 
         configurePlatform?.Invoke(builder);
 

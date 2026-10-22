@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.LinkCard"
+             x:Name="Root"
+             x:DataType="controls:LinkCard">
+    <Grid BindingContext="{x:Reference Root}">
+        <Border Style="{StaticResource FsLinkCard}"
+                InputTransparent="True"
+                AutomationProperties.IsInAccessibleTree="False"
+                AutomationProperties.ExcludedWithChildren="True">
+            <Grid ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="{StaticResource FsSpace14}">
+                <controls:IconTile Grid.Column="0"
+                                   IconData="{Binding IconData}"
+                                   TileSize="44"
+                                   VerticalOptions="Center" />
+                <VerticalStackLayout Grid.Column="1"
+                                     Spacing="{StaticResource FsSpace2}"
+                                     VerticalOptions="Center">
+                    <Label Text="{Binding Title}"
+                           Style="{StaticResource FsTextPrompt}"
+                           FontSize="{StaticResource FsFontSizeBody}" />
+                    <Label Text="{Binding Subtitle}"
+                           Style="{StaticResource FsTextInfoSecondary}" />
+                </VerticalStackLayout>
+                <controls:Icon Grid.Column="2"
+                               PathData="{StaticResource FsIconChevronRight}"
+                               Size="20"
+                               Color="{StaticResource FsMuted}"
+                               VerticalOptions="Center" />
+            </Grid>
+        </Border>
+        <Button Style="{StaticResource FsOverlayButton}"
+                CornerRadius="22"
+                Command="{Binding Command}"
+                SemanticProperties.Description="{Binding LinkDescription}" />
+    </Grid>
+</ContentView>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.BottomSheet"
+             x:DataType="controls:BottomSheet"
+             SafeAreaEdges="None">
+    <ContentView.ControlTemplate>
+        <ControlTemplate x:DataType="controls:BottomSheet">
+            <Grid IsVisible="{TemplateBinding IsOpen}"
+                  SafeAreaEdges="None">
+                <BoxView Color="{StaticResource FsOverlay}"
+                         InputTransparent="False"
+                         AutomationProperties.IsInAccessibleTree="False">
+                    <BoxView.GestureRecognizers>
+                        <TapGestureRecognizer Command="{TemplateBinding CloseCommand}" />
+                    </BoxView.GestureRecognizers>
+                </BoxView>
+                <Border Style="{StaticResource FsSheet}"
+                        Padding="{TemplateBinding SheetPadding}"
+                        VerticalOptions="End">
+                    <VerticalStackLayout Spacing="18">
+                        <BoxView WidthRequest="{StaticResource FsWidthSheetHandle}"
+                                 HeightRequest="{StaticResource FsHeightSheetHandle}"
+                                 CornerRadius="3"
+                                 Color="{StaticResource FsSheetHandle}"
+                                 HorizontalOptions="Center"
+                                 InputTransparent="True"
+                                 AutomationProperties.IsInAccessibleTree="False" />
+                        <ContentPresenter />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </ControlTemplate>
+    </ContentView.ControlTemplate>
+</ContentView>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             xmlns:jobs="clr-namespace:FieldService.Mobile.Features.Jobs"
+             x:Class="FieldService.Mobile.Features.Jobs.AccountSheet"
+             x:DataType="jobs:MyJobsViewModel">
+    <VerticalStackLayout Spacing="18">
+        <Grid ColumnDefinitions="Auto,*"
+              ColumnSpacing="{StaticResource FsSpace14}">
+            <controls:Avatar Initials="{Binding Initials}" />
+            <VerticalStackLayout Grid.Column="1"
+                                 Spacing="{StaticResource FsSpace2}"
+                                 VerticalOptions="Center">
+                <Label Text="{Binding DisplayName}"
+                       Style="{StaticResource FsTextLargeHeading}"
+                       SemanticProperties.HeadingLevel="Level2" />
+                <Label Text="{Binding Email}"
+                       IsVisible="{Binding HasEmail}"
+                       Style="{StaticResource FsTextMeta}"
+                       LineBreakMode="CharacterWrap" />
+            </VerticalStackLayout>
+        </Grid>
+        <Label Text="You will need your email and password to sign in again."
+               Style="{StaticResource FsTextInfoSecondary}"
+               LineHeight="1.1" />
+        <VerticalStackLayout Spacing="{StaticResource FsSpace6}">
+            <controls:PrimaryButton Text="Sign out"
+                                    BusyText="Signing out…"
+                                    IconData="{StaticResource FsIconLogOut}"
+                                    IsBusy="{Binding IsSigningOut}"
+                                    Command="{Binding SignOutCommand}" />
+            <Button Text="Cancel"
+                    Style="{StaticResource FsQuietButton}"
+                    Command="{Binding CloseAccountSheetCommand}" />
+        </VerticalStackLayout>
+    </VerticalStackLayout>
+</ContentView>

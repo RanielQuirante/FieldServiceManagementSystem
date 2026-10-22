@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <LinearGradientBrush x:Key="FsBackdropBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#F4F7FB" Offset="0" />
+        <GradientStop Color="#F3F6F4" Offset="0.5" />
+        <GradientStop Color="#EEF5F4" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsPrimaryBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="{StaticResource FsNavy900}" Offset="0" />
+        <GradientStop Color="{StaticResource FsTeal700}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsPrimaryPressedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="{StaticResource FsNavy950}" Offset="0" />
+        <GradientStop Color="{StaticResource FsTeal800}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsGlossBrush" StartPoint="0,0" EndPoint="0.6,0.6">
+        <GradientStop Color="#2EFFFFFF" Offset="0" />
+        <GradientStop Color="#00FFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsAccentBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="{StaticResource FsAmber500}" Offset="0" />
+        <GradientStop Color="{StaticResource FsOrange500}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsHeroBrush" StartPoint="0,0" EndPoint="0.8,1">
+        <GradientStop Color="{StaticResource FsNavy950}" Offset="0" />
+        <GradientStop Color="{StaticResource FsNavy800}" Offset="0.52" />
+        <GradientStop Color="{StaticResource FsTeal900}" Offset="1" />
+    </LinearGradientBrush>
+
+    <RadialGradientBrush x:Key="FsHeroGlowBrush" Center="0.88,0" Radius="0.7">
+        <GradientStop Color="#0D5EEAD4" Offset="0" />
+        <GradientStop Color="#005EEAD4" Offset="1" />
+    </RadialGradientBrush>
+
+    <RadialGradientBrush x:Key="FsMarkOnDarkGlossBrush" Center="0.3,0.2" Radius="0.64">
+        <GradientStop Color="#33FFFFFF" Offset="0" />
+        <GradientStop Color="#00FFFFFF" Offset="1" />
+    </RadialGradientBrush>
+
+    <LinearGradientBrush x:Key="FsPrimaryOnDarkBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FFFFFF" Offset="0" />
+        <GradientStop Color="#EEF4F7" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsGlassStrokeBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FFFFFFFF" Offset="0" />
+        <GradientStop Color="#1A0B1F3A" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsPassBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="{StaticResource FsTeal700}" Offset="0" />
+        <GradientStop Color="{StaticResource FsTeal800}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsToastBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="{StaticResource FsNavy900}" Offset="0" />
+        <GradientStop Color="{StaticResource FsNavy800}" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsDangerSoftBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FEF0EE" Offset="0" />
+        <GradientStop Color="#FDE2DE" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsTintNeutralBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6EEF9" Offset="0" />
+        <GradientStop Color="#DDF2EE" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsSkeletonBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#E3E9F0" Offset="0" />
+        <GradientStop Color="#EDF1F5" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsFlashRowBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#24F59E0B" Offset="0" />
+        <GradientStop Color="#0FF97316" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsCardUrgentBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FFFFFF" Offset="0" />
+        <GradientStop Color="#FFFBF4" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsWellUrgentBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#24F59E0B" Offset="0" />
+        <GradientStop Color="#1AF97316" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsChipUnassignedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FFFFFF" Offset="0" />
+        <GradientStop Color="#F1F5F9" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsChipAssignedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#EEF4FF" Offset="0" />
+        <GradientStop Color="#E0EAFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsChipInProgressBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FFF7E6" Offset="0" />
+        <GradientStop Color="#FDEBC8" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsChipOnHoldBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#F5F1FF" Offset="0" />
+        <GradientStop Color="#EAE2FE" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsChipCompletedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#ECFAF6" Offset="0" />
+        <GradientStop Color="#D3F1EA" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsChipCancelledBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#F4F5F7" Offset="0" />
+        <GradientStop Color="#E7E9ED" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsChipFailBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FEF0EE" Offset="0" />
+        <GradientStop Color="#FDE2DE" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsKpiUnassignedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6FFFFFF" Offset="0" />
+        <GradientStop Color="#CCF1F5F9" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsKpiAssignedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6FFFFFF" Offset="0" />
+        <GradientStop Color="#9EE0EAFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsKpiInProgressBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6FFFFFF" Offset="0" />
+        <GradientStop Color="#8CFDEBC8" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsKpiOnHoldBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6FFFFFF" Offset="0" />
+        <GradientStop Color="#99EAE2FE" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsKpiCompletedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6FFFFFF" Offset="0" />
+        <GradientStop Color="#99D3F1EA" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsKpiCancelledBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6FFFFFF" Offset="0" />
+        <GradientStop Color="#B3E7E9ED" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsKpiNeutralBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E6FFFFFF" Offset="0" />
+        <GradientStop Color="#9EE6EEF9" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsBannerWarningBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#EBFFF7E6" Offset="0" />
+        <GradientStop Color="#E0FFEDD5" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsBannerSuccessBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#EBECFAF6" Offset="0" />
+        <GradientStop Color="#E0D3F1EA" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsBannerErrorBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#EBFEF0EE" Offset="0" />
+        <GradientStop Color="#E0FDE2DE" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="FsBannerPausedTileBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#EEF1F5" Offset="0" />
+        <GradientStop Color="#E2E7ED" Offset="1" />
+    </LinearGradientBrush>
+
+</ResourceDictionary>

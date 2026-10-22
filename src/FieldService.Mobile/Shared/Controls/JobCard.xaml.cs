@@ -1,0 +1,171 @@
+using FieldService.Mobile.Features.Jobs;
+using Microsoft.Maui.Controls.Shapes;
+
+namespace FieldService.Mobile.Shared.Controls;
+
+public partial class JobCard : ContentView, ITappableCard
+{
+    public static readonly BindableProperty JobNumberProperty = BindableProperty.Create(nameof(JobNumber), typeof(string), typeof(JobCard));
+
+    public static readonly BindableProperty TitleProperty = BindableProperty.Create(nameof(Title), typeof(string), typeof(JobCard));
+
+    public static readonly BindableProperty StatusProperty = BindableProperty.Create(nameof(Status), typeof(JobStatus), typeof(JobCard), JobStatus.Unknown);
+
+    public static readonly BindableProperty PriorityProperty = BindableProperty.Create(
+        nameof(Priority),
+        typeof(JobPriority),
+        typeof(JobCard),
+        JobPriority.Unknown,
+        propertyChanged: (bindable, _, _) => ((JobCard)bindable).ApplyLook());
+
+    public static readonly BindableProperty CustomerNameProperty = BindableProperty.Create(nameof(CustomerName), typeof(string), typeof(JobCard));
+
+    public static readonly BindableProperty SiteAddressProperty = BindableProperty.Create(nameof(SiteAddress), typeof(string), typeof(JobCard));
+
+    public static readonly BindableProperty TimeWindowProperty = BindableProperty.Create(nameof(TimeWindow), typeof(string), typeof(JobCard));
+
+    public static readonly BindableProperty DescriptionProperty = BindableProperty.Create(
+        nameof(Description),
+        typeof(string),
+        typeof(JobCard),
+        propertyChanged: (bindable, _, _) => ((JobCard)bindable).ApplyLook());
+
+    public static readonly BindableProperty IsCompactProperty = BindableProperty.Create(
+        nameof(IsCompact),
+        typeof(bool),
+        typeof(JobCard),
+        false,
+        propertyChanged: (bindable, _, _) => ((JobCard)bindable).ApplyLook());
+
+    public static readonly BindableProperty IsLoadingProperty = BindableProperty.Create(
+        nameof(IsLoading),
+        typeof(bool),
+        typeof(JobCard),
+        false,
+        propertyChanged: (bindable, _, _) => ((JobCard)bindable).ApplyLook());
+
+    public static readonly BindableProperty IsSelectedProperty = BindableProperty.Create(
+        nameof(IsSelected),
+        typeof(bool),
+        typeof(JobCard),
+        false,
+        propertyChanged: (bindable, _, _) => ((JobCard)bindable).ApplyLook());
+
+    public static readonly BindableProperty ShowsContentProperty = BindableProperty.Create(nameof(ShowsContent), typeof(bool), typeof(JobCard), true);
+
+    public static readonly BindableProperty ShowsSelectionProperty = BindableProperty.Create(nameof(ShowsSelection), typeof(bool), typeof(JobCard), false);
+
+    public JobCard()
+    {
+        InitializeComponent();
+        ApplyLook();
+    }
+
+    public string? JobNumber
+    {
+        get => (string?)GetValue(JobNumberProperty);
+        set => SetValue(JobNumberProperty, value);
+    }
+
+    public string? Title
+    {
+        get => (string?)GetValue(TitleProperty);
+        set => SetValue(TitleProperty, value);
+    }
+
+    public JobStatus Status
+    {
+        get => (JobStatus)GetValue(StatusProperty);
+        set => SetValue(StatusProperty, value);
+    }
+
+    public JobPriority Priority
+    {
+        get => (JobPriority)GetValue(PriorityProperty);
+        set => SetValue(PriorityProperty, value);
+    }
+
+    public string? CustomerName
+    {
+        get => (string?)GetValue(CustomerNameProperty);
+        set => SetValue(CustomerNameProperty, value);
+    }
+
+    public string? SiteAddress
+    {
+        get => (string?)GetValue(SiteAddressProperty);
+        set => SetValue(SiteAddressProperty, value);
+    }
+
+    public string? TimeWindow
+    {
+        get => (string?)GetValue(TimeWindowProperty);
+        set => SetValue(TimeWindowProperty, value);
+    }
+
+    public string? Description
+    {
+        get => (string?)GetValue(DescriptionProperty);
+        set => SetValue(DescriptionProperty, value);
+    }
+
+    public bool IsCompact
+    {
+        get => (bool)GetValue(IsCompactProperty);
+        set => SetValue(IsCompactProperty, value);
+    }
+
+    public bool IsLoading
+    {
+        get => (bool)GetValue(IsLoadingProperty);
+        set => SetValue(IsLoadingProperty, value);
+    }
+
+    public bool IsSelected
+    {
+        get => (bool)GetValue(IsSelectedProperty);
+        set => SetValue(IsSelectedProperty, value);
+    }
+
+    public bool ShowsContent
+    {
+        get => (bool)GetValue(ShowsContentProperty);
+        private set => SetValue(ShowsContentProperty, value);
+    }
+
+    public bool ShowsSelection
+    {
+        get => (bool)GetValue(ShowsSelectionProperty);
+        private set => SetValue(ShowsSelectionProperty, value);
+    }
+
+    public bool ActsAsButton => TappableCard.ActsAsButton(IsLoading, Description);
+
+    private void ApplyLook()
+    {
+        ShowsContent = !IsLoading;
+        ShowsSelection = IsCompact && IsSelected && !IsLoading;
+        AutomationProperties.SetIsInAccessibleTree(this, !IsLoading);
+        SemanticProperties.SetDescription(this, IsLoading ? null : Description);
+        if (Card is null)
+        {
+            return;
+        }
+
+        var urgent = Priority == JobPriority.Urgent;
+        Card.SetDynamicResource(Border.BackgroundProperty, urgent ? "FsCardUrgentBrush" : "FsGlassBrush");
+        Card.SetDynamicResource(Border.StrokeProperty, ShowsSelection ? "FsTeal700Brush" : urgent ? "FsAccentBrush" : "FsGlassStrokeBrush");
+        Card.StrokeThickness = ShowsSelection ? 2 : urgent ? 1.5 : 1;
+        Card.SetDynamicResource(Border.ShadowProperty, urgent ? "FsShadowUrgentCard" : "FsShadowGlass");
+        Card.StrokeShape = new RoundRectangle { CornerRadius = IsCompact ? 18 : 22 };
+        Card.Padding = IsCompact ? new Thickness(6) : new Thickness(8);
+        CardStack.Spacing = IsCompact ? 8 : 12;
+        Summary.Spacing = IsCompact ? 8 : 10;
+        TitleLabel.SetDynamicResource(StyleProperty, IsCompact ? "FsTextCompactTitle" : "FsTextSection");
+        CustomerLabel.SetDynamicResource(StyleProperty, IsCompact ? "FsTextCompactMeta" : "FsTextCardMeta");
+        SiteLabel.SetDynamicResource(StyleProperty, IsCompact ? "FsTextCompactMeta" : "FsTextCardMeta");
+        Well.SetDynamicResource(Border.BackgroundProperty, urgent ? "FsWellUrgentBrush" : "FsWellBrush");
+        Well.SetDynamicResource(MinimumHeightRequestProperty, IsCompact ? "FsHeightWellCompact" : "FsHeightWell");
+        Well.StrokeShape = new RoundRectangle { CornerRadius = IsCompact ? 12 : 14 };
+    }
+}

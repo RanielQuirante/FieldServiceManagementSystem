@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <Color x:Key="FsNavy950">#071426</Color>
+    <Color x:Key="FsNavy900">#0B1F3A</Color>
+    <Color x:Key="FsNavy800">#0B2A4A</Color>
+    <Color x:Key="FsTeal900">#0F5F5F</Color>
+    <Color x:Key="FsTeal800">#115E59</Color>
+    <Color x:Key="FsTeal700">#0F766E</Color>
+    <Color x:Key="FsGlow">#5EEAD4</Color>
+    <Color x:Key="FsAmber500">#F59E0B</Color>
+    <Color x:Key="FsOrange500">#F97316</Color>
+    <Color x:Key="FsAmber300">#FCD34D</Color>
+    <Color x:Key="FsOrange700">#C2410C</Color>
+    <Color x:Key="FsOrange800">#9A3412</Color>
+    <Color x:Key="FsInk">#0B1F3A</Color>
+    <Color x:Key="FsInk2">#334A63</Color>
+    <Color x:Key="FsMuted">#5A6B80</Color>
+    <Color x:Key="FsPlaceholder">#66768A</Color>
+    <Color x:Key="FsLineInput">#7C8CA1</Color>
+    <Color x:Key="FsDanger">#B42318</Color>
+    <Color x:Key="FsDangerStrong">#9B1C13</Color>
+    <Color x:Key="FsHigh">#C2410C</Color>
+    <Color x:Key="FsOnDark">#FFFFFF</Color>
+    <Color x:Key="FsOnDark2">#EBFFFFFF</Color>
+    <Color x:Key="FsSurface">#FFFFFF</Color>
+    <Color x:Key="FsTransparent">#00FFFFFF</Color>
+    <Color x:Key="FsShadowBlack">#000000</Color>
+
+    <Color x:Key="FsFocus">#0F766E</Color>
+    <Color x:Key="FsFocusOnDark">#FCD34D</Color>
+    <Color x:Key="FsFocusHalo">#2E0F766E</Color>
+    <Color x:Key="FsDangerHalo">#1FB42318</Color>
+    <Color x:Key="FsDisabledFill">#E9EEF3</Color>
+    <Color x:Key="FsDisabledText">#7C8CA1</Color>
+    <Color x:Key="FsSheetHandle">#C3CDD8</Color>
+
+    <Color x:Key="FsStatusUnassigned">#334A63</Color>
+    <Color x:Key="FsStatusAssigned">#1D4ED8</Color>
+    <Color x:Key="FsStatusInProgress">#92400E</Color>
+    <Color x:Key="FsStatusOnHold">#6D28D9</Color>
+    <Color x:Key="FsStatusCompleted">#115E59</Color>
+    <Color x:Key="FsStatusCancelled">#4B5563</Color>
+    <Color x:Key="FsStatusFail">#9B1C13</Color>
+    <Color x:Key="FsStatusUnassignedRing">#7C8CA1</Color>
+    <Color x:Key="FsStatusAssignedRing">#2E1D4ED8</Color>
+    <Color x:Key="FsStatusInProgressRing">#3DD97706</Color>
+    <Color x:Key="FsStatusOnHoldRing">#2E6D28D9</Color>
+    <Color x:Key="FsStatusCompletedRing">#330F766E</Color>
+    <Color x:Key="FsStatusCancelledRing">#2E4B5563</Color>
+    <Color x:Key="FsStatusFailRing">#47B42318</Color>
+    <Color x:Key="FsShiftOn">#0F766E</Color>
+    <Color x:Key="FsShiftOff">#7C8CA1</Color>
+
+    <Color x:Key="FsGlassMobile">#D6FFFFFF</Color>
+    <Color x:Key="FsRimMobile">#E6FFFFFF</Color>
+    <Color x:Key="FsRingMobile">#0F0B1F3A</Color>
+    <Color x:Key="FsHairline">#140B1F3A</Color>
+    <Color x:Key="FsHairlineSoft">#0F0B1F3A</Color>
+    <Color x:Key="FsTrack">#0F0B1F3A</Color>
+    <Color x:Key="FsWellFill">#0B0B1F3A</Color>
+    <Color x:Key="FsDockFill">#E0FFFFFF</Color>
+    <Color x:Key="FsDockRim">#F2FFFFFF</Color>
+    <Color x:Key="FsSheetFill">#F5FFFFFF</Color>
+    <Color x:Key="FsSecondaryFill">#DBFFFFFF</Color>
+    <Color x:Key="FsSecondaryStroke">#240B1F3A</Color>
+    <Color x:Key="FsIconButtonStroke">#1F0B1F3A</Color>
+    <Color x:Key="FsDangerStroke">#66B42318</Color>
+    <Color x:Key="FsGlassDarkTile">#14FFFFFF</Color>
+    <Color x:Key="FsGlassDarkTileStroke">#24FFFFFF</Color>
+    <Color x:Key="FsGlassDarkControl">#1AFFFFFF</Color>
+    <Color x:Key="FsGlassDarkControlStroke">#2EFFFFFF</Color>
+    <Color x:Key="FsGlassDarkTrackStroke">#1FFFFFFF</Color>
+    <Color x:Key="FsGlassDarkPillStroke">#29FFFFFF</Color>
+    <Color x:Key="FsSecondaryOnDarkStroke">#33FFFFFF</Color>
+    <Color x:Key="FsOverlay">#8C071426</Color>
+    <Color x:Key="FsFlash">#1AF59E0B</Color>
+    <Color x:Key="FsCapsuleFill">#0F0B1F3A</Color>
+    <Color x:Key="FsCapsuleSelected">#140B1F3A</Color>
+    <Color x:Key="FsSegmentSelected">#FFFFFF</Color>
+    <Color x:Key="FsDangerBannerStroke">#59B42318</Color>
+    <Color x:Key="FsTimelineHalo">#290F766E</Color>
+    <Color x:Key="FsSelectedHalo">#240F766E</Color>
+
+    <SolidColorBrush x:Key="FsShadowBrush" Color="{StaticResource FsNavy900}" />
+    <SolidColorBrush x:Key="FsShadowBlackBrush" Color="{StaticResource FsShadowBlack}" />
+    <SolidColorBrush x:Key="FsNavy950Brush" Color="{StaticResource FsNavy950}" />
+    <SolidColorBrush x:Key="FsTeal700Brush" Color="{StaticResource FsTeal700}" />
+    <SolidColorBrush x:Key="FsInkBrush" Color="{StaticResource FsInk}" />
+    <SolidColorBrush x:Key="FsLineInputBrush" Color="{StaticResource FsLineInput}" />
+    <SolidColorBrush x:Key="FsDangerBrush" Color="{StaticResource FsDanger}" />
+    <SolidColorBrush x:Key="FsFocusBrush" Color="{StaticResource FsFocus}" />
+    <SolidColorBrush x:Key="FsFocusOnDarkBrush" Color="{StaticResource FsFocusOnDark}" />
+    <SolidColorBrush x:Key="FsFocusHaloBrush" Color="{StaticResource FsFocusHalo}" />
+    <SolidColorBrush x:Key="FsDangerHaloBrush" Color="{StaticResource FsDangerHalo}" />
+    <SolidColorBrush x:Key="FsSurfaceBrush" Color="{StaticResource FsSurface}" />
+    <SolidColorBrush x:Key="FsTransparentBrush" Color="{StaticResource FsTransparent}" />
+    <SolidColorBrush x:Key="FsDisabledFillBrush" Color="{StaticResource FsDisabledFill}" />
+    <SolidColorBrush x:Key="FsSheetHandleBrush" Color="{StaticResource FsSheetHandle}" />
+    <SolidColorBrush x:Key="FsGlassBrush" Color="{StaticResource FsGlassMobile}" />
+    <SolidColorBrush x:Key="FsDockBrush" Color="{StaticResource FsDockFill}" />
+    <SolidColorBrush x:Key="FsSheetBrush" Color="{StaticResource FsSheetFill}" />
+    <SolidColorBrush x:Key="FsSecondaryFillBrush" Color="{StaticResource FsSecondaryFill}" />
+    <SolidColorBrush x:Key="FsGlassOnDarkBrush" Color="{StaticResource FsGlassDarkTile}" />
+    <SolidColorBrush x:Key="FsGlassOnDarkStrokeBrush" Color="{StaticResource FsGlassDarkTileStroke}" />
+    <SolidColorBrush x:Key="FsGlassOnDarkControlBrush" Color="{StaticResource FsGlassDarkControl}" />
+    <SolidColorBrush x:Key="FsGlassOnDarkControlStrokeBrush" Color="{StaticResource FsGlassDarkControlStroke}" />
+    <SolidColorBrush x:Key="FsHairlineBrush" Color="{StaticResource FsHairline}" />
+    <SolidColorBrush x:Key="FsHairlineSoftBrush" Color="{StaticResource FsHairlineSoft}" />
+    <SolidColorBrush x:Key="FsWellBrush" Color="{StaticResource FsWellFill}" />
+    <SolidColorBrush x:Key="FsTrackBrush" Color="{StaticResource FsTrack}" />
+    <SolidColorBrush x:Key="FsOverlayBrush" Color="{StaticResource FsOverlay}" />
+    <SolidColorBrush x:Key="FsFlashBrush" Color="{StaticResource FsFlash}" />
+    <SolidColorBrush x:Key="FsDockRimBrush" Color="{StaticResource FsDockRim}" />
+    <SolidColorBrush x:Key="FsStatusUnassignedRingBrush" Color="{StaticResource FsStatusUnassignedRing}" />
+    <SolidColorBrush x:Key="FsStatusAssignedRingBrush" Color="{StaticResource FsStatusAssignedRing}" />
+    <SolidColorBrush x:Key="FsStatusInProgressRingBrush" Color="{StaticResource FsStatusInProgressRing}" />
+    <SolidColorBrush x:Key="FsStatusOnHoldRingBrush" Color="{StaticResource FsStatusOnHoldRing}" />
+    <SolidColorBrush x:Key="FsStatusCompletedRingBrush" Color="{StaticResource FsStatusCompletedRing}" />
+    <SolidColorBrush x:Key="FsStatusCancelledRingBrush" Color="{StaticResource FsStatusCancelledRing}" />
+    <SolidColorBrush x:Key="FsStatusFailRingBrush" Color="{StaticResource FsStatusFailRing}" />
+    <SolidColorBrush x:Key="FsOrange500Brush" Color="{StaticResource FsOrange500}" />
+    <SolidColorBrush x:Key="FsRingMobileBrush" Color="{StaticResource FsRingMobile}" />
+    <SolidColorBrush x:Key="FsCapsuleBrush" Color="{StaticResource FsCapsuleFill}" />
+    <SolidColorBrush x:Key="FsCapsuleSelectedBrush" Color="{StaticResource FsCapsuleSelected}" />
+    <SolidColorBrush x:Key="FsSegmentSelectedBrush" Color="{StaticResource FsSegmentSelected}" />
+    <SolidColorBrush x:Key="FsDangerBannerStrokeBrush" Color="{StaticResource FsDangerBannerStroke}" />
+    <SolidColorBrush x:Key="FsTimelineHaloBrush" Color="{StaticResource FsTimelineHalo}" />
+    <SolidColorBrush x:Key="FsSelectedHaloBrush" Color="{StaticResource FsSelectedHalo}" />
+    <SolidColorBrush x:Key="FsGlassDarkTrackStrokeBrush" Color="{StaticResource FsGlassDarkTrackStroke}" />
+    <SolidColorBrush x:Key="FsGlassDarkPillStrokeBrush" Color="{StaticResource FsGlassDarkPillStroke}" />
+
+</ResourceDictionary>

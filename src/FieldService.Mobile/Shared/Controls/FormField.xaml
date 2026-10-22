@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.FormField"
+             x:Name="Root"
+             x:DataType="controls:FormField">
+    <VerticalStackLayout BindingContext="{x:Reference Root}"
+                         Spacing="{StaticResource FsSpace8}">
+        <Label Text="{Binding Label}"
+               Style="{StaticResource FsTextFieldLabel}"
+               AutomationProperties.IsInAccessibleTree="False" />
+        <Grid>
+            <Border Margin="-4"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 18"
+                    Background="{StaticResource FsTransparentBrush}"
+                    InputTransparent="True"
+                    AutomationProperties.IsInAccessibleTree="False">
+                <Border.Triggers>
+                    <DataTrigger TargetType="Border" Binding="{Binding ShowsFocusLook}" Value="True">
+                        <Setter Property="Background" Value="{StaticResource FsFocusHaloBrush}" />
+                    </DataTrigger>
+                    <DataTrigger TargetType="Border" Binding="{Binding ShowsErrorLook}" Value="True">
+                        <Setter Property="Background" Value="{StaticResource FsDangerHaloBrush}" />
+                    </DataTrigger>
+                </Border.Triggers>
+            </Border>
+            <Grid MinimumHeightRequest="{StaticResource FsHeightInput}">
+                <Border Background="{StaticResource FsSurfaceBrush}"
+                        Stroke="{StaticResource FsLineInputBrush}"
+                        StrokeThickness="1.5"
+                        StrokeShape="RoundRectangle 14"
+                        InputTransparent="True"
+                        AutomationProperties.IsInAccessibleTree="False">
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding ShowsFocusLook}" Value="True">
+                            <Setter Property="Stroke" Value="{StaticResource FsFocusBrush}" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Border" Binding="{Binding ShowsErrorLook}" Value="True">
+                            <Setter Property="Stroke" Value="{StaticResource FsDangerBrush}" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                </Border>
+                <Grid ColumnDefinitions="Auto,*,Auto"
+                      Margin="{StaticResource FsMarginInputContent}"
+                      MinimumHeightRequest="{StaticResource FsHeightInputContent}">
+                    <controls:Icon Grid.Column="0"
+                                   PathData="{Binding IconData}"
+                                   IsVisible="{Binding HasIcon}"
+                                   Size="20"
+                                   Color="{StaticResource FsMuted}"
+                                   Margin="16,0,12,0"
+                                   HorizontalOptions="Start"
+                                   VerticalOptions="Center" />
+                    <Entry x:Name="Input"
+                           ClearButtonVisibility="Never"
+                           MinimumHeightRequest="{StaticResource FsHeightInputContent}"
+                           Grid.Column="1"
+                           Text="{Binding Text}"
+                           Placeholder="{Binding Placeholder}"
+                           IsPassword="{Binding IsTextHidden}"
+                           Keyboard="{Binding Keyboard}"
+                           ReturnType="{Binding ReturnType}"
+                           ReturnCommand="{Binding ReturnCommand}"
+                           MaxLength="{Binding MaxLength}"
+                           IsSpellCheckEnabled="{Binding IsSpellCheckEnabled}"
+                           IsTextPredictionEnabled="{Binding IsTextPredictionEnabled}"
+                           Margin="{Binding EntryMargin}"
+                           VerticalOptions="Center"
+                           SemanticProperties.Description="{Binding Label}" />
+                    <Grid Grid.Column="2"
+                          IsVisible="{Binding IsPassword}"
+                          WidthRequest="{StaticResource FsHeightIconButton}"
+                          HeightRequest="{StaticResource FsHeightIconButton}"
+                          Margin="{StaticResource FsMarginPasswordToggle}"
+                          VerticalOptions="Center">
+                        <Button Command="{Binding TogglePasswordCommand}"
+                                SemanticProperties.Description="{Binding TogglePasswordDescription}"
+                                Background="{StaticResource FsTransparentBrush}"
+                                BorderWidth="0"
+                                CornerRadius="12"
+                                Padding="0"
+                                WidthRequest="{StaticResource FsHeightIconButton}"
+                                HeightRequest="{StaticResource FsHeightIconButton}"
+                                MinimumHeightRequest="{StaticResource FsHeightIconButton}"
+                                MinimumWidthRequest="{StaticResource FsHeightIconButton}" />
+                        <controls:Icon PathData="{StaticResource FsIconEye}"
+                                       Size="20"
+                                       Color="{StaticResource FsInk2}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*"
+              ColumnSpacing="{StaticResource FsSpace6}"
+              IsVisible="{Binding HasError}">
+            <controls:Icon Grid.Column="0"
+                           PathData="{StaticResource FsIconAlertTriangle}"
+                           Size="16"
+                           Color="{StaticResource FsDanger}"
+                           VerticalOptions="Start"
+                           Margin="0,2,0,0" />
+            <Label Grid.Column="1"
+                   Text="{Binding ErrorText}"
+                   Style="{StaticResource FsTextFieldError}" />
+        </Grid>
+    </VerticalStackLayout>
+</ContentView>

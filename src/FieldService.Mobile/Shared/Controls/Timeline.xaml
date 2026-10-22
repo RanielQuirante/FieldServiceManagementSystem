@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.Timeline"
+             x:Name="Root"
+             x:DataType="controls:Timeline">
+    <VerticalStackLayout BindingContext="{x:Reference Root}"
+                         Spacing="{StaticResource FsSpace12}"
+                         BindableLayout.ItemsSource="{Binding Entries}">
+        <BindableLayout.ItemTemplate>
+            <DataTemplate x:DataType="controls:TimelineEntry">
+                <Grid ColumnDefinitions="Auto,Auto,*"
+                      ColumnSpacing="{StaticResource FsSpace12}"
+                      SemanticProperties.Description="{Binding Description}">
+                    <VerticalStackLayout Grid.Column="0"
+                                         WidthRequest="{Binding TimeColumnWidth, Source={RelativeSource AncestorType={x:Type controls:Timeline}}, x:DataType=controls:Timeline}"
+                                         VerticalOptions="Center"
+                                         AutomationProperties.ExcludedWithChildren="True">
+                        <Label Text="{Binding Day}"
+                               IsVisible="{Binding HasDay}"
+                               Style="{StaticResource FsTextMonoSmall}" />
+                        <Label Text="{Binding Time}"
+                               Style="{StaticResource FsTextMonoSmall}" />
+                    </VerticalStackLayout>
+                    <Grid Grid.Column="1"
+                          WidthRequest="{StaticResource FsSizeTimelineDot}"
+                          HeightRequest="{StaticResource FsSizeTimelineDot}"
+                          VerticalOptions="Center"
+                          InputTransparent="True"
+                          AutomationProperties.IsInAccessibleTree="False">
+                        <Border Margin="-3"
+                                StrokeThickness="0"
+                                StrokeShape="RoundRectangle 8"
+                                Background="{StaticResource FsTimelineHaloBrush}"
+                                IsVisible="{Binding IsNewest}"
+                                InputTransparent="True"
+                                AutomationProperties.IsInAccessibleTree="False" />
+                        <Border StrokeThickness="2.5"
+                                StrokeShape="RoundRectangle 5"
+                                Stroke="{StaticResource FsTeal700Brush}"
+                                Background="{StaticResource FsSurfaceBrush}"
+                                InputTransparent="True"
+                                AutomationProperties.IsInAccessibleTree="False">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsNewest}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource FsPrimaryBrush}" />
+                                    <Setter Property="StrokeThickness" Value="0" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                        </Border>
+                    </Grid>
+                    <VerticalStackLayout Grid.Column="2"
+                                         Spacing="{StaticResource FsSpace2}"
+                                         VerticalOptions="Center"
+                                         AutomationProperties.ExcludedWithChildren="True">
+                        <Label Text="{Binding Text}"
+                               Style="{StaticResource FsTextTimeline}" />
+                        <Label Text="{Binding QuotedNote}"
+                               IsVisible="{Binding HasNote}"
+                               Style="{StaticResource FsTextTimelineNote}" />
+                    </VerticalStackLayout>
+                </Grid>
+            </DataTemplate>
+        </BindableLayout.ItemTemplate>
+    </VerticalStackLayout>
+</ContentView>

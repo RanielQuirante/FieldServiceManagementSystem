@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.InfoRow"
+             x:Name="Root"
+             x:DataType="controls:InfoRow">
+    <Grid BindingContext="{x:Reference Root}"
+          RowDefinitions="Auto,Auto">
+        <BoxView Grid.Row="0"
+                 HeightRequest="1"
+                 Color="{StaticResource FsHairlineSoft}"
+                 IsVisible="{Binding ShowsDivider}"
+                 InputTransparent="True"
+                 AutomationProperties.IsInAccessibleTree="False" />
+        <Grid Grid.Row="1"
+              ColumnDefinitions="Auto,*,Auto"
+              ColumnSpacing="{StaticResource FsSpace14}"
+              Padding="{StaticResource FsPaddingInfoRow}">
+            <controls:IconTile Grid.Column="0"
+                               IconData="{Binding IconData}"
+                               TileSize="36" />
+            <VerticalStackLayout Grid.Column="1"
+                                 Spacing="{StaticResource FsSpace2}"
+                                 VerticalOptions="Center"
+                                 SemanticProperties.Description="{Binding RowDescription}">
+                <Label Text="{Binding Label}"
+                       Style="{StaticResource FsTextInfoLabel}"
+                       AutomationProperties.IsInAccessibleTree="False" />
+                <Label Text="{Binding Value}"
+                       Style="{StaticResource FsTextInfoValue}"
+                       AutomationProperties.IsInAccessibleTree="False" />
+                <Label Text="{Binding SecondaryValue}"
+                       IsVisible="{Binding HasSecondaryValue}"
+                       Style="{StaticResource FsTextInfoSecondary}"
+                       AutomationProperties.IsInAccessibleTree="False" />
+            </VerticalStackLayout>
+            <Grid Grid.Column="2"
+                  IsVisible="{Binding ShowsAction}"
+                  VerticalOptions="Center">
+                <Button Style="{StaticResource FsIconButton}"
+                        Command="{Binding ActionCommand}"
+                        SemanticProperties.Description="{Binding ActionDescription}" />
+                <controls:Icon PathData="{Binding ActionIconData}"
+                               Size="20"
+                               Color="{StaticResource FsTeal700}"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+            </Grid>
+        </Grid>
+    </Grid>
+</ContentView>

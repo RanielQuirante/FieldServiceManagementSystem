@@ -1,0 +1,509 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <Shadow x:Key="FsShadowGlass" Brush="{StaticResource FsShadowBrush}" Offset="0,10" Radius="28" Opacity="0.16" />
+    <Shadow x:Key="FsShadowDock" Brush="{StaticResource FsShadowBrush}" Offset="0,-8" Radius="32" Opacity="0.18" />
+    <Shadow x:Key="FsShadowHero" Brush="{StaticResource FsNavy950Brush}" Offset="0,18" Radius="40" Opacity="0.40" />
+    <Shadow x:Key="FsShadowPrimary" Brush="{StaticResource FsTeal700Brush}" Offset="0,10" Radius="24" Opacity="0.45" />
+    <Shadow x:Key="FsShadowSecondary" Brush="{StaticResource FsShadowBrush}" Offset="0,6" Radius="16" Opacity="0.16" />
+    <Shadow x:Key="FsShadowE1" Brush="{StaticResource FsShadowBrush}" Offset="0,1" Radius="2" Opacity="0.06" />
+    <Shadow x:Key="FsShadowMarkOnDark" Brush="{StaticResource FsShadowBlackBrush}" Offset="0,12" Radius="28" Opacity="0.55" />
+    <Shadow x:Key="FsShadowUrgentCard" Brush="{StaticResource FsOrange500Brush}" Offset="0,12" Radius="28" Opacity="0.40" />
+    <Shadow x:Key="FsShadowAccent" Brush="{StaticResource FsOrange500Brush}" Offset="0,4" Radius="12" Opacity="0.60" />
+    <Shadow x:Key="FsShadowSegment" Brush="{StaticResource FsShadowBrush}" Offset="0,4" Radius="12" Opacity="0.20" />
+    <Shadow x:Key="FsShadowSegmentOnDark" Brush="{StaticResource FsNavy950Brush}" Offset="0,6" Radius="16" Opacity="0.45" />
+    <Shadow x:Key="FsShadowDanger" Brush="{StaticResource FsDangerBrush}" Offset="0,8" Radius="24" Opacity="0.30" />
+    <Shadow x:Key="FsShadowTopBar" Brush="{StaticResource FsNavy950Brush}" Offset="0,8" Radius="24" Opacity="0.50" />
+    <Shadow x:Key="FsShadowAvatar" Brush="{StaticResource FsShadowBrush}" Offset="0,1" Radius="2" Opacity="0.10" />
+    <Shadow x:Key="FsShadowNone" Brush="{StaticResource FsTransparentBrush}" Offset="0,0" Radius="0" Opacity="0" />
+
+    <Style TargetType="ContentPage" ApplyToDerivedTypes="True">
+        <Setter Property="Background" Value="{StaticResource FsBackdropBrush}" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style TargetType="Entry">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeInput}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+        <Setter Property="PlaceholderColor" Value="{StaticResource FsPlaceholder}" />
+        <Setter Property="BackgroundColor" Value="{StaticResource FsTransparent}" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightRow}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Editor">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeInput}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+        <Setter Property="PlaceholderColor" Value="{StaticResource FsPlaceholder}" />
+        <Setter Property="BackgroundColor" Value="{StaticResource FsTransparent}" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightRow}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style TargetType="CheckBox">
+        <Setter Property="Color" Value="{StaticResource FsTeal700}" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightRow}" />
+        <Setter Property="MinimumWidthRequest" Value="{StaticResource FsHeightRow}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Color" Value="{StaticResource FsDisabledText}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style TargetType="RadioButton">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+        <Setter Property="BackgroundColor" Value="{StaticResource FsTransparent}" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightRow}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsSecondaryButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource FsSecondaryFillBrush}" />
+        <Setter Property="BorderColor" Value="{StaticResource FsSecondaryStroke}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightSecondary}" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingSecondaryButton}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeButton}" />
+        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingButton}" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowSecondary}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Background" Value="{StaticResource FsDisabledFillBrush}" />
+                            <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
+                            <Setter Property="BorderWidth" Value="0" />
+                            <Setter Property="Shadow" Value="{x:Null}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused" />
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Property="BorderColor" Value="{StaticResource FsFocus}" />
+                            <Setter Property="BorderWidth" Value="2" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsDangerButton" TargetType="Button" BasedOn="{StaticResource FsSecondaryButton}">
+        <Setter Property="BorderColor" Value="{StaticResource FsDangerStroke}" />
+        <Setter Property="TextColor" Value="{StaticResource FsDanger}" />
+    </Style>
+
+    <Style x:Key="FsQuietButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource FsTransparentBrush}" />
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightQuiet}" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingQuietButton}" />
+        <Setter Property="TextColor" Value="{StaticResource FsTeal700}" />
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeQuietButton}" />
+        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingButton}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused" />
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Property="BorderColor" Value="{StaticResource FsFocus}" />
+                            <Setter Property="BorderWidth" Value="2" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsSecondaryOnDarkButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource FsGlassOnDarkControlBrush}" />
+        <Setter Property="BorderColor" Value="{StaticResource FsSecondaryOnDarkStroke}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightSecondary}" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingSecondaryButton}" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeButton}" />
+        <Setter Property="CharacterSpacing" Value="{StaticResource FsTrackingButton}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Background" Value="{StaticResource FsDisabledFillBrush}" />
+                            <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
+                            <Setter Property="BorderWidth" Value="0" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused" />
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Property="BorderColor" Value="{StaticResource FsFocusOnDark}" />
+                            <Setter Property="BorderWidth" Value="2" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsSecondaryOnDarkDesktopButton" TargetType="Button" BasedOn="{StaticResource FsSecondaryOnDarkButton}">
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightDesktopButton}" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingDesktopButton}" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeButtonDesktop}" />
+        <Setter Property="CharacterSpacing" Value="0" />
+    </Style>
+
+    <Style x:Key="FsIconButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource FsSecondaryFillBrush}" />
+        <Setter Property="BorderColor" Value="{StaticResource FsIconButtonStroke}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="WidthRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="HeightRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="MinimumWidthRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowE1}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Background" Value="{StaticResource FsDisabledFillBrush}" />
+                            <Setter Property="BorderWidth" Value="0" />
+                            <Setter Property="Shadow" Value="{x:Null}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused" />
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Property="BorderColor" Value="{StaticResource FsFocus}" />
+                            <Setter Property="BorderWidth" Value="2" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsIconButtonOnDark" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource FsGlassOnDarkControlBrush}" />
+        <Setter Property="BorderColor" Value="{StaticResource FsGlassDarkControlStroke}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="CornerRadius" Value="24" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="WidthRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="HeightRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="MinimumWidthRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightIconButton}" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMeta}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled" />
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused" />
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Property="BorderColor" Value="{StaticResource FsFocusOnDark}" />
+                            <Setter Property="BorderWidth" Value="2" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsGlassCard" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsGlassBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsGlassStrokeBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 22" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingCard}" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowGlass}" />
+    </Style>
+
+    <Style x:Key="FsInfoListCard" TargetType="Border" BasedOn="{StaticResource FsGlassCard}">
+        <Setter Property="Padding" Value="{StaticResource FsPaddingListCard}" />
+    </Style>
+
+    <Style x:Key="FsLinkCard" TargetType="Border" BasedOn="{StaticResource FsGlassCard}">
+        <Setter Property="Padding" Value="{StaticResource FsPaddingLinkCard}" />
+        <Setter Property="MinimumHeightRequest" Value="76" />
+    </Style>
+
+    <Style x:Key="FsDock" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsDockBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsDockRimBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 24,24,0,0" />
+        <Setter Property="Padding" Value="16,16,16,28" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowDock}" />
+    </Style>
+
+    <Style x:Key="FsSheet" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsSheetBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 28,28,0,0" />
+        <Setter Property="Padding" Value="16,10,16,28" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowDock}" />
+    </Style>
+
+    <Style x:Key="FsGlassOnDarkTile" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsGlassOnDarkBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsGlassOnDarkStrokeBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+    </Style>
+
+    <Style x:Key="FsGlassOnDarkControl" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsGlassOnDarkControlBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsGlassOnDarkControlStrokeBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 24" />
+    </Style>
+
+    <Style x:Key="FsWell" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsWellBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+    </Style>
+
+    <Style x:Key="FsChipBase" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightChip}" />
+        <Setter Property="Padding" Value="10,0,12,0" />
+    </Style>
+
+    <Style x:Key="FsChipUnassigned" TargetType="Border" BasedOn="{StaticResource FsChipBase}">
+        <Setter Property="Background" Value="{StaticResource FsChipUnassignedBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsStatusUnassignedRingBrush}" />
+        <Setter Property="StrokeDashArray" Value="3,3" />
+    </Style>
+
+    <Style x:Key="FsChipAssigned" TargetType="Border" BasedOn="{StaticResource FsChipBase}">
+        <Setter Property="Background" Value="{StaticResource FsChipAssignedBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsStatusAssignedRingBrush}" />
+    </Style>
+
+    <Style x:Key="FsChipInProgress" TargetType="Border" BasedOn="{StaticResource FsChipBase}">
+        <Setter Property="Background" Value="{StaticResource FsChipInProgressBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsStatusInProgressRingBrush}" />
+    </Style>
+
+    <Style x:Key="FsChipOnHold" TargetType="Border" BasedOn="{StaticResource FsChipBase}">
+        <Setter Property="Background" Value="{StaticResource FsChipOnHoldBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsStatusOnHoldRingBrush}" />
+    </Style>
+
+    <Style x:Key="FsChipCompleted" TargetType="Border" BasedOn="{StaticResource FsChipBase}">
+        <Setter Property="Background" Value="{StaticResource FsChipCompletedBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsStatusCompletedRingBrush}" />
+    </Style>
+
+    <Style x:Key="FsChipCancelled" TargetType="Border" BasedOn="{StaticResource FsChipBase}">
+        <Setter Property="Background" Value="{StaticResource FsChipCancelledBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsStatusCancelledRingBrush}" />
+    </Style>
+
+    <Style x:Key="FsChipFail" TargetType="Border" BasedOn="{StaticResource FsChipBase}">
+        <Setter Property="Background" Value="{StaticResource FsChipFailBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsStatusFailRingBrush}" />
+    </Style>
+
+    <Style x:Key="FsOverlayButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource FsTransparentBrush}" />
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Text" Value="" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightRow}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled" />
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused" />
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Property="BorderColor" Value="{StaticResource FsFocus}" />
+                            <Setter Property="BorderWidth" Value="2" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsOverlayButtonOnDark" TargetType="Button" BasedOn="{StaticResource FsOverlayButton}">
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled" />
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused" />
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Property="BorderColor" Value="{StaticResource FsFocusOnDark}" />
+                            <Setter Property="BorderWidth" Value="2" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FsJobCard" TargetType="Border" BasedOn="{StaticResource FsGlassCard}">
+        <Setter Property="Padding" Value="{StaticResource FsPaddingListCard}" />
+    </Style>
+
+    <Style x:Key="FsJobCardUrgent" TargetType="Border" BasedOn="{StaticResource FsJobCard}">
+        <Setter Property="Background" Value="{StaticResource FsCardUrgentBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsAccentBrush}" />
+        <Setter Property="StrokeThickness" Value="1.5" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowUrgentCard}" />
+    </Style>
+
+    <Style x:Key="FsUrgentBadge" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsAccentBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightUrgentBadge}" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingChip}" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowAccent}" />
+    </Style>
+
+    <Style x:Key="FsCapsule" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsCapsuleBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="MinimumWidthRequest" Value="{StaticResource FsWidthCapsule}" />
+        <Setter Property="HeightRequest" Value="{StaticResource FsHeightCapsule}" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingCapsule}" />
+    </Style>
+
+    <Style x:Key="FsIconTile" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsTintNeutralBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsRingMobileBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style x:Key="FsSegmentTrack" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsTrackBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingSegmentTrack}" />
+    </Style>
+
+    <Style x:Key="FsSegmentTrackOnDark" TargetType="Border" BasedOn="{StaticResource FsSegmentTrack}">
+        <Setter Property="Background" Value="{StaticResource FsGlassOnDarkBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsGlassDarkTrackStrokeBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+    </Style>
+
+    <Style x:Key="FsPaneHero" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsHeroBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 24" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingPaneHero}" />
+        <Setter Property="Shadow" Value="{StaticResource FsShadowHero}" />
+    </Style>
+
+</ResourceDictionary>

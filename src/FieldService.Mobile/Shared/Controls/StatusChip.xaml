@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.StatusChip"
+             x:Name="Root"
+             x:DataType="controls:StatusChip"
+             HorizontalOptions="Start"
+             VerticalOptions="Center">
+    <Border x:Name="Chip"
+            BindingContext="{x:Reference Root}"
+            StrokeThickness="1"
+            HorizontalOptions="Start"
+            VerticalOptions="Center"
+            InputTransparent="True"
+            AutomationProperties.IsInAccessibleTree="False"
+            AutomationProperties.ExcludedWithChildren="True">
+        <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                               VerticalOptions="Center">
+            <controls:Icon x:Name="ChipIcon"
+                           VerticalOptions="Center" />
+            <Label x:Name="ChipLabel"
+                   Text="{Binding Label}"
+                   Style="{StaticResource FsTextChip}" />
+        </HorizontalStackLayout>
+    </Border>
+</ContentView>

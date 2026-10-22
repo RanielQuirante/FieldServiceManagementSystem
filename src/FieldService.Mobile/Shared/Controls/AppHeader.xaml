@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             x:Class="FieldService.Mobile.Shared.Controls.AppHeader"
+             x:Name="Root"
+             x:DataType="controls:AppHeader">
+    <Grid BindingContext="{x:Reference Root}">
+        <Border x:Name="Hero"
+                StrokeThickness="0"
+                Background="{StaticResource FsHeroBrush}"
+                InputTransparent="True"
+                AutomationProperties.IsInAccessibleTree="False" />
+        <Border x:Name="Glow"
+                StrokeThickness="0"
+                Background="{StaticResource FsHeroGlowBrush}"
+                InputTransparent="True"
+                AutomationProperties.IsInAccessibleTree="False" />
+        <ContentView Padding="{Binding InsetPadding}">
+            <Grid>
+                <VerticalStackLayout IsVisible="{Binding IsSignIn}"
+                                     Padding="{StaticResource FsPaddingSignInHero}"
+                                     Spacing="{StaticResource FsSpace20}"
+                                     HeightRequest="{StaticResource FsHeightSignInHero}">
+                    <Grid WidthRequest="{StaticResource FsSizeLogoMark}"
+                          HeightRequest="{StaticResource FsSizeLogoMark}"
+                          HorizontalOptions="Start"
+                          InputTransparent="True"
+                          AutomationProperties.IsInAccessibleTree="False">
+                        <Border Background="{StaticResource FsGlassOnDarkControlBrush}"
+                                Stroke="{StaticResource FsGlassOnDarkControlStrokeBrush}"
+                                StrokeThickness="1"
+                                StrokeShape="RoundRectangle 15"
+                                Shadow="{StaticResource FsShadowMarkOnDark}"
+                                InputTransparent="True"
+                                AutomationProperties.IsInAccessibleTree="False" />
+                        <Border Background="{StaticResource FsMarkOnDarkGlossBrush}"
+                                StrokeThickness="0"
+                                StrokeShape="RoundRectangle 15"
+                                InputTransparent="True"
+                                AutomationProperties.IsInAccessibleTree="False" />
+                        <controls:Icon PathData="{StaticResource FsLogoMarkPin}"
+                                       Size="26"
+                                       Color="{StaticResource FsOnDark}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                        <controls:Icon PathData="{StaticResource FsLogoMarkDot}"
+                                       Size="26"
+                                       FillColor="{StaticResource FsAmber300}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                    </Grid>
+                    <VerticalStackLayout Spacing="{StaticResource FsSpace8}">
+                        <Label Text="{Binding Title}"
+                               Style="{StaticResource FsTextSignInTitle}"
+                               SemanticProperties.HeadingLevel="Level1" />
+                        <Label Text="{Binding Subtitle}"
+                               Style="{StaticResource FsTextBodyOnDark}" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout IsVisible="{Binding IsList}"
+                                     Padding="{StaticResource FsPaddingListHeader}"
+                                     Spacing="18">
+                    <Grid ColumnDefinitions="*,Auto"
+                          ColumnSpacing="{StaticResource FsSpace12}">
+                        <VerticalStackLayout Spacing="{StaticResource FsSpace4}"
+                                             VerticalOptions="Center">
+                            <Label Text="{Binding Eyebrow}"
+                                   Style="{StaticResource FsTextEyebrowOnDark}" />
+                            <Label Text="{Binding Title}"
+                                   Style="{StaticResource FsTextScreenTitle}"
+                                   SemanticProperties.HeadingLevel="Level1" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1"
+                                Style="{StaticResource FsIconButtonOnDark}"
+                                Text="{Binding AvatarText}"
+                                Command="{Binding AvatarCommand}"
+                                SemanticProperties.Description="{Binding AvatarDescription}"
+                                VerticalOptions="Center" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto"
+                          ColumnSpacing="{StaticResource FsSpace12}">
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="{StaticResource FsSpace8}"
+                              VerticalOptions="Center">
+                            <controls:Icon x:Name="SyncIcon"
+                                           Size="16"
+                                           Color="{StaticResource FsOnDark2}"
+                                           IsVisible="{Binding HasSyncText}"
+                                           VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding SyncText}"
+                                   IsVisible="{Binding HasSyncText}"
+                                   Style="{StaticResource FsTextSyncOnDark}" />
+                        </Grid>
+                        <Grid Grid.Column="1"
+                              VerticalOptions="Center">
+                            <Button Style="{StaticResource FsIconButtonOnDark}"
+                                    Command="{Binding RefreshCommand}"
+                                    SemanticProperties.Description="{Binding RefreshDescription}" />
+                            <controls:Icon PathData="{StaticResource FsIconRefresh}"
+                                           Size="20"
+                                           Color="{StaticResource FsOnDark}"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                        </Grid>
+                    </Grid>
+                    <ContentView x:Name="ListAccessory"
+                                 IsVisible="{Binding HasAccessory}" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout IsVisible="{Binding IsPushed}"
+                                     Padding="{StaticResource FsPaddingPushedHeader}"
+                                     Spacing="{StaticResource FsSpace20}">
+                    <Grid ColumnDefinitions="Auto,*"
+                          ColumnSpacing="{StaticResource FsSpace12}">
+                        <Grid VerticalOptions="Center">
+                            <Button Style="{StaticResource FsIconButtonOnDark}"
+                                    Command="{Binding BackCommand}"
+                                    SemanticProperties.Description="{Binding BackDescription}" />
+                            <controls:Icon PathData="{StaticResource FsIconArrowLeft}"
+                                           Size="22"
+                                           Color="{StaticResource FsOnDark}"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                        </Grid>
+                        <VerticalStackLayout Grid.Column="1"
+                                             Spacing="{StaticResource FsSpace2}"
+                                             VerticalOptions="Center">
+                            <Label Text="{Binding Title}"
+                                   Style="{StaticResource FsTextPushedTitle}"
+                                   SemanticProperties.HeadingLevel="Level1" />
+                            <Label Text="{Binding Subtitle}"
+                                   Style="{StaticResource FsTextMonoOnDark}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <VerticalStackLayout IsVisible="{Binding HasSummary}"
+                                         Spacing="{StaticResource FsSpace12}">
+                        <HorizontalStackLayout Spacing="{StaticResource FsSpace8}">
+                            <controls:StatusChip Status="{Binding SummaryStatus}" />
+                            <controls:PriorityLabel Priority="{Binding SummaryPriority}"
+                                                    IsOnDark="True" />
+                        </HorizontalStackLayout>
+                        <Label Text="{Binding SummaryTitle}"
+                               Style="{StaticResource FsTextHeroJobTitle}"
+                               SemanticProperties.HeadingLevel="Level2" />
+                        <VerticalStackLayout IsVisible="{Binding HasSchedule}"
+                                             Spacing="{StaticResource FsSpace4}">
+                            <Grid ColumnDefinitions="Auto,*"
+                                  ColumnSpacing="{StaticResource FsSpace8}">
+                                <controls:Icon PathData="{StaticResource FsIconClock}"
+                                               Size="16"
+                                               Color="{StaticResource FsOnDark}"
+                                               VerticalOptions="Center" />
+                                <Label Grid.Column="1"
+                                       Text="{Binding ScheduleText}"
+                                       Style="{StaticResource FsTextScheduleOnDark}" />
+                            </Grid>
+                            <Label Text="{Binding StartsText}"
+                                   IsVisible="{Binding HasStartsText}"
+                                   Style="{StaticResource FsTextMetaOnDark}" />
+                            <Label Text="{Binding AssignedText}"
+                                   IsVisible="{Binding HasAssignedText}"
+                                   Style="{StaticResource FsTextMetaOnDark}" />
+                        </VerticalStackLayout>
+                        <Grid IsVisible="{Binding HasStatusLine}"
+                              ColumnDefinitions="Auto,*"
+                              ColumnSpacing="{StaticResource FsSpace8}">
+                            <controls:Icon x:Name="StatusLineIcon"
+                                           Size="16"
+                                           Color="{StaticResource FsOnDark2}"
+                                           VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding StatusLineText}"
+                                   Style="{StaticResource FsTextMetaOnDark}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <Grid IsVisible="{Binding IsDesktopTopBar}"
+                      ColumnDefinitions="Auto,*,Auto,Auto"
+                      ColumnSpacing="{StaticResource FsSpace16}"
+                      Padding="{StaticResource FsPaddingTopBar}"
+                      MinimumHeightRequest="{StaticResource FsHeightTopBar}">
+                    <Grid ColumnDefinitions="Auto,Auto"
+                          ColumnSpacing="{StaticResource FsSpace12}"
+                          VerticalOptions="Center">
+                        <Grid WidthRequest="{StaticResource FsSizeLogoMarkSmall}"
+                              HeightRequest="{StaticResource FsSizeLogoMarkSmall}"
+                              InputTransparent="True"
+                              AutomationProperties.IsInAccessibleTree="False">
+                            <Border Background="{StaticResource FsGlassOnDarkControlBrush}"
+                                    Stroke="{StaticResource FsGlassOnDarkControlStrokeBrush}"
+                                    StrokeThickness="1"
+                                    StrokeShape="RoundRectangle 11"
+                                    InputTransparent="True"
+                                    AutomationProperties.IsInAccessibleTree="False" />
+                            <controls:Icon PathData="{StaticResource FsLogoMarkPin}"
+                                           Size="20"
+                                           Color="{StaticResource FsOnDark}"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                            <controls:Icon PathData="{StaticResource FsLogoMarkDot}"
+                                           Size="20"
+                                           FillColor="{StaticResource FsAmber300}"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                        </Grid>
+                        <Label Grid.Column="1"
+                               Text="{Binding Title}"
+                               Style="{StaticResource FsTextTopBarTitle}" />
+                    </Grid>
+                    <Border Grid.Column="2"
+                            IsVisible="{Binding HasUpdatedText}"
+                            Background="{StaticResource FsGlassOnDarkControlBrush}"
+                            Stroke="{StaticResource FsGlassOnDarkControlStrokeBrush}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 16"
+                            MinimumHeightRequest="{StaticResource FsHeightChip}"
+                            Padding="{StaticResource FsPaddingPill}"
+                            VerticalOptions="Center">
+                        <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                               VerticalOptions="Center">
+                            <controls:Icon PathData="{StaticResource FsIconClock}"
+                                           Size="14"
+                                           Color="{StaticResource FsOnDark}"
+                                           VerticalOptions="Center" />
+                            <Label Text="{Binding UpdatedText}"
+                                   Style="{StaticResource FsTextChip}"
+                                   FontSize="{StaticResource FsFontSizeChipCompact}"
+                                   TextColor="{StaticResource FsOnDark}" />
+                        </HorizontalStackLayout>
+                    </Border>
+                    <Button Grid.Column="3"
+                            Style="{StaticResource FsIconButtonOnDark}"
+                            Text="{Binding AvatarText}"
+                            Command="{Binding AvatarCommand}"
+                            SemanticProperties.Description="{Binding AvatarDescription}"
+                            VerticalOptions="Center" />
+                </Grid>
+            </Grid>
+        </ContentView>
+    </Grid>
+</ContentView>
