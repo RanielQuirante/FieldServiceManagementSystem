@@ -19,7 +19,7 @@ Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 ```
 
-The full licence text travels with the font files in `src/FieldService.Web/src/app/fonts/OFL.txt`. The technician app adds a second copy beside its own font files when it gains them. The fonts are used unmodified, and the licence names no Reserved Font Name.
+The full licence text travels with the font files in `src/FieldService.Web/src/app/fonts/OFL.txt`. The technician app ships six TrueType files from the same release (Geist 400, 500, 600 and 700, Geist Mono 500 and 600) in `src/FieldService.Mobile/Resources/Fonts/`, with an identical copy of the licence text, `OFL.txt`, beside them. The fonts are used unmodified, and the licence names no Reserved Font Name.
 
 ## Icons: Lucide and Feather
 

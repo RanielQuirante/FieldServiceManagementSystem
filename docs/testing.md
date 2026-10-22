@@ -95,8 +95,10 @@ When an endpoint changes, `OpenApiSnapshotTests` fails, shows the first differin
 
 | Folder | Covers |
 |---|---|
-| `Contracts/` | The OpenAPI document served by the API equals the committed snapshot; no schema has a `format` without a `type`; the shape of the 500 Problem Details response |
-| `Security/` | Every endpoint has an authorization policy or is on the anonymous list, and no endpoint exposes a domain type; the OpenAPI document is served only in Development and Testing, and `/swagger` is never served; no exception detail reaches a response outside Development; one request writes a CLEF line to the daily log file, with the configured retention limits |
+| `Contracts/` | The OpenAPI document served by the API equals the committed snapshot; no schema has a `format` without a `type`; every error status (400, 401, 403, 404, 409, 429 and 500) is a Problem Details response with its type, title, code, `traceId` and `correlationId`, and an `instance` without the query string; each 409 code (`job.not-assignable`, `technician.unavailable`, `concurrency.conflict`) has its registered title |
+| `Domain/` | The job lifecycle: the transition matrix for every role, the assignment rules, the affordances and the inspection rules |
+| `Features/` | One folder per feature (`Auth`, `ChecklistTemplates`, `Jobs`, `Technicians`): validation, responses, stored rows, history entries and recorded events of each endpoint, including two assignments of one job sent at the same time |
+| `Security/` | Every endpoint has an authorization policy or is on the anonymous list, and no endpoint exposes a domain type; every route answers each role and an anonymous caller with the expected status; a technician never sees another technician's job, in a job read or in the assigned-jobs list, and gets a 404 identical to a missing job's; access-token validation; the refresh cookie attributes and the CSRF header; rate limits; security headers, `Cache-Control: no-store`, CORS and forwarded headers; startup validation of keys and settings; the OpenAPI document is served only in Development and Testing, and `/swagger` is never served; no exception detail reaches a response outside Development; no password, token or personal detail reaches a log event or a log file; one request writes a CLEF line to the daily log file, with the configured retention limits |
 | `Persistence/` | What `fieldservice_app` may and may not do, statement by statement; role settings; the lock on submitted inspections; the applied migration history, the reference data and its fixed ids, the indexes, constraints, ownership and grants; migration files without comments |
 | `Shared/` | The mapping of concurrency and lock failures to 409 responses; the health endpoints |
 | `Infrastructure/` | Test fixtures only: the per-run database, the API test host, log capture and test data |
@@ -137,8 +139,15 @@ A Release build of the app requires an `https` API address. The plain `net10.0` 
 
 | Folder | Covers |
 |---|---|
-| `Shared/Http/` | The API address guard: every configuration other than Debug accepts only `https`; a missing, relative or rooted address and any other scheme are refused; Debug accepts the development `http` addresses; an app assembly stamped with an `http` address, or with none, fails at startup |
-| `Spikes/` | That the `net10.0` target is testable: a view model reads secure storage and connectivity through substitutes, and the `net10.0` assembly leaves out the platform code |
+| `Build/` | The Android resource designer of design-time builds stays in its own folder, so a later install build is not affected; the splash and launcher icon artwork use the brand mark on navy |
+| `Contracts/` | The app's request and response types match `docs/contracts/openapi.v1.json`: member names, types, formats, nullability and enumerations, each enumeration with an `Unknown` member for values the app does not know yet |
+| `Features/SignIn/` | The sign-in screen: field errors, the error banners, the message for an administrator account, the notice after a session ended, and the start route after sign-in |
+| `Features/Jobs/` | My jobs and Job details: the active and completed lists grouped by day, refresh, the loading, empty, error and offline states, the details of each status, and the Navigate and Call actions of an assigned job |
+| `Shared/Http/` | The API address guard: every configuration other than Debug accepts only `https`; a missing, relative or rooted address and any other scheme are refused; Debug accepts the development `http` addresses; an app assembly stamped with an `http` address, or with none, fails at startup. Also the authorization handler, the correlation id handler, HTTP log entries without tokens, headers, bodies or query strings, and the reading of Problem Details responses |
+| `Shared/Formatting/` | Times keep their digits and AM or PM together, and short dates keep their weekday, day and month together, so neither breaks across lines |
+| `Shared/Navigation/` | The app's Shell routes, resolved by a real Shell: a job opens Job details with its id, Back returns to My jobs, a job that is no longer assigned returns to My jobs with the notice, and start-up and sign-in switch between the sign-in screen and My jobs |
+| `Shared/Session/` | Session restore at start-up, with the splash held until the first screen is shown; refresh, sign-out and expiry; the refresh token kept only in secure storage under its key, and cleared when it cannot be read |
+| `Shared/Theme/` | XAML pages use only theme resources and give every control an accessible name and every page a heading; a job card is one button for screen readers; screens with a header run under the status bar, which is covered as soon as the content scrolls; line heights and the action bar follow the design; icon path data is drawn as specified |
 
 ## Notification service
 
@@ -192,7 +201,14 @@ npm run build
 
 | Folder | Covers |
 |---|---|
-| `src/app/__tests__/` | Global error handling: errors thrown in components, unhandled promise rejections and failed navigations are reported with the message, source, route path, stack and time; a rejection reason that is not an `Error` is described; reporting stops after cleanup |
+| `src/app/__tests__/` | Global error handling: errors thrown in components, unhandled promise rejections and failed navigations are reported with the message, source, route path, stack and time; a rejection reason that is not an `Error` is described; reporting stops after cleanup. Also the route guard and the favicon |
+| `src/app/styles/__tests__/` | Stylesheets use the design tokens, and the text and background pairs meet their contrast ratios |
+| `src/features/auth/__tests__/` | The sign-in page, the session store and the redirect check after sign-in |
+| `src/features/jobs/__tests__/` | The jobs store, the create-job form with its technician select, and the assign panel: technician order, availability, conflicts and errors |
+| `src/shared/api/__tests__/` | The authenticated fetch and the reading of API errors |
+| `src/shared/format/__tests__/` | Dates, times and labels |
+| `src/shared/testing/__tests__/` | Isolation between tests |
+| `src/shared/ui/__tests__/` | Accessibility, states and behaviour of the shared components |
 
 ## End-to-end tests
 
@@ -212,9 +228,11 @@ The Playwright suite drives the dashboard in Chromium against a running stack. T
 - The demo account password comes from `src/FieldService.Web/e2e/.env`, which `create-dev-env.mjs` writes; a value already set in `E2E_DEMO_PASSWORD` takes precedence, so no password is typed or prompted for. `E2E_BASE_URL` overrides the base URL of both projects.
 - Before the first test, a global setup waits up to 60 seconds for the dashboard at `/` and for `GET /api/checklist-templates` without a token to answer 401 through the proxy, so a run against a stopped API fails at once. It also gives the run its id, `E2E_RUN_ID` unless that variable is set.
 - After the last test, a global teardown searches every file under `logs/api` and `logs/notifications` (or under `E2E_LOGS_DIR`) for the access tokens and refresh cookies seen during the run, the demo password and the personal details of the demo data. A match fails the run and names the file, the line and the kind of value, never the value. A folder with no log file also fails the run.
+- Every session a run opens is signed out before the run ends: the browser contexts that still hold a refresh cookie, the administrator context and each technician session. Each sign-out must answer 204, and the teardown fails the run unless the number of sessions signed out equals the number of sign-ins that succeeded.
 - Automatic checks fail a test on any Content Security Policy violation, any request to another origin, any uncaught page error, and any console error that the test does not declare as expected. A budget check keeps a run to at most 7 sign-ins and 25 session refreshes in any 60 seconds, below the API's rate limits.
-- Tests create their own jobs, with titles that start with `E2E <run id>`, and only read the demo jobs, so no run needs a freshly seeded database. Every run adds jobs to the development database; the VS Code task `db: reset` restores the demo data.
-- `accessibility.spec.ts` runs the axe checks for the WCAG 2.2 AA tags on each route and state at 1280 and 375 px, and checks reflow at 320 px, reduced motion, forced colours and creating a job by keyboard alone.
+- Tests create their own jobs, with titles that start with `E2E <run id>`, and only read the demo jobs, so no run needs a freshly seeded database. They assign their jobs only to Lena Park and Tom Becker. Every run adds jobs to the development database; the VS Code task `db: reset` restores the demo data.
+- Technician steps run through API sessions of the mobile client, one per technician and run, for example to check that an assigned job appears in that technician's list and that another technician gets a 404 for it.
+- `accessibility.spec.ts` runs the axe checks for the WCAG 2.2 AA tags on each route and state at 1280 and 375 px, the assign panel included, and checks reflow at 320 px, reduced motion, forced colours, and creating and assigning a job by keyboard alone.
 - Tests run one at a time against one shared stack. Under CI a failed test is retried once, and a test that passes only on the retry fails the run.
 
 The specs have their own TypeScript project. To type-check them and list the tests of each project without a running stack:
@@ -266,11 +284,11 @@ The workstation commands on this page were run on 2026-10-22 on macOS 26.5 (Appl
 
 | Suite | Result |
 |---|---|
-| API | 1021 of 1021 passed in Debug; both `dotnet format` checks passed |
-| Technician app | 29 of 29 passed in Debug; both `dotnet format` checks passed; the Android Debug build succeeded with no warning |
+| API | 1163 of 1163 passed in Debug; both `dotnet format` checks passed; the Release build of the API had no warning, and the model has no pending change |
+| Technician app | 381 of 381 passed in Debug; both `dotnet format` checks passed; the Android Debug build succeeded with no warning; installed on the Android API 36 emulator, the app started cold to the sign-in screen without a crash |
 | Notification service | 93 of 93 passed; lint, formatting, both type-checks and the build passed |
-| Web dashboard, unit | 588 of 588 passed in 18 files, with and without coverage; creating the API client, lint, formatting, the type-check with the end-to-end specs, and the build passed |
-| Web dashboard, end to end | The `host` project against `vite preview`: 19 of 19 passed in 5 files, with no Content Security Policy violation, 28 axe audits without a violation, and no match in the log search of 3 API and 3 notification service log files; both projects list 19 tests in 5 files |
+| Web dashboard, unit | 674 of 674 passed in 19 files; creating the API client, lint, formatting, the type-check with the end-to-end specs, and the build passed |
+| Web dashboard, end to end | The `host` project against `vite preview`: 21 of 21 passed in 5 files, with no Content Security Policy violation, 34 axe audits without a violation, no match in the log search of 3 API and 3 notification service log files, and all 5 sessions signed out; against the Vite dev server 20 of 21 passed, the header test failing there as described above; both projects list 21 tests in 5 files |
 | Repository checks | Both scripts passed |
 
 Not run on that date: the Release forms with coverage and the quarantine steps of the CI jobs; the Windows commands, because no Windows host was available; and the `compose` project and the Compose database, because no container runtime was available.

@@ -97,10 +97,23 @@ Refresh and sign-out with the cookie also require the header `X-FieldService-Csr
 - Sign-out in one tab signs out the others through the BroadcastChannel `fieldservice.session`.
 - After sign-in, the dashboard returns only to a path on its own origin: a value that is not a single-slash path, contains control characters, or normalises to another origin falls back to the start page.
 
+### The technician app session
+
+- The refresh token lives only in the platform's secure storage, under the key `fieldservice.refresh-token`. The access token, the signed-in user and the email typed at sign-in live only in memory.
+- One refresh runs at a time. A request that gets `401` triggers one shared refresh and one retry. The access token is sent only to the configured API address: a request to any other scheme, host or port carries no `Authorization` header.
+- A network failure during a refresh keeps the session, so a technician can keep reading the jobs already loaded while offline. Only a refused refresh (`400` or `401`) ends it.
+- A session ends on sign-out, a refused refresh, unreadable secure storage, or a stored session the API rejects at startup. Every one of these clears the stored token, the in-memory session, every loaded job list and job detail, and the sign-in form, and discards any answer still in flight. The next person on a shared device sees nothing of the previous session. The sign-in screen says "Your session ended." after an expiry or a revocation, and nothing after a chosen sign-out.
+- A refresh or restore that finishes after the session has ended or changed writes nothing back.
+- Release builds require an `https` API address, checked when the app is built and again when it starts. Plain `http` is allowed only in Debug builds, for the Android emulator's loopback address.
+- On Android, app backup is off, and the data extraction rules keep the secure-storage preferences and the log files out of cloud backup and device transfer. The app holds only the network permissions. It opens the dialer and the maps app through the system, without a call permission.
+- Navigate opens the device's maps app with the job site address. When no maps app can take it, the app opens a Bing Maps search for that address in the browser. Only the address is sent, and only when the technician taps Navigate.
+
 ## Authorization
 
 - Every endpoint requires an authenticated user unless it is on a short anonymous list: sign-in, refresh, sign-out and the health endpoints, plus the API document in Development and Testing only. A test reads every mapped endpoint and fails on any endpoint missing from the expected list or without an explicit policy.
 - Administrator endpoints require the `Administrator` policy. Job details require `AdministratorOrTechnician`, and a technician sees only the jobs assigned to them: any other job answers `404 job.not-found`, the same answer as a job that does not exist.
+- Assigning a job (`PUT /api/jobs/{jobId}/assignment`) and listing technicians (`GET /api/technicians`) require `Administrator`. A technician's job list (`GET /api/technicians/me/jobs`) requires `Technician` and always uses the caller's id from the access token; it takes no technician parameter. After a job is reassigned, the previous technician gets the same `404` as for a job that does not exist.
+- An assignment carries the job's current version, so two administrators assigning the same job at once cannot both succeed: the second gets `409 concurrency.conflict`.
 - Endpoint parameters and responses use dedicated request and response records, never database entities, and a test enforces it.
 - A request to a route that does not exist gets `404`, and a wrong method gets `405`, for anonymous callers too.
 
@@ -161,6 +174,8 @@ It loads no third-party origin: fonts are self-hosted, styles are static rules i
 
 Logs carry identifiers, never passwords, tokens, cookies, `Authorization` headers, request bodies, query strings, email addresses, names, phone numbers or addresses. Security events (sign-in, refresh, reuse detection, sign-out, refused authorization and rate-limit rejections) are named and listed with their properties in [logging.md](logging.md). A test signs in, refreshes, creates a job and signs out with known sentinel values and fails if any of them reaches a log event or a log file.
 
+The technician app writes one entry per API call, with the method, the route template without its query, the status, the duration and the correlation id. The HTTP client's own request logs are turned off, and a test of the production client setup fails if they come back. Data records print only their type and id.
+
 ## Operator procedures
 
 ### Revoking a user's sessions
@@ -182,6 +197,14 @@ Use this when a device is lost or a refresh token may have been stolen. Deactiva
 
 Record each use with the user id, the time and the reason.
 
+### A lost or stolen technician device
+
+1. Revoke the technician's sessions with the procedure above. The account stays inactive until step 3 of that procedure.
+2. The refresh token on the device stops working at once. The app finds out at its next refresh or start, clears its stored session, its loaded jobs and its sign-in form, and shows "Your session ended.". Until then, it can show only the jobs it had already loaded, and its access token expires within 15 minutes.
+3. Re-enable the account when the technician has a trusted device, and have them sign in there.
+
+The device's screen lock is the control that protects the jobs already on screen. Secure storage is tied to the device and is excluded from backup and device transfer, so the refresh token cannot be restored onto another device.
+
 ### Rotating secrets
 
 | Secret | Procedure | Effect on clients |
@@ -199,6 +222,7 @@ Each feature set is reviewed against these controls before it is merged.
 |---|---|---|---|
 | 2026-10-20 | Repository setup: configuration, database roles, scaffolds, build pipeline | No high or medium finding | Health endpoints limited to GET and HEAD, the production host list and the forwarded-network rule were added with sign-in and jobs |
 | 2026-10-21 | Administrator sign-in, sessions, job creation and the job list | No high or medium finding | A refresh or sign-out now clears the refresh cookie only when the request presented it, as defence in depth against forced sign-out; a whitespace-only password is an ordinary failed sign-in. Requiring a configured proxy address in production is scheduled with the container deployment. |
+| 2026-10-22 | Job assignment, the technician list, the technician app's sign-in, session, job list and job details | No high finding; one medium finding fixed before merge | The technician app kept the previous technician's loaded jobs after a session ended by expiry or revocation; every way a session ends now clears all per-user state, the sign-in form included. Also added: the access token is sent only to the configured API address, a refresh that finishes after sign-out writes nothing back, log files are excluded from backup and device transfer, and the assignment check reads only the columns it needs. |
 
 ## Accepted limitations
 
@@ -206,3 +230,5 @@ Each feature set is reviewed against these controls before it is merged.
 - Rate limits are per process and per window. They slow guessing but do not lock an account, and a distributed attempt from many addresses is outside their scope.
 - There is no self-registration, password reset or multi-factor authentication; accounts come from the seeded data set in local environments.
 - Administrators are not separated from each other: every administrator can see and change every job.
+- The technician app keeps the jobs it has loaded in memory while it runs, so a technician can read them offline. On an unlocked device, anyone holding it can read them until the session ends.
+- When no maps app is installed, Navigate sends the job site address to a public map search in the browser, and the address stays in the browser's history.

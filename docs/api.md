@@ -11,6 +11,7 @@ The examples use the demo data that the API seeds in Development (see [database.
 - [Shared response objects](#shared-response-objects)
 - [Endpoint index](#endpoint-index)
 - [Auth](#auth)
+- [Technicians](#technicians)
 - [Jobs](#jobs)
 - [Checklist templates](#checklist-templates)
 - [Infrastructure endpoints](#infrastructure-endpoints)
@@ -24,7 +25,7 @@ The examples use the demo data that the API seeds in Development (see [database.
 | Base path | `/api`. Every business endpoint lives under it. This is version 1 of the contract. |
 | Other paths | `/health/live`, `/health/ready`, and `/openapi/v1.json` in the Development and Testing environments only |
 | Versioning | Changes under `/api` are additive only. A breaking change gets a decision record and a parallel `/api/v2` route group. |
-| Methods | GET reads. POST creates a resource (`/api/jobs`) or performs an action (the auth actions). There is no PATCH and no DELETE. |
+| Methods | GET reads. POST creates a resource (`/api/jobs`) or performs an action (the auth actions). PUT replaces the state of a sub-resource (`/assignment`). There is no PATCH and no DELETE. |
 | Route ids | `{jobId}` must be a GUID. Any other value matches no route and returns 404 `resource.not-found`. |
 | Unknown input | Unknown query parameters and unknown JSON members are ignored. |
 
@@ -87,14 +88,20 @@ Clients accept enumeration values they do not know and render them neutrally. Ad
 | Collection | Order |
 |---|---|
 | GetJobs `items` | `updatedAt` descending, then `id` descending |
+| GetAssignedJobs `items`, `view=active` | `scheduledStart` ascending, then `number` ascending |
+| GetAssignedJobs `items`, `view=completed` | `updatedAt` descending, then `id` descending; at most 50 items |
+| GetTechnicians `items` | `displayName` ascending, then `id` ascending |
 | GetChecklistTemplates `items` | `name` ascending |
 | `JobDetailsResponse.history` | `occurredAt` ascending; among equal instants a `Created` entry comes first; then `id` |
+
+The `Created` tie-break exists because CreateJob with a technician writes its `Created` and `Assigned` entries in one transaction with the same instant.
 
 ### Query parameters
 
 - A parameter is sent at most once. A repeated parameter is a field error keyed by its name.
 - Enumeration parameters take the exact member name (`status=InProgress`). Integers, other spellings and lists are field errors.
 - GUID, integer and enumeration parameters with an empty value (`status=`) are field errors; leave the parameter out instead. An empty `search` means no search.
+- GetAssignedJobs' `view` takes exactly `active` or `completed`, in lower case. Any other value, an empty `view=` included, is a field error keyed `view`; leaving it out means `active`.
 - Every query error is keyed by the parameter's name, and its message never repeats the value sent.
 
 ### Headers
@@ -174,7 +181,28 @@ Browsers reach the API from the same origin, through the development proxy or th
 - **Access token.** A JWT signed with HS256, valid for 15 minutes. Claims: `iss` and `aud` (both `fieldservice-api`), `sub` (the user id), `role`, `sid` (the session id), `jti`, `iat`, `nbf` and `exp`. Clients do not parse it; they use `accessTokenExpiresAt`.
 - **Policies.** `Administrator`, `Technician` and `AdministratorOrTechnician`. Every endpoint not listed as anonymous requires an authenticated user.
 - **Anonymous endpoints.** SignIn, RefreshSession, SignOut, `/health/live`, `/health/ready`, and `/openapi/v1.json` where it is served.
-- **Ownership.** A technician reads only the jobs assigned to them. Any other job returns 404 `job.not-found`, the same response as a job that does not exist. Administrators read every job.
+- **Ownership.** A technician reads only the jobs assigned to them. Any other job returns 404 `job.not-found`, the same response as a job that does not exist. GetAssignedJobs always lists the caller's own jobs and accepts no technician id. Administrators read every job.
+
+### Concurrency and idempotency
+
+Every job command carries the `version` the client last read. The API checks a command in this order:
+
+1. Authentication and the endpoint's policy: 401 or 403.
+2. Request validation: 400.
+3. The job, loaded through the ownership rule: 404.
+4. Referenced ids such as `technicianId`: 400 field errors.
+5. **Same state:** when the job already holds the requested state, the API returns 200 with the current job, writes nothing, adds no history entry and queues no event, whatever `version` was sent.
+6. Business rules on the current state: 409 with the rule's code.
+7. Saving with the client's `version` as the expected one. A stale version, or another write between steps 3 and 7, returns 409 `concurrency.conflict`.
+
+| Command | Same state (200, no write) | 409 codes |
+|---|---|---|
+| AssignJob | Status `Assigned` with the same technician | `job.not-assignable`, `technician.unavailable`, `concurrency.conflict` |
+| CreateJob | None; it is not idempotent | `technician.unavailable` |
+
+- Every 409 means: refetch, explain, and let the user act again. When a stale version and a broken rule coincide, the rule's code wins, because rules are checked against the current state first.
+- Mutations are never retried automatically. An explicit Retry resends the same body, and the same-state check makes that safe after a lost response.
+- Two commands that race with the same `version` give one success and one 409 `concurrency.conflict`; only the success writes history and queues an event.
 
 ## Errors
 
@@ -221,6 +249,9 @@ No exception type, message or stack trace is returned outside Development.
 | `job.not-found` | 404 | The job was not found. | The job does not exist, or the technician is not assigned to it | Web: say the job no longer exists and go back to the list. Technician app: say the job is no longer assigned to you and reload the list. |
 | `resource.not-found` | 404 | The resource was not found. | No route matches, including a route id that is not a GUID | A client defect |
 | `request.method-not-allowed` | 405 | The method is not allowed for this resource. | The route exists but not for this method | A client defect |
+| `concurrency.conflict` | 409 | The job was changed by someone else. | A stale `version`, or a concurrent write detected while saving | Refetch the job, explain that someone else changed it, and let the user act again. |
+| `job.not-assignable` | 409 | The job can no longer be assigned. | AssignJob on a job that is neither `Unassigned` nor `Assigned` | Refetch. The assign panel disappears because `canAssign` is false. |
+| `technician.unavailable` | 409 | The technician is not available. | The chosen technician is inactive or off shift | Refetch the technicians and ask for another choice. |
 | `request.too-large` | 413 | The request body is too large. | The body exceeds the endpoint's limit | A client defect |
 | `request.unsupported-media-type` | 415 | The request body must be JSON. | A body without `application/json`, or, on an endpoint with a body, any other `Content-Type` even when the body is empty | A client defect |
 | `rate-limit.exceeded` | 429 | Too many requests. | A rate limit was hit | Wait for `Retry-After`. |
@@ -257,6 +288,35 @@ CreateJob without a site address and with the end before the start:
 }
 ```
 
+AssignJob with a stale version:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "The job was changed by someone else.",
+  "status": 409,
+  "instance": "/api/jobs/01a15488-9680-7989-92af-ed07fc34a890/assignment",
+  "code": "concurrency.conflict",
+  "correlationId": "68849554-8207-48bf-94c6-63a5151a3d93",
+  "traceId": "00-eafe895eb8119e6e5d06463590b2ef81-37a0025aa1f2e29f-00"
+}
+```
+
+A rule conflict carries a `detail`, for example AssignJob on a completed job:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "The job can no longer be assigned.",
+  "status": 409,
+  "detail": "JOB-1043 is Completed and can no longer be assigned.",
+  "instance": "/api/jobs/01a15434-27e0-7d81-a2c4-3f5b8e9d1c06/assignment",
+  "code": "job.not-assignable",
+  "correlationId": "3f6d2a10-7c4e-4b8a-9e21-5d0c7b9a4e18",
+  "traceId": "00-4b1e7c2d9a3f5e6071829304a5b6c7d8-2b3c4d5e6f708192-00"
+}
+```
+
 ## Shared response objects
 
 ### Reference objects
@@ -266,10 +326,11 @@ CreateJob without a site address and with the end before the start:
 | `UserReference` | `id` uuid, `displayName` string | Job `createdBy`; history `actor` and `technician` |
 | `JobTechnicianReference` | `id` uuid, `displayName` string, `trade` Trade | `assignedTechnician` in job details and job lists |
 | `ChecklistTemplateReference` | `id` uuid, `name` string, `trade` Trade | Job details |
+| `TechnicianJobReference` | `id` uuid, `number` int64, `status` JobStatus, `scheduledStart` date-time, `scheduledEnd` date-time | GetTechnicians `currentJob` and `nextJob` |
 
 ### JobDetailsResponse
 
-Returned by CreateJob and GetJobById.
+Returned by CreateJob, GetJobById and AssignJob.
 
 | Member | Type | Null | Content |
 |---|---|---|---|
@@ -287,7 +348,7 @@ Returned by CreateJob and GetJobById.
 | `equipment` | string | yes | Up to 200 |
 | `scheduledStart` | date-time | no | |
 | `scheduledEnd` | date-time | no | Always after `scheduledStart` |
-| `checklistTemplate` | ChecklistTemplateReference | no | |
+| `checklistTemplate` | ChecklistTemplateReference | no | Its `trade` lets the assign panel list matching technicians first. |
 | `assignedTechnician` | JobTechnicianReference | yes | Null while `Unassigned`; kept on a cancelled job that had one |
 | `createdBy` | UserReference | no | |
 | `createdAt` | date-time | no | |
@@ -298,6 +359,21 @@ Returned by CreateJob and GetJobById.
 | `cancelledAt` | date-time | yes | Set exactly when `Cancelled` |
 | `history` | JobHistoryEntryResponse[] | no | The complete history, oldest first |
 | `version` | uint32 | no | Send it back with the next command. |
+| `affordances` | JobAffordances | no | What the caller may do with the job now |
+
+### JobAffordances
+
+Computed for the caller from the same transition table that enforces the commands, so no client copies a rule.
+
+| Member | Type | Content |
+|---|---|---|
+| `canAssign` | boolean | AssignJob is open to the caller now |
+
+| Caller and job status | `canAssign` |
+|---|---|
+| Administrator, `Unassigned` or `Assigned` | true |
+| Administrator, `InProgress`, `OnHold`, `Completed` or `Cancelled` | false |
+| Technician, any status | false |
 
 ### JobHistoryEntryResponse
 
@@ -338,15 +414,18 @@ One row of GetJobs.
 | Auth | SignIn | `POST /api/auth/sign-in` | Anonymous | `sign-in` | 16 KB | 200 `SessionResponse` |
 | Auth | RefreshSession | `POST /api/auth/refresh` | Anonymous; refresh credential | `refresh` | 16 KB | 200 `SessionResponse` |
 | Auth | SignOut | `POST /api/auth/sign-out` | Anonymous; refresh credential | Global | 16 KB | 204 |
+| Technicians | GetTechnicians | `GET /api/technicians` | Administrator | Global | | 200 `GetTechniciansResponse` |
+| Technicians | GetAssignedJobs | `GET /api/technicians/me/jobs?view` | Technician, own jobs only | Global | | 200 `GetAssignedJobsResponse` |
 | Jobs | CreateJob | `POST /api/jobs` | Administrator | Global | 1 MB | 201 `JobDetailsResponse`, `Location` |
 | Jobs | GetJobs | `GET /api/jobs?search&status&technicianId&priority&page&pageSize` | Administrator | Global | | 200 `GetJobsResponse` |
 | Jobs | GetJobById | `GET /api/jobs/{jobId}` | AdministratorOrTechnician, own jobs only for a technician | Global | | 200 `JobDetailsResponse` |
+| Jobs | AssignJob | `PUT /api/jobs/{jobId}/assignment` | Administrator | Global | 1 MB | 200 `JobDetailsResponse` |
 | ChecklistTemplates | GetChecklistTemplates | `GET /api/checklist-templates` | Administrator | Global | | 200 `GetChecklistTemplatesResponse` |
 | Infrastructure | Liveness | `GET /health/live` | Anonymous | None | | 200 text |
 | Infrastructure | Readiness | `GET /health/ready` | Anonymous | None | | 200 or 503 text |
 | Infrastructure | OpenAPI document | `GET /openapi/v1.json` (Development and Testing) | Anonymous | None | | 200 JSON |
 
-OpenAPI tags equal the feature names, and operation ids equal the operation names. GET endpoints are safe and idempotent and read no body. Every response carries `X-Correlation-ID`, `Cache-Control: no-store` and the security headers listed above; the examples show only the first two.
+OpenAPI tags equal the feature names, and operation ids equal the operation names. GET endpoints are safe and idempotent and read no body; AssignJob is idempotent through its same-state rule. Every response carries `X-Correlation-ID`, `Cache-Control: no-store` and the security headers listed above; the examples show only the first two.
 
 ## Auth
 
@@ -526,20 +605,148 @@ X-Correlation-ID: 5b0f7c51-7f6e-4e43-9d0a-2c1e8b7d4a90
 Set-Cookie: fs_refresh=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0; path=/api/auth; samesite=strict; httponly
 ```
 
+## Technicians
+
+Route group `/api/technicians`. Each operation sets its own policy. Technician accounts and shifts are seeded; there is no endpoint that changes them.
+
+### GetTechnicians: `GET /api/technicians`
+
+Every technician with their workload: the assign panel, the create form's technician select, and later the technicians page and the dashboard's workload table.
+
+| Item | Value |
+|---|---|
+| Access | Administrator |
+| Query | None |
+| Success | 200 `GetTechniciansResponse { items: TechnicianResponse[] }`, ordered by `displayName`, then `id` |
+| Errors | Only the errors every endpoint can return |
+
+`TechnicianResponse`:
+
+| Member | Type | Null | Content |
+|---|---|---|---|
+| `id` | uuid | no | Equals the user id |
+| `displayName` | string | no | |
+| `email` | string | no | Lower case |
+| `phoneNumber` | string | no | |
+| `trade` | Trade | no | |
+| `isActive` | boolean | no | |
+| `isOnShift` | boolean | no | Seeded; there is no toggle. |
+| `availableForAssignment` | boolean | no | Active and on shift. AssignJob and CreateJob enforce the same rule; the assign panel disables rows where it is false. |
+| `openJobCount` | int32 | no | The technician's jobs in `Assigned`, `InProgress` or `OnHold` |
+| `currentJob` | TechnicianJobReference | yes | The technician's `InProgress` job, or else their `OnHold` job, with the latest `updatedAt` |
+| `nextJob` | TechnicianJobReference | yes | The technician's `Assigned` job with the earliest `scheduledStart`, then the lowest number |
+
+"Finishes JOB-1049 by 12:00 PM" is `currentJob.scheduledEnd`; "next JOB-1055 at 1:00 PM" is `nextJob.scheduledStart`; "5 of 6 on shift" is counted from the items.
+
+```http
+GET /api/technicians HTTP/1.1
+Host: localhost:5173
+Authorization: Bearer {accessToken}
+X-Correlation-ID: 0d7f3a52-91c4-4b8e-a6f1-3e2d9c8b7a61
+```
+
+```json
+{
+  "items": [
+    { "id": "01a0f6b1-2e50-70c1-9f96-2344e84e3210", "displayName": "Aisha Karim", "email": "aisha.karim@fieldservice.example", "phoneNumber": "(555) 014-7810", "trade": "Electrical", "isActive": true, "isOnShift": true, "availableForAssignment": true, "openJobCount": 3, "currentJob": null, "nextJob": { "id": "01a15408-6a00-72b4-9869-797a1273a48d", "number": 1055, "status": "Assigned", "scheduledStart": "2026-10-19T17:00:00.000Z", "scheduledEnd": "2026-10-19T18:30:00.000Z" } },
+    { "id": "01a0f6b1-3620-7891-8f84-8b8ca5e5e243", "displayName": "Lena Park", "email": "lena.park@fieldservice.example", "phoneNumber": "(555) 014-5521", "trade": "FireSafety", "isActive": true, "isOnShift": true, "availableForAssignment": true, "openJobCount": 1, "currentJob": null, "nextJob": { "id": "01a14f86-d980-7ef5-943c-f3568d9cde9e", "number": 1045, "status": "Assigned", "scheduledStart": "2026-10-19T15:30:00.000Z", "scheduledEnd": "2026-10-19T17:00:00.000Z" } },
+    { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes", "email": "marco.reyes@fieldservice.example", "phoneNumber": "(555) 014-2231", "trade": "Hvac", "isActive": true, "isOnShift": true, "availableForAssignment": true, "openJobCount": 3, "currentJob": { "id": "01a15415-3b40-79a4-859f-2cf627f64d02", "number": 1042, "status": "InProgress", "scheduledStart": "2026-10-19T13:00:00.000Z", "scheduledEnd": "2026-10-19T15:00:00.000Z" }, "nextJob": { "id": "01a1546d-1f40-74c9-b6a6-b365b1422136", "number": 1047, "status": "Assigned", "scheduledStart": "2026-10-19T17:30:00.000Z", "scheduledEnd": "2026-10-19T19:00:00.000Z" } },
+    { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan", "email": "priya.natarajan@fieldservice.example", "phoneNumber": "(555) 014-6604", "trade": "Electrical", "isActive": true, "isOnShift": true, "availableForAssignment": true, "openJobCount": 2, "currentJob": { "id": "01a153ec-f2c0-7499-a012-b2be45d90129", "number": 1049, "status": "InProgress", "scheduledStart": "2026-10-19T14:00:00.000Z", "scheduledEnd": "2026-10-19T16:00:00.000Z" }, "nextJob": { "id": "01a14fc6-efc0-73cf-80c7-575c4ba3c50c", "number": 1046, "status": "Assigned", "scheduledStart": "2026-10-20T13:00:00.000Z", "scheduledEnd": "2026-10-20T14:30:00.000Z" } },
+    { "id": "01a0f6b1-3df0-7802-8952-7b3a85cffa38", "displayName": "Samuel Osei", "email": "samuel.osei@fieldservice.example", "phoneNumber": "(555) 014-9148", "trade": "Hvac", "isActive": true, "isOnShift": false, "availableForAssignment": false, "openJobCount": 0, "currentJob": null, "nextJob": null },
+    { "id": "01a0f6b1-3238-7ae6-a3c8-a68e544219c1", "displayName": "Tom Becker", "email": "tom.becker@fieldservice.example", "phoneNumber": "(555) 014-3392", "trade": "Plumbing", "isActive": true, "isOnShift": true, "availableForAssignment": true, "openJobCount": 4, "currentJob": { "id": "01a153da-a340-7b8f-b0eb-d9e42e79e054", "number": 1044, "status": "OnHold", "scheduledStart": "2026-10-19T12:00:00.000Z", "scheduledEnd": "2026-10-19T14:00:00.000Z" }, "nextJob": { "id": "01a14fbd-c800-74f1-815d-4c974cf18ac1", "number": 1048, "status": "Assigned", "scheduledStart": "2026-10-20T12:00:00.000Z", "scheduledEnd": "2026-10-20T13:30:00.000Z" } }
+  ]
+}
+```
+
+### GetAssignedJobs: `GET /api/technicians/me/jobs?view`
+
+The technician app's My jobs list, with its Active and Completed segments. The app groups the items by day.
+
+| Item | Value |
+|---|---|
+| Access | Technician. The list is always the caller's own; no technician id is accepted, and another technician's job never appears. |
+| Success | 200 `GetAssignedJobsResponse { items: AssignedJobResponse[] }` |
+| Errors | 400 `request.validation-failed` keyed `view` for any value other than `active` or `completed`, an empty `view=` included, and for a repeated `view` |
+| Event | None. The app reloads when the page appears and on pull-to-refresh. |
+
+Query parameter `view` (string, optional, default `active`). It is a mode switch with lower-case values, not an enumeration:
+
+| `view` | Statuses | Order and size |
+|---|---|---|
+| `active` | `Assigned`, `InProgress`, `OnHold` | `scheduledStart` ascending, then `number`; every match |
+| `completed` | `Completed`, `Cancelled` | `updatedAt` descending, then `id` descending; at most 50 |
+
+A cancelled job stays in the Completed segment of the technician it was assigned to.
+
+`AssignedJobResponse`:
+
+| Member | Type | Null |
+|---|---|---|
+| `id` | uuid | no |
+| `number` | int64 | no |
+| `title` | string | no |
+| `priority` | JobPriority | no |
+| `status` | JobStatus | no |
+| `customerName` | string | no |
+| `siteAddress` | string | no |
+| `scheduledStart` | date-time | no |
+| `scheduledEnd` | date-time | no |
+| `startedAt` | date-time | yes |
+| `completedAt` | date-time | yes |
+| `cancelledAt` | date-time | yes |
+| `updatedAt` | date-time | no |
+| `version` | uint32 | no |
+
+Example, Marco Reyes's active jobs from the technician app on the Android emulator:
+
+```http
+GET /api/technicians/me/jobs?view=active HTTP/1.1
+Host: 10.0.2.2:5080
+Authorization: Bearer {accessToken}
+X-Correlation-ID: 4a7c2e19-5d83-4f60-b1e2-9c0a8d6f3b27
+```
+
+```json
+{
+  "items": [
+    { "id": "01a15415-3b40-79a4-859f-2cf627f64d02", "number": 1042, "title": "Rooftop HVAC unit not cooling", "priority": "High", "status": "InProgress", "customerName": "Brightwater Medical Clinic", "siteAddress": "214 Harbor Road, Suite 3", "scheduledStart": "2026-10-19T13:00:00.000Z", "scheduledEnd": "2026-10-19T15:00:00.000Z", "startedAt": "2026-10-19T13:12:00.000Z", "completedAt": null, "cancelledAt": null, "updatedAt": "2026-10-19T13:50:00.000Z", "version": 48213 },
+    { "id": "01a1546d-1f40-74c9-b6a6-b365b1422136", "number": 1047, "title": "Walk-in freezer temperature alarm", "priority": "Urgent", "status": "Assigned", "customerName": "Elm Street Bakery", "siteAddress": "88 Elm Street", "scheduledStart": "2026-10-19T17:30:00.000Z", "scheduledEnd": "2026-10-19T19:00:00.000Z", "startedAt": null, "completedAt": null, "cancelledAt": null, "updatedAt": "2026-10-19T14:05:00.000Z", "version": 48004 },
+    { "id": "01a1502b-a500-76e7-86a7-51ea54ddabb9", "number": 1053, "title": "Rooftop unit preventive maintenance", "priority": "Low", "status": "Assigned", "customerName": "Harborview Apartments", "siteAddress": "600 Bayfront Avenue", "scheduledStart": "2026-10-20T17:00:00.000Z", "scheduledEnd": "2026-10-20T19:00:00.000Z", "startedAt": null, "completedAt": null, "cancelledAt": null, "updatedAt": "2026-10-18T20:20:00.000Z", "version": 47120 }
+  ]
+}
+```
+
+`GET /api/technicians/me/jobs?view=Active` returns:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more fields are invalid.",
+  "status": 400,
+  "instance": "/api/technicians/me/jobs",
+  "errors": {
+    "view": ["Choose the active or completed view."]
+  },
+  "code": "request.validation-failed",
+  "correlationId": "9b2e4c71-0d3a-4f86-a5e2-7c1b8d9f0a34",
+  "traceId": "00-1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f-3c4d5e6f7a8b9c0d-00"
+}
+```
+
 ## Jobs
 
 Route group `/api/jobs`. Each operation sets its own policy.
 
 ### CreateJob: `POST /api/jobs`
 
-The administrator creates a job. It starts `Unassigned`.
+The administrator creates a job, optionally assigned to a technician at once.
 
 | Item | Value |
 |---|---|
 | Access | Administrator |
 | Rate limit | Global |
-| Success | 201 Created, `Location: /api/jobs/{id}`, body `JobDetailsResponse` with status `Unassigned` |
-| Side effects | The next job number; one `Created` history entry with the same instant as `createdAt`; after the database commit, a `job.created` event with status `Unassigned`, for live updates once they are enabled |
+| Success | 201 Created, `Location: /api/jobs/{id}`, body `JobDetailsResponse` with status `Unassigned`, or `Assigned` when `technicianId` was given |
+| Side effects | The next job number; a `Created` history entry with the same instant as `createdAt`, plus an `Assigned` entry naming the technician, at the same instant and in the same transaction, when `technicianId` was given; after the database commit, one `job.created` event with status `Unassigned` or `Assigned` and no separate `job.assigned` event, for live updates once they are enabled |
 | Idempotency | None: repeating the request creates a second job. |
 
 Request body `CreateJobRequest`:
@@ -558,12 +765,16 @@ Request body `CreateJobRequest`:
 | `scheduledStart` | date-time | yes | RFC 3339 with an offset |
 | `scheduledEnd` | date-time | yes | After `scheduledStart`, compared at millisecond precision (error key `scheduledEnd`) |
 | `checklistTemplateId` | uuid | yes | One of the checklist templates; otherwise 400 keyed `checklistTemplateId` |
+| `technicianId` | uuid or null | no | Omitted or null: the job starts `Unassigned`. Otherwise it must be a technician (400 keyed `technicianId`) who is active and on shift (409 `technician.unavailable`). |
 
 Errors:
 
 | Status | Code | When |
 |---|---|---|
-| 400 | `request.validation-failed` | A field rule, or an unknown checklist template. Nothing is written and no event is queued. |
+| 400 | `request.validation-failed` | A field rule, an unknown checklist template, or an unknown technician. An unknown template and an unknown technician are reported together. |
+| 409 | `technician.unavailable` | The technician is inactive or off shift. |
+
+Nothing is written and no event is queued when the request fails.
 
 Example, the dashboard's create form filled in:
 
@@ -628,11 +839,28 @@ X-Correlation-ID: b2b49504-1cd6-4228-9a7b-85f907ad5a91
   "history": [
     { "id": "01a1549f-79e0-71ae-8e7f-1896175a9d87", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:45:00.000Z" }
   ],
-  "version": 48241
+  "version": 48241,
+  "affordances": { "canAssign": true }
 }
 ```
 
 After the demo data is seeded, the first job created gets number 1056.
+
+The same request with `"technicianId": "01a0f6b1-2e50-70c1-9f96-2344e84e3210"` (Aisha Karim) creates the job `Assigned`. The response then carries the assignee, `assignedAt` equal to `createdAt`, and both history entries at the same instant, `Created` first:
+
+```json
+{
+  "status": "Assigned",
+  "assignedTechnician": { "id": "01a0f6b1-2e50-70c1-9f96-2344e84e3210", "displayName": "Aisha Karim", "trade": "Electrical" },
+  "assignedAt": "2026-10-19T14:45:00.000Z",
+  "history": [
+    { "id": "01a1549f-79e0-71ae-8e7f-1896175a9d87", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:45:00.000Z" },
+    { "id": "01a1549f-79e0-7cd5-8b6c-20edce648bc9", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-2e50-70c1-9f96-2344e84e3210", "displayName": "Aisha Karim" }, "note": null, "occurredAt": "2026-10-19T14:45:00.000Z" }
+  ]
+}
+```
+
+The other members are as above. Choosing Samuel Osei, who is off shift, returns 409 `technician.unavailable` with the detail "The technician is inactive or off shift." and creates nothing.
 
 ### GetJobs: `GET /api/jobs`
 
@@ -767,11 +995,104 @@ X-Correlation-ID: caa8b68d-452a-4513-8595-cb1ddf78a023
     { "id": "01a1541a-b980-77ba-b9a7-db809866381b", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "note": null, "occurredAt": "2026-10-19T12:20:00.000Z" },
     { "id": "01a1544a-5500-71c6-b856-aa0a8dd0fb9c", "action": "Started", "fromStatus": "Assigned", "toStatus": "InProgress", "actor": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "technician": null, "note": null, "occurredAt": "2026-10-19T13:12:00.000Z" }
   ],
-  "version": 48213
+  "version": 48213,
+  "affordances": { "canAssign": false }
 }
 ```
 
 Clients derive two display values from `history`: "In progress since 9:12 AM" is the latest entry whose `toStatus` equals the current status, and "Dana Whitfield assigned this job to you" is the latest `Assigned` entry.
+
+### AssignJob: `PUT /api/jobs/{jobId}/assignment`
+
+Assigns an `Unassigned` job, or reassigns an `Assigned` one, to an available technician.
+
+| Item | Value |
+|---|---|
+| Access | Administrator |
+| Rate limit | Global |
+| Success | 200 `JobDetailsResponse` with the new `version` |
+| Side effects | `assignedTechnician` and `assignedAt` set, `updatedAt` moved to the same instant; an `Assigned` history entry naming the assignee, with `fromStatus` `Unassigned` or, on a reassignment, `Assigned`; after the database commit, one `job.assigned` event with status `Assigned` and the previous status |
+| Same state | Already `Assigned` to the same technician: 200 with the current job, no write, no history entry and no event, whatever `version` was sent |
+| Idempotency | Through the same-state rule, so an explicit retry after a lost response is safe |
+
+Request body `AssignJobRequest`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `technicianId` | uuid | yes | Must be a technician; any other id, an administrator's included, is 400 keyed `technicianId`. |
+| `version` | uint32 | yes | The job's `version` as last read |
+
+Errors, checked in the order of [Concurrency and idempotency](#concurrency-and-idempotency):
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `request.validation-failed` | A missing or malformed member, or an unknown technician |
+| 404 | `job.not-found` | The job does not exist. It is reported before an unknown technician. |
+| 409 | `job.not-assignable` | The job is `InProgress`, `OnHold`, `Completed` or `Cancelled`, even when the technician is its current assignee |
+| 409 | `technician.unavailable` | The technician is inactive or off shift. |
+| 409 | `concurrency.conflict` | A stale `version`, or another write to the job while saving |
+
+Nothing is written and no event is queued when the request fails. Of two assignments sent with the same `version`, one succeeds and the other gets 409 `concurrency.conflict`, leaving one history entry and one event.
+
+Example, Dana Whitfield assigns JOB-1051 to Priya Natarajan:
+
+```http
+PUT /api/jobs/01a15488-9680-7989-92af-ed07fc34a890/assignment HTTP/1.1
+Host: localhost:5173
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+X-Correlation-ID: 68849554-8207-48bf-94c6-63a5151a3d93
+```
+
+```json
+{
+  "technicianId": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa",
+  "version": 48101
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: 68849554-8207-48bf-94c6-63a5151a3d93
+```
+
+```json
+{
+  "id": "01a15488-9680-7989-92af-ed07fc34a890",
+  "number": 1051,
+  "title": "Replace faulty breaker panel",
+  "description": "Main breaker panel trips under load. Several 20 A breakers are warm to the touch. The library closes to the public at 5 PM.",
+  "priority": "High",
+  "status": "Assigned",
+  "customerName": "Pinecrest Public Library",
+  "siteAddress": "300 Pinecrest Road",
+  "siteAccessNotes": "Main electrical room, basement level. Building supervisor will meet you at the loading door.",
+  "contactName": "Owen Mitchell",
+  "contactPhone": "(555) 014-3307",
+  "equipment": null,
+  "scheduledStart": "2026-10-19T19:30:00.000Z",
+  "scheduledEnd": "2026-10-19T21:00:00.000Z",
+  "checklistTemplate": { "id": "01a15175-3c00-7000-8000-000105000000", "name": "Electrical panel inspection", "trade": "Electrical" },
+  "assignedTechnician": { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan", "trade": "Electrical" },
+  "createdBy": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" },
+  "createdAt": "2026-10-19T14:20:00.000Z",
+  "updatedAt": "2026-10-19T14:48:00.000Z",
+  "assignedAt": "2026-10-19T14:48:00.000Z",
+  "startedAt": null,
+  "completedAt": null,
+  "cancelledAt": null,
+  "history": [
+    { "id": "01a15488-9680-7a4a-9498-8e59978d42cc", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:20:00.000Z" },
+    { "id": "01a154a2-3900-7138-bfc1-d54f96a71fa5", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan" }, "note": null, "occurredAt": "2026-10-19T14:48:00.000Z" }
+  ],
+  "version": 48263,
+  "affordances": { "canAssign": true }
+}
+```
+
+Sending the same body again returns the same job with `version` 48263 and changes nothing. Assigning Samuel Osei, who is off shift, returns 409 `technician.unavailable`; a stale `version` returns the 409 `concurrency.conflict` shown in [Example](#example).
 
 ## Checklist templates
 

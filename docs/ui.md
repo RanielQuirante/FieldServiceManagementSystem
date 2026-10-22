@@ -1,6 +1,6 @@
 # User interface
 
-This document describes the dashboard's user interface: its design tokens, fonts, icons and shared components, the accessibility target and how it is checked, and the supported browsers. The technician app follows the same design language; its notes are added when its screens are built.
+This document describes the dashboard's user interface: its design tokens, fonts, icons and shared components, the accessibility target and how it is checked, and the supported browsers. The technician app follows the same design language; its theme, controls and screens are described in [Technician app](#technician-app).
 
 ## Contents
 
@@ -12,6 +12,7 @@ This document describes the dashboard's user interface: its design tokens, fonts
 - [Pages and routes](#pages-and-routes)
 - [Accessibility](#accessibility)
 - [Supported browsers](#supported-browsers)
+- [Technician app](#technician-app)
 
 ## Design language
 
@@ -109,3 +110,45 @@ Automated checks run an accessibility audit, keyboard, reflow and preference che
 The dashboard supports the current and previous major versions of Chrome, Edge, Firefox and Safari. It relies on `backdrop-filter` (with the prefixed form for older Safari), `:has()`, container queries and `color-scheme`; where `backdrop-filter` is missing, glass surfaces fall back to solid fills. Balanced and pretty text wrapping are progressive enhancements.
 
 The dashboard runs under a strict content security policy described in [security.md](security.md#headers-and-content-security-policy): no inline styles or scripts and no third-party origin.
+
+## Technician app
+
+The technician app uses the same tokens, type roles, fonts and icons as the dashboard, expressed as .NET MAUI resources.
+
+### Theme
+
+| File in `src/FieldService.Mobile/Shared/Theme` | Holds |
+|---|---|
+| `Colors.xaml`, `Brushes.xaml` | The colour tokens and the gradient and glass brushes built from them |
+| `Typography.xaml` | The type roles as label styles, with the Geist and Geist Mono families |
+| `Metrics.xaml` | Spacing, radii, control heights and stroke widths |
+| `Styles.xaml` | Implicit and named styles for the controls |
+| `Icons.xaml` | The icon path data, the same drawings as the dashboard |
+
+Icons are drawn by the `Icon` control on a 24-unit grid, through a strict parser of the SVG path data, so the app and the dashboard render the same shapes. The six font files are listed in [third-party-notices.md](third-party-notices.md).
+
+The splash screen shows the FieldService mark on deep navy, and the launcher icon is the mark on the brand gradient; both are SVG files in `src/FieldService.Mobile/Resources`. Each screen's dark header runs under the status bar; once the content scrolls, an opaque navy band keeps the status-bar icons readable.
+
+### Controls
+
+The controls live in `src/FieldService.Mobile/Shared/Controls`: `AppHeader` (list, pushed and desktop top-bar variants), `PrimaryButton`, `FormField`, `Banner` (information, offline and error), `JobCard`, `StatusChip`, `PriorityLabel`, `SegmentedControl`, `CountCapsule`, `Avatar`, `InfoRow`, `IconTile`, `LinkCard`, `Timeline`, `EmptyState`, `BottomSheet`, `ActionDock` and `Icon`.
+
+### Screens
+
+| Screen | Route | Content |
+|---|---|---|
+| Sign in | `//sign-in` | Email and password with field errors, an error banner, and the "Your session ended." notice after an expiry or a revocation |
+| My jobs | `//jobs` | Active and Completed segments, jobs grouped by day, pull to refresh, the account sheet with sign-out |
+| Job details | `jobs/details` | Status, priority, schedule, customer, site, access notes, contact, equipment, description, timeline and checklist; an Assigned job shows the schedule first, with Navigate and, where the device can dial and the job has a contact phone, Call |
+
+Every screen has loading, empty, error and offline states. An error shows a reference for support and a Try again button. When the API cannot be reached, the app keeps the jobs it has loaded and says when they were loaded.
+
+On Windows, at 900 units wide or more, My jobs shows the list and the selected job's details side by side.
+
+### Accessibility
+
+- Every tappable element is at least 48 units high and wide. A test reads the XAML and fails on any interactive style or control below 48.
+- Every control that carries meaning has a screen-reader description, such as "Active, 3, selected" for a segment. Icons beside text are hidden from screen readers.
+- A job card is one screen-reader item with the role and action of a button, named by its job number, title, status, priority, schedule, customer and site.
+- Times and short dates never break across lines.
+- Status and priority always have a text label, as in the dashboard.
