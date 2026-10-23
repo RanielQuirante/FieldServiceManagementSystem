@@ -1,3 +1,4 @@
+using FieldService.Api.Features.Auth.IssueSocketTicket;
 using FieldService.Api.Features.Auth.RefreshSession;
 using FieldService.Api.Features.Auth.SignIn;
 using FieldService.Api.Features.Auth.SignOut;
@@ -19,5 +20,6 @@ public static class AuthEndpoints
         SignInEndpoint.Map(auth);
         RefreshSessionEndpoint.Map(auth);
         SignOutEndpoint.Map(auth);
+        IssueSocketTicketEndpoint.Map(auth);
     }
 }

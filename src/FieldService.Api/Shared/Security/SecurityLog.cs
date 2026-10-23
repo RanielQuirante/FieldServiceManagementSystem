@@ -16,6 +16,8 @@ public static partial class SecurityLog
 
     public const string SignOutEvent = "auth.sign-out";
 
+    public const string SocketTicketIssuedEvent = "auth.socket-ticket.issued";
+
     public const string ForbiddenEvent = "authz.forbidden";
 
     public const string RateLimitRejectedEvent = "rate-limit.rejected";
@@ -107,4 +109,11 @@ public static partial class SecurityLog
         string? userId,
         string? clientIp,
         string? routePattern);
+
+    [LoggerMessage(
+        EventId = 4009,
+        EventName = SocketTicketIssuedEvent,
+        Level = LogLevel.Information,
+        Message = "Socket ticket {TicketId} issued to user {UserId}")]
+    public static partial void SocketTicketIssued(ILogger logger, Guid userId, Guid ticketId);
 }

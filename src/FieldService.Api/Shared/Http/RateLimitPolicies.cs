@@ -11,11 +11,15 @@ public static class RateLimitPolicies
 
     public const string Refresh = "refresh";
 
+    public const string SocketTickets = "socket-tickets";
+
     public const string Global = "global";
 
     public const int SignInLimit = 10;
 
     public const int RefreshLimit = 30;
+
+    public const int SocketTicketLimit = 30;
 
     public const int UserLimit = 300;
 
@@ -42,10 +46,13 @@ public static class RateLimitPolicies
                 RateLimitRejections.WriteAsync(context, Global, cancellationToken);
             options.AddPolicy(SignIn, new ClientAddressPolicy(SignIn, SignInLimit));
             options.AddPolicy(Refresh, new ClientAddressPolicy(Refresh, RefreshLimit));
+            options.AddPolicy(SocketTickets, new UserPolicy(SocketTickets, SocketTicketLimit));
         });
 
         return services;
     }
+
+    public static bool PartitionsByUser(string policy) => policy is Global or SocketTickets;
 
     public static string ClientAddress(HttpContext context) =>
         context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress;
@@ -85,5 +92,16 @@ public static class RateLimitPolicies
 
         public RateLimitPartition<string> GetPartition(HttpContext httpContext) =>
             RateLimitPartition.GetFixedWindowLimiter(ClientAddress(httpContext), _ => FixedWindow(permitLimit));
+    }
+
+    private sealed class UserPolicy(string name, int permitLimit) : IRateLimiterPolicy<string>
+    {
+        public Func<OnRejectedContext, CancellationToken, ValueTask>? OnRejected =>
+            (context, cancellationToken) => RateLimitRejections.WriteAsync(context, name, cancellationToken);
+
+        public RateLimitPartition<string> GetPartition(HttpContext httpContext) =>
+            AuthenticatedUserId(httpContext) is { } userId
+                ? RateLimitPartition.GetFixedWindowLimiter(userId, _ => FixedWindow(permitLimit))
+                : RateLimitPartition.GetNoLimiter(string.Empty);
     }
 }

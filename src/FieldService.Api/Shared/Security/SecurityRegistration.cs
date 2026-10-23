@@ -20,6 +20,7 @@ public static class SecurityRegistration
         services.AddSingleton(PasswordVerifier.CreateHasher());
         services.AddSingleton<PasswordVerifier>();
         services.AddSingleton<AccessTokenIssuer>();
+        services.AddSingleton<SocketTicketIssuer>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)

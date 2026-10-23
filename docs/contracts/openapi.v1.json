@@ -216,6 +216,63 @@
         }
       }
     },
+    "/api/auth/socket-tickets": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Issue a socket ticket",
+        "description": "Issues a ticket for one connection attempt to the notification service's Socket.IO endpoint. The ticket is valid for 60 seconds and is accepted once; every call issues a new ticket. Send no body. The access token's session must still be live and its user active; a revoked or expired session, or an inactive user, returns 401 auth.session-expired.",
+        "operationId": "IssueSocketTicket",
+        "responses": {
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocketTicketResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/technicians": {
       "get": {
         "tags": [
@@ -1799,6 +1856,22 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "SocketTicketResponse": {
+        "required": [
+          "ticket",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

@@ -42,7 +42,7 @@ public sealed class RateLimitRejections(TimeProvider time, ILogger<RateLimitReje
 
     private void Record(HttpContext http, string policy, int windowSeconds)
     {
-        var userId = policy == RateLimitPolicies.Global ? RateLimitPolicies.AuthenticatedUserId(http) : null;
+        var userId = RateLimitPolicies.PartitionsByUser(policy) ? RateLimitPolicies.AuthenticatedUserId(http) : null;
         var partitionKind = userId is null ? RateLimitPolicies.AddressPartitionKind : RateLimitPolicies.UserPartitionKind;
         var partition = userId ?? RateLimitPolicies.ClientAddress(http);
         if (!IsFirstInWindow($"{policy}|{partitionKind}:{partition}", windowSeconds))
