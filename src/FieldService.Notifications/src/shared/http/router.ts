@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Logger } from '../../logging.ts'
+import { failureFields, type Logger } from '../../logging.ts'
 import { HttpError, MethodNotAllowedError, NotFoundError, ServerError } from './http-errors.ts'
 import { correlationIdOf, sendProblem } from './responses.ts'
 
@@ -43,7 +43,7 @@ export function createRouter(logger: Logger): Router {
 
   function fail(request: IncomingMessage, response: ServerResponse, error: unknown): void {
     if (!(error instanceof HttpError)) {
-      logger.error({ err: error }, 'request.failed')
+      logger.error(failureFields(error), 'request.failed')
     }
     if (response.headersSent) {
       response.destroy()

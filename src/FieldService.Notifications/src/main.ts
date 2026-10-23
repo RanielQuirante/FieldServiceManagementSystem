@@ -1,5 +1,5 @@
 import { ConfigError, loadConfig, type Config } from './config.ts'
-import { closeLogger, createLogger, type Logger } from './logging.ts'
+import { closeLogger, createLogger, failureFields, type Logger } from './logging.ts'
 import { createNotificationServer, type NotificationServer } from './server.ts'
 import { systemClock } from './shared/clock.ts'
 
@@ -18,6 +18,7 @@ function readConfig(): Config | undefined {
 }
 
 function exitAfterFlush(logger: Logger, code: number): void {
+  process.exitCode = code
   const fallback = setTimeout(() => {
     process.exit(code)
   }, shutdownTimeoutMs)
@@ -28,12 +29,12 @@ function exitAfterFlush(logger: Logger, code: number): void {
 }
 
 function installProcessHandlers(logger: Logger): void {
-  process.on('uncaughtException', (error) => {
-    logger.fatal({ err: error }, 'process.uncaught-exception')
+  process.on('uncaughtException', (error: unknown) => {
+    logger.fatal(failureFields(error), 'process.uncaught-exception')
     exitAfterFlush(logger, 1)
   })
-  process.on('unhandledRejection', (reason) => {
-    logger.fatal({ err: reason }, 'process.unhandled-rejection')
+  process.on('unhandledRejection', (reason: unknown) => {
+    logger.fatal(failureFields(reason), 'process.unhandled-rejection')
     exitAfterFlush(logger, 1)
   })
 }
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
     const address = await server.listen()
     logger.info(address, 'server.listening')
   } catch (error) {
-    logger.fatal({ err: error }, 'server.listen-failed')
+    logger.fatal(failureFields(error), 'server.listen-failed')
     exitAfterFlush(logger, 1)
     return
   }

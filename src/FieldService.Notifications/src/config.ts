@@ -51,6 +51,7 @@ const logPrettyRule = 'must be true or false'
 const webhookSecretCountRule = 'must hold 1 or 2 space-separated entries'
 const webhookSecretFormatRule = 'entries must be whsec_ followed by base64 of at least 32 bytes'
 const socketTicketKeyFormatRule = 'must be base64 of at least 32 bytes'
+const distinctFromTicketKeyRule = 'entries must differ from SOCKET_TICKET_KEY'
 const publishedTestKeyRule = 'must not be a published test key'
 const patternedKeyRule = 'must not be a patterned key'
 const originCountRule = 'must hold 1 to 10 space-separated origins'
@@ -126,6 +127,17 @@ function decodeKey(text: string, formatRule: string): Uint8Array | string {
   return bytes
 }
 
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return Buffer.compare(left, right) === 0
+}
+
+function blocksKeyComparison(path: readonly PropertyKey[] | undefined): boolean {
+  const variable = path?.[0]
+  return (
+    variable === undefined || variable === 'WEBHOOK_SECRETS' || variable === 'SOCKET_TICKET_KEY'
+  )
+}
+
 function decodeWebhookSecret(entry: string): Uint8Array | string {
   if (!entry.startsWith(webhookSecretPrefix)) {
     return webhookSecretFormatRule
@@ -158,7 +170,7 @@ function requiredText() {
   return z.string({ error: requiredRule })
 }
 
-const environmentSchema = z.object({
+const variablesSchema = z.object({
   HOST: z.preprocess(
     unsetWhenBlank,
     z.string({ error: hostRule }).refine(isHost, { error: hostRule }).default('127.0.0.1'),
@@ -231,6 +243,16 @@ const environmentSchema = z.object({
   ),
   SOCKET_SESSION_MAX_SECONDS: z.preprocess(unsetWhenBlank, integerInRange(1, 3600).default(900)),
 })
+
+const environmentSchema = variablesSchema.refine(
+  (values) =>
+    values.WEBHOOK_SECRETS.every((secret) => !sameBytes(secret, values.SOCKET_TICKET_KEY)),
+  {
+    path: ['WEBHOOK_SECRETS'],
+    error: distinctFromTicketKeyRule,
+    when: (payload) => !payload.issues.some((issue) => blocksKeyComparison(issue.path)),
+  },
+)
 
 export function loadConfig(environment: Environment): Config {
   const result = environmentSchema.safeParse(environment)

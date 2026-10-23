@@ -33,8 +33,19 @@ export function sendText(response: ServerResponse, status: number, text: string)
   send(response, status, 'text/plain', text)
 }
 
-export function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  send(response, status, 'application/json', JSON.stringify(body))
+export function correlationHeaders(
+  correlationId: string | undefined,
+): Readonly<Record<string, string>> {
+  return correlationId === undefined ? {} : { 'x-correlation-id': correlationId }
+}
+
+export function sendJson(
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+  extraHeaders: Readonly<Record<string, string>> = {},
+): void {
+  send(response, status, 'application/json', JSON.stringify(body), extraHeaders)
 }
 
 export function sendProblem(
@@ -49,5 +60,8 @@ export function sendProblem(
     code: error.code,
     ...(correlationId === undefined ? {} : { correlationId }),
   }
-  send(response, error.status, 'application/problem+json', JSON.stringify(problem), error.headers)
+  send(response, error.status, 'application/problem+json', JSON.stringify(problem), {
+    ...error.headers,
+    ...correlationHeaders(correlationId),
+  })
 }
