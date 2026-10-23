@@ -153,6 +153,10 @@ export const useSessionStore = defineStore('session', () => {
     channel.announceSignedOut()
   }
 
+  function expireSession(): void {
+    endSession('expired')
+  }
+
   function onSessionEnded(listener: SessionEndListener): () => void {
     endListeners.add(listener)
     return () => {
@@ -177,6 +181,7 @@ export const useSessionStore = defineStore('session', () => {
     signIn,
     signOut,
     refreshSession,
+    expireSession,
     onSessionEnded,
   }
 })

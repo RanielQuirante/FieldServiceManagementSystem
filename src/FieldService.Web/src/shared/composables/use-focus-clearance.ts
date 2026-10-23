@@ -2,17 +2,30 @@ import { onBeforeUnmount, onMounted, type ShallowRef } from 'vue'
 
 export const focusClearanceMargin = 32
 
+export type MainEndPadding = '--spacing-fs-56' | '--spacing-fs-48'
+
 let clearanceSheet: CSSStyleSheet | null = null
 
 function canAdoptStyleSheets(): boolean {
   return typeof CSSStyleSheet !== 'undefined' && 'adoptedStyleSheets' in document
 }
 
-export function setScrollPaddingTop(pixels: number | null): void {
+export function clearanceRules(pixels: number, mainEndPadding: MainEndPadding): string {
+  const clearance = Math.ceil(pixels)
+  return [
+    `:root { scroll-padding-bottom: ${clearance}px; }`,
+    `#main { padding-bottom: max(var(${mainEndPadding}), ${clearance}px); }`,
+  ].join('\n')
+}
+
+export function setToastClearance(
+  pixels: number | null,
+  mainEndPadding: MainEndPadding = '--spacing-fs-56',
+): void {
   if (!canAdoptStyleSheets()) {
     return
   }
-  if (pixels === null) {
+  if (pixels === null || !Number.isFinite(pixels)) {
     const sheet = clearanceSheet
     if (sheet !== null) {
       document.adoptedStyleSheets = document.adoptedStyleSheets.filter((item) => item !== sheet)
@@ -24,15 +37,18 @@ export function setScrollPaddingTop(pixels: number | null): void {
     clearanceSheet = new CSSStyleSheet()
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, clearanceSheet]
   }
-  clearanceSheet.replaceSync(`:root { scroll-padding-top: ${Math.ceil(pixels)}px; }`)
+  clearanceSheet.replaceSync(clearanceRules(pixels, mainEndPadding))
 }
 
-export function useFocusClearance(target: Readonly<ShallowRef<HTMLElement | null>>): void {
+export function useFocusClearance(
+  target: Readonly<ShallowRef<HTMLElement | null>>,
+  mainEndPadding: MainEndPadding,
+): void {
   let observer: ResizeObserver | null = null
 
   function update(): void {
     const height = target.value?.getBoundingClientRect().height ?? 0
-    setScrollPaddingTop(height > 0 ? height + focusClearanceMargin : null)
+    setToastClearance(height > 0 ? height + focusClearanceMargin : null, mainEndPadding)
   }
 
   onMounted(() => {
@@ -47,6 +63,6 @@ export function useFocusClearance(target: Readonly<ShallowRef<HTMLElement | null
   onBeforeUnmount(() => {
     observer?.disconnect()
     observer = null
-    setScrollPaddingTop(null)
+    setToastClearance(null)
   })
 }

@@ -54,12 +54,16 @@ export const useJobsStore = defineStore('jobs', () => {
   const listFilters = shallowRef<JobFilters | null>(null)
   let listRequest = 0
 
+  let listLoad: Promise<void> | null = null
+
   const job = shallowRef<JobDetails | null>(null)
   const jobStatus = shallowRef<JobDetailStatus>('idle')
   const jobError = shallowRef<ApiError | null>(null)
   const jobNotice = shallowRef<JobNotice | null>(null)
   let jobRequest = 0
   let noticeCount = 0
+  let openJobId: string | null = null
+  let jobLoad: Promise<void> | null = null
 
   const statusCounts = computed<Readonly<Record<JobStatus, number>> | null>(() => {
     if (list.value === null) {
@@ -84,6 +88,43 @@ export const useJobsStore = defineStore('jobs', () => {
   )
 
   async function loadJobs(filters: JobFilters): Promise<void> {
+    const running = performLoadJobs(filters)
+    listLoad = running
+    try {
+      await running
+    } finally {
+      if (listLoad === running) {
+        listLoad = null
+      }
+    }
+  }
+
+  async function refreshJobs(): Promise<boolean> {
+    if (listLoad !== null) {
+      await listLoad.catch(() => undefined)
+    }
+    const filters = listFilters.value
+    if (filters === null || list.value === null || listStatus.value !== 'ready') {
+      return false
+    }
+    listRequest += 1
+    const request = listRequest
+    try {
+      const result = await jobsApi.getJobs(jobListQuery(filters))
+      if (request !== listRequest) {
+        return false
+      }
+      list.value = result
+      return true
+    } catch (error) {
+      if (request !== listRequest && isApiError(error)) {
+        return false
+      }
+      throw error
+    }
+  }
+
+  async function performLoadJobs(filters: JobFilters): Promise<void> {
     listRequest += 1
     const request = listRequest
     listStatus.value = 'loading'
@@ -109,6 +150,69 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   async function openJob(jobId: string): Promise<void> {
+    openJobId = jobId
+    const running = performOpenJob(jobId)
+    jobLoad = running
+    try {
+      await running
+    } finally {
+      if (jobLoad === running) {
+        jobLoad = null
+      }
+    }
+  }
+
+  function acceptJob(result: JobDetails): void {
+    const current = job.value
+    if (
+      current !== null &&
+      current.id === result.id &&
+      jobStatus.value === 'ready' &&
+      Date.parse(current.updatedAt) > Date.parse(result.updatedAt)
+    ) {
+      return
+    }
+    job.value = result
+    jobStatus.value = 'ready'
+    jobError.value = null
+  }
+
+  async function refreshOpenJob(): Promise<boolean> {
+    if (jobLoad !== null) {
+      await jobLoad.catch(() => undefined)
+    }
+    const jobId = openJobId
+    if (jobId === null || jobStatus.value !== 'ready') {
+      return false
+    }
+    try {
+      const result = await jobsApi.getJobById(jobId)
+      if (openJobId !== jobId || jobStatus.value !== 'ready') {
+        return false
+      }
+      acceptJob(result)
+      return true
+    } catch (error) {
+      if (openJobId !== jobId && isApiError(error)) {
+        return false
+      }
+      throw error
+    }
+  }
+
+  function applyLiveJob(result: JobDetails): void {
+    if (result.id !== openJobId) {
+      return
+    }
+    if (jobStatus.value === 'loading') {
+      jobRequest += 1
+      acceptJob(result)
+    } else if (jobStatus.value === 'ready') {
+      acceptJob(result)
+    }
+  }
+
+  async function performOpenJob(jobId: string): Promise<void> {
     jobRequest += 1
     const request = jobRequest
     if (job.value?.id === jobId && jobStatus.value === 'ready') {
@@ -176,6 +280,7 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   function closeJob(): void {
+    openJobId = null
     jobRequest += 1
     job.value = null
     jobStatus.value = 'idle'
@@ -234,7 +339,10 @@ export const useJobsStore = defineStore('jobs', () => {
     jobError,
     jobNotice,
     loadJobs,
+    refreshJobs,
     openJob,
+    refreshOpenJob,
+    applyLiveJob,
     reloadJob,
     refreshJob,
     closeJob,

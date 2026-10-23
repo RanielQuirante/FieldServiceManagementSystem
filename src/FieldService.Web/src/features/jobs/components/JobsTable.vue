@@ -17,8 +17,9 @@ withDefaults(
     state: DataTableState
     busy?: boolean
     now: Date
+    flashedIds?: ReadonlySet<string>
   }>(),
-  { busy: false },
+  { busy: false, flashedIds: () => new Set<string>() },
 )
 
 const columns: readonly DataTableColumn[] = [
@@ -55,6 +56,7 @@ defineExpose({ focusRegion })
     :busy="busy"
     loading-label="Loading jobs"
     :min-width="980"
+    :updated-keys="flashedIds"
   >
     <template #cell="{ row, column }">
       <span v-if="column.key === 'job'" class="jobs-table__job">
@@ -82,6 +84,12 @@ defineExpose({ focusRegion })
         <span v-else class="jobs-table__unassigned">Unassigned</span>
       </template>
       <StatusChip v-else-if="column.key === 'status'" :status="row.status" />
+      <time
+        v-else-if="column.key === 'updated' && flashedIds.has(row.id)"
+        class="jobs-table__just-now"
+        :datetime="row.updatedAt"
+        ><span class="jobs-table__live-dot" aria-hidden="true"></span>Just now</time
+      >
       <time
         v-else-if="column.key === 'updated'"
         class="jobs-table__updated"
@@ -162,5 +170,23 @@ defineExpose({ focusRegion })
   letter-spacing: var(--text-fs-mono--letter-spacing);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.jobs-table__just-now {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-fs-6);
+  color: var(--color-fs-just-now);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.jobs-table__live-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-fs-pill);
+  background: var(--fs-gradient-accent);
+  box-shadow: var(--shadow-fs-live-dot);
 }
 </style>

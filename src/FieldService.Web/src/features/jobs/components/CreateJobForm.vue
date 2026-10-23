@@ -41,6 +41,7 @@ import {
   watch,
 } from 'vue'
 
+import { useLiveRefetch } from '@/features/realtime/use-live-refetch'
 import { isApiError, type ApiError } from '@/shared/api/api-error'
 import { useAsyncState } from '@/shared/composables/use-async-state'
 import { localDateTimeToInstant } from '@/shared/format/date-time'
@@ -99,7 +100,10 @@ const {
   data: technicianData,
   error: technicianError,
   run: loadTechnicians,
+  refresh: refreshTechnicians,
 } = useAsyncState(getAssignableTechnicians)
+
+useLiveRefetch({ refetch: refreshTechnicians, refetchLists: refreshTechnicians })
 
 const form = reactive({
   title: '',

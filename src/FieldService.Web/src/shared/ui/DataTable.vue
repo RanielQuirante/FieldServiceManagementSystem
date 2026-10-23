@@ -12,7 +12,7 @@ export type DataTableState = 'loading' | 'content' | 'empty'
 </script>
 
 <script setup lang="ts" generic="Row">
-import { computed, useTemplateRef } from 'vue'
+import { computed, nextTick, onBeforeUpdate, onUpdated, useTemplateRef } from 'vue'
 
 import LoadingState from './LoadingState.vue'
 
@@ -28,6 +28,7 @@ const props = withDefaults(
     minWidth?: 0 | 640 | 720 | 900 | 980
     inCard?: boolean
     skeletonRows?: number
+    updatedKeys?: ReadonlySet<string>
   }>(),
   {
     state: 'content',
@@ -36,6 +37,7 @@ const props = withDefaults(
     minWidth: 0,
     inCard: false,
     skeletonRows: 5,
+    updatedKeys: () => new Set<string>(),
   },
 )
 
@@ -58,6 +60,34 @@ const region = useTemplateRef<HTMLElement>('region')
 function focusRegion(): void {
   region.value?.focus()
 }
+
+let focusedRowBeforeUpdate: Element | null = null
+
+function focusedRow(): Element | null {
+  const active = document.activeElement
+  if (active === null || region.value?.contains(active) !== true) {
+    return null
+  }
+  return active.closest('tbody tr')
+}
+
+onBeforeUpdate(() => {
+  focusedRowBeforeUpdate = focusedRow()
+})
+
+onUpdated(() => {
+  const row = focusedRowBeforeUpdate
+  focusedRowBeforeUpdate = null
+  if (row === null || row.isConnected) {
+    return
+  }
+  void nextTick(() => {
+    const active = document.activeElement
+    if (active === null || active === document.body || !active.isConnected) {
+      focusRegion()
+    }
+  })
+})
 
 defineExpose({ focusRegion })
 </script>
@@ -103,7 +133,14 @@ defineExpose({ focusRegion })
             </td>
           </tr>
           <template v-else>
-            <tr v-for="row in rows" :key="rowKey(row)" class="data-table__row">
+            <tr
+              v-for="row in rows"
+              :key="rowKey(row)"
+              :class="[
+                'data-table__row',
+                { 'data-table__row--updated': updatedKeys.has(rowKey(row)) },
+              ]"
+            >
               <td v-for="column in columns" :key="column.key">
                 <slot name="cell" :row="row" :column="column" />
               </td>
@@ -224,6 +261,11 @@ td:last-child {
 
 .data-table__row:not(.data-table__row--skeleton, .data-table__row--empty):hover td {
   background: var(--color-fs-row-hover);
+}
+
+.data-table__row.data-table__row--updated td,
+.data-table__row.data-table__row--updated:hover td {
+  background: var(--color-fs-flash);
 }
 
 .data-table__row--empty > .data-table__empty-cell {

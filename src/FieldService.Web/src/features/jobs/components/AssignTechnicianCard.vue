@@ -18,6 +18,7 @@ import {
   watch,
 } from 'vue'
 
+import { useLiveRefetch } from '@/features/realtime/use-live-refetch'
 import { firstFieldError, isApiError, type ApiError } from '@/shared/api/api-error'
 import { useAsyncState } from '@/shared/composables/use-async-state'
 import { tradeLabel } from '@/shared/format/labels'
@@ -84,7 +85,10 @@ const {
   data: listData,
   error: listError,
   run: loadTechnicians,
+  refresh: refreshTechnicians,
 } = useAsyncState(getAssignableTechnicians)
+
+useLiveRefetch({ refetch: refreshTechnicians, refetchLists: refreshTechnicians })
 
 const generatedId = useId()
 

@@ -16,7 +16,7 @@ async function openApplication(): Promise<void> {
 <template>
   <div class="sign-in-page">
     <SignInHero />
-    <main class="sign-in-page__main">
+    <main id="main" class="sign-in-page__main" tabindex="-1">
       <SignInForm @signed-in="openApplication" />
     </main>
   </div>
@@ -35,6 +35,10 @@ async function openApplication(): Promise<void> {
   align-items: center;
   justify-content: center;
   padding: var(--spacing-fs-48) clamp(16px, 4vw, 64px);
+}
+
+.sign-in-page__main:focus {
+  outline: none;
 }
 
 @media (width < 600px) {

@@ -141,16 +141,26 @@ function isActive(item: NavigationItem): boolean {
           </ol>
         </nav>
         <div class="app-shell__actions">
-          <AppButton v-if="showsNewJob" :to="{ name: 'job-create' }" icon="plus">New job</AppButton>
+          <div v-if="$slots.status" class="app-shell__status">
+            <slot name="status" />
+          </div>
+          <AppButton
+            v-if="showsNewJob"
+            class="app-shell__new-job"
+            :to="{ name: 'job-create' }"
+            icon="plus"
+            >New job</AppButton
+          >
         </div>
       </header>
       <main id="main" ref="main" class="app-shell__main" tabindex="-1">
-        <ToastHost placement="main" />
+        <slot name="notice" />
         <div class="app-shell__content">
           <slot />
         </div>
       </main>
     </div>
+    <ToastHost placement="shell" />
   </div>
 </template>
 
@@ -401,6 +411,39 @@ function isActive(item: NavigationItem): boolean {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-fs-12);
+}
+
+.app-shell__status {
+  display: flex;
+  align-items: center;
+}
+
+@container (width < 600px) {
+  .app-shell__topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .app-shell__actions {
+    display: contents;
+  }
+
+  .app-shell__breadcrumb {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .app-shell__new-job {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .app-shell__status {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
 }
 
 .app-shell__main {

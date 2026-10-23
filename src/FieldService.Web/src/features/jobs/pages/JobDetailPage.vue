@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import { useLiveRefetch } from '@/features/realtime/use-live-refetch'
 import { usePageTitle } from '@/shared/composables/use-page-title'
 import { formatMoment } from '@/shared/format/date-time'
 import { formatJobNumber } from '@/shared/format/job-number'
@@ -58,6 +59,23 @@ const notice = computed<JobNoticeCopy | null>(() => {
 
 const panelShown = computed(() => job.value?.affordances.canAssign === true)
 
+const openStatuses: readonly string[] = ['Unassigned', 'Assigned', 'InProgress', 'OnHold']
+
+const liveLineShown = computed(() => job.value !== null && openStatuses.includes(job.value.status))
+
+const side = useTemplateRef<HTMLElement>('side')
+
+const live = useLiveRefetch({
+  refetch: () => store.refreshOpenJob(),
+  applyJob: (updated) => {
+    store.applyLiveJob(updated)
+  },
+  page: {
+    refreshFailedTitle: 'The job could not be refreshed.',
+    showingFrom: (time) => `Showing this job as of ${time}.`,
+  },
+})
+
 const noticeInPanel = computed(
   () => store.jobNotice?.code === 'concurrency.conflict' && panelShown.value,
 )
@@ -78,9 +96,26 @@ function retry(): void {
   void store.reloadJob(jobId.value)
 }
 
-watch(job, () => {
+watch(job, (current) => {
   now.value = new Date()
+  if (current !== null) {
+    live.markFresh()
+  }
 })
+
+watch(
+  panelShown,
+  (shown, wasShown) => {
+    const active = document.activeElement
+    if (shown || !wasShown || active === null || side.value?.contains(active) !== true) {
+      return
+    }
+    void nextTick(() => {
+      header.value?.focusHeading()
+    })
+  },
+  { flush: 'pre' },
+)
 
 watch(
   () => store.jobNotice,
@@ -128,10 +163,13 @@ onBeforeUnmount(() => {
         <SectionCard heading="Status history">
           <div class="job-detail__history">
             <StatusTimeline :history="job.history" :now="now" />
+            <p v-if="liveLineShown" class="job-detail__live-line">
+              Status changes from the technician app appear here in real time.
+            </p>
           </div>
         </SectionCard>
       </div>
-      <div v-if="panelShown" class="job-detail__side">
+      <div v-if="panelShown" ref="side" class="job-detail__side">
         <AssignTechnicianCard :job="job" :now="now" :notice="panelNotice" />
       </div>
     </div>
@@ -218,7 +256,18 @@ onBeforeUnmount(() => {
 }
 
 .job-detail__history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-fs-14);
   padding: var(--spacing-fs-4) var(--spacing-fs-16) var(--spacing-fs-16);
+}
+
+.job-detail__live-line {
+  margin: 0;
+  color: var(--color-fs-muted);
+  font-size: var(--text-fs-meta);
+  line-height: var(--text-fs-meta--line-height);
+  text-wrap: pretty;
 }
 
 .job-detail__skeleton {

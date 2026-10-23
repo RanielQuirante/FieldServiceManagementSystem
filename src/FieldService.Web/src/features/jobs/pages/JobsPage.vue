@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
+import { useLiveRefetch } from '@/features/realtime/use-live-refetch'
 import { useAsyncState } from '@/shared/composables/use-async-state'
 import AppButton from '@/shared/ui/AppButton.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
@@ -56,15 +57,18 @@ const subline = computed(() => {
   return list.value.totalCount === 1 ? '1 job' : `${list.value.totalCount} jobs`
 })
 
-const announcement = computed(() => {
-  if (store.listStatus !== 'ready' || list.value === null) {
+const announcement = shallowRef('')
+
+function announcementFor(): string {
+  const current = list.value
+  if (store.listStatus !== 'ready' || current === null) {
     return ''
   }
-  if (list.value.items.length === 0) {
+  if (current.items.length === 0) {
     return filtersActive.value ? 'No jobs match these filters' : 'No jobs yet'
   }
-  return rangeSummary(list.value.page, list.value.pageSize, list.value.totalCount, 'jobs', 'job')
-})
+  return rangeSummary(current.page, current.pageSize, current.totalCount, 'jobs', 'job')
+}
 
 const errorMessage = computed(() => {
   const error = store.listError
@@ -75,11 +79,10 @@ const errorMessage = computed(() => {
   return 'Check your connection, then try again.'
 })
 
-async function load(value: JobFilters): Promise<void> {
-  await store.loadJobs(value)
-  now.value = new Date()
+async function moveOffEmptyPage(value: JobFilters | null): Promise<void> {
   const result = store.list
   if (
+    value !== null &&
     store.listStatus === 'ready' &&
     result !== null &&
     result.items.length === 0 &&
@@ -89,6 +92,34 @@ async function load(value: JobFilters): Promise<void> {
     await update({ page: Math.ceil(result.totalCount / jobsPageSize) }, { replace: true })
   }
 }
+
+async function load(value: JobFilters): Promise<void> {
+  await store.loadJobs(value)
+  now.value = new Date()
+  announcement.value = announcementFor()
+  if (store.listStatus === 'ready') {
+    live.markFresh()
+  }
+  await moveOffEmptyPage(value)
+}
+
+async function refreshInBackground(): Promise<boolean> {
+  const refreshed = await store.refreshJobs()
+  if (refreshed) {
+    now.value = new Date()
+    await moveOffEmptyPage(store.listFilters)
+  }
+  return refreshed
+}
+
+const live = useLiveRefetch({
+  refetch: refreshInBackground,
+  refetchLists: refreshInBackground,
+  page: {
+    refreshFailedTitle: 'Jobs could not be refreshed.',
+    showingFrom: (time) => `Showing jobs from ${time}.`,
+  },
+})
 
 watch(
   filters,
@@ -154,6 +185,7 @@ void loadTechnicians()
     :state="tableState"
     :busy="store.listStatus === 'loading'"
     :now="now"
+    :flashed-ids="live.flashedJobIds.value"
   >
     <template #empty>
       <EmptyState

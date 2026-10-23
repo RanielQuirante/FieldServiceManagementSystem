@@ -9,6 +9,7 @@ export interface AsyncState<Data> {
   readonly data: ShallowRef<Data | null>
   readonly error: ShallowRef<ApiError | null>
   run(): Promise<void>
+  refresh(): Promise<boolean>
 }
 
 export function useAsyncState<Data>(
@@ -44,5 +45,27 @@ export function useAsyncState<Data>(
     }
   }
 
-  return { status, data, error, run }
+  async function refresh(): Promise<boolean> {
+    if (status.value !== 'content' && status.value !== 'empty') {
+      return false
+    }
+    latest += 1
+    const request = latest
+    try {
+      const result = await load()
+      if (request !== latest) {
+        return false
+      }
+      data.value = result
+      status.value = isEmpty(result) ? 'empty' : 'content'
+      return true
+    } catch (failure) {
+      if (!isApiError(failure)) {
+        throw failure
+      }
+      return false
+    }
+  }
+
+  return { status, data, error, run, refresh }
 }

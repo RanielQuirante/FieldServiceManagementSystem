@@ -12,6 +12,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   dismiss: []
+  hold: []
+  release: []
 }>()
 
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -19,6 +21,10 @@ let remaining = props.toast.durationMs
 let startedAt = 0
 let hovered = false
 let focused = false
+
+function pageHidden(): boolean {
+  return document.visibilityState === 'hidden'
+}
 
 function stopTimer(): void {
   if (timer !== undefined) {
@@ -28,7 +34,7 @@ function stopTimer(): void {
 }
 
 function startTimer(): void {
-  if (remaining === null || timer !== undefined || hovered || focused) {
+  if (remaining === null || timer !== undefined || hovered || focused || pageHidden()) {
     return
   }
   startedAt = Date.now()
@@ -46,19 +52,30 @@ function pause(): void {
   remaining = Math.max(remaining - (Date.now() - startedAt), 0)
 }
 
+function updateHold(): void {
+  if (hovered || focused) {
+    emit('hold')
+  } else {
+    emit('release')
+  }
+}
+
 function onPointerEnter(): void {
   pause()
   hovered = true
+  updateHold()
 }
 
 function onPointerLeave(): void {
   hovered = false
+  updateHold()
   startTimer()
 }
 
 function onFocusIn(): void {
   pause()
   focused = true
+  updateHold()
 }
 
 function onFocusOut(event: FocusEvent): void {
@@ -67,18 +84,34 @@ function onFocusOut(event: FocusEvent): void {
     return
   }
   focused = false
+  updateHold()
   startTimer()
 }
 
-onMounted(startTimer)
+function onVisibilityChange(): void {
+  if (pageHidden()) {
+    pause()
+  } else {
+    startTimer()
+  }
+}
 
-onBeforeUnmount(stopTimer)
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  startTimer()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  stopTimer()
+})
 </script>
 
 <template>
   <div
     :class="['toast', `toast--${toast.kind}`]"
-    :role="toast.kind === 'error' ? 'alert' : 'status'"
+    :role="toast.kind === 'error' ? 'alert' : undefined"
+    :data-toast-id="toast.id"
     data-surface="dark"
     @mouseenter="onPointerEnter"
     @mouseleave="onPointerLeave"
@@ -90,9 +123,17 @@ onBeforeUnmount(stopTimer)
     </span>
     <span v-else class="toast__dot" aria-hidden="true"></span>
     <span class="toast__text">
-      <span v-if="toast.meta" class="toast__meta">{{ toast.meta }}</span>
+      <span v-if="toast.meta" class="toast__meta"
+        >{{ toast.meta
+        }}<template v-if="toast.metaDetail"
+          ><span aria-hidden="true">{{ ' · ' }}</span
+          ><span class="visually-hidden">{{ ', ' }}</span
+          >{{ toast.metaDetail }}</template
+        ></span
+      >
       <span class="toast__title">{{ toast.title }}</span>
       <span v-if="toast.body" class="toast__body">{{ toast.body }}</span>
+      <span v-if="toast.note" class="toast__note">{{ toast.note }}</span>
       <span v-if="toast.reference" class="toast__reference"
         >Reference <span class="toast__reference-id">{{ toast.reference }}</span></span
       >
@@ -161,13 +202,22 @@ onBeforeUnmount(stopTimer)
   font-size: var(--text-fs-body);
   font-weight: 600;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .toast__body {
   color: var(--color-fs-on-dark-2);
   font-size: var(--text-fs-table);
   line-height: var(--text-fs-table--line-height);
+  overflow-wrap: anywhere;
   text-wrap: pretty;
+}
+
+.toast__note {
+  color: var(--color-fs-on-dark-2);
+  font-size: var(--text-fs-meta);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .toast__reference {
@@ -186,6 +236,9 @@ onBeforeUnmount(stopTimer)
 
 @media (forced-colors: active) {
   .toast {
+    background: Canvas;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     border-color: CanvasText;
   }
 }
