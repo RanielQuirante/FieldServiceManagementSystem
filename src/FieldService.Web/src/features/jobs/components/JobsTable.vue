@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useTemplateRef } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
 
 import { formatScheduleDay, formatTimeWindow, formatUpdated } from '@/shared/format/date-time'
 import { formatJobNumber } from '@/shared/format/job-number'
@@ -36,6 +36,13 @@ function jobKey(job: JobSummary): string {
   return job.id
 }
 
+function titleTarget(job: JobSummary): RouteLocationRaw {
+  return {
+    name: job.status === 'Completed' ? 'job-inspection' : 'job-detail',
+    params: { jobId: job.id },
+  }
+}
+
 const table = useTemplateRef<{ focusRegion(): void }>('table')
 
 function focusRegion(): void {
@@ -61,11 +68,7 @@ defineExpose({ focusRegion })
     <template #cell="{ row, column }">
       <span v-if="column.key === 'job'" class="jobs-table__job">
         <span class="jobs-table__number">{{ formatJobNumber(row.number) }}</span>
-        <RouterLink
-          class="jobs-table__title"
-          :to="{ name: 'job-detail', params: { jobId: row.id } }"
-          >{{ row.title }}</RouterLink
-        >
+        <RouterLink class="jobs-table__title" :to="titleTarget(row)">{{ row.title }}</RouterLink>
       </span>
       <span v-else-if="column.key === 'customer'" class="jobs-table__stack">
         <span>{{ row.customerName }}</span>

@@ -19,6 +19,11 @@ export type SkeletonShape =
   | 'line'
   | 'line-medium'
   | 'line-short'
+  | 'item-number'
+  | 'item-prompt'
+  | 'result-chip'
+  | 'reading'
+  | 'note'
 </script>
 
 <script setup lang="ts">
@@ -157,6 +162,28 @@ withDefaults(
 
 .loading-state__block--line-short {
   width: 48%;
+}
+
+.loading-state__block--item-number {
+  width: 1.25rem;
+  height: 0.75rem;
+}
+
+.loading-state__block--item-prompt {
+  width: 12.5rem;
+}
+
+.loading-state__block--result-chip {
+  width: 4.5rem;
+  height: 1.625rem;
+}
+
+.loading-state__block--reading {
+  width: 4rem;
+}
+
+.loading-state__block--note {
+  width: 10rem;
 }
 
 @media (forced-colors: active) {

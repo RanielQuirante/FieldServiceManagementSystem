@@ -7,7 +7,7 @@ import type { StatusTone } from './status-appearance'
 
 const props = withDefaults(
   defineProps<{
-    icon: IconName
+    icon: IconName | null
     size?: 36 | 40 | 44 | 56
     tone?: 'neutral' | 'fail' | StatusTone
   }>(),
@@ -21,7 +21,7 @@ const iconSize = computed(() => iconSizes[props.size])
 
 <template>
   <span :class="['icon-tile', `icon-tile--${size}`, `icon-tile--${tone}`]" aria-hidden="true">
-    <AppIcon :name="icon" :size="iconSize" />
+    <AppIcon v-if="icon" :name="icon" :size="iconSize" />
   </span>
 </template>
 

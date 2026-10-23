@@ -2,17 +2,30 @@
 import { computed } from 'vue'
 
 import AppIcon from './AppIcon.vue'
-import { jobStatusAppearance, type StatusAppearance } from './status-appearance'
+import {
+  inspectionResultAppearance,
+  jobStatusAppearance,
+  type ResultAppearance,
+  type StatusAppearance,
+} from './status-appearance'
 
 const props = withDefaults(
   defineProps<{
     status?: string
     shift?: 'on' | 'off' | null
+    result?: string | null
+    count?: number | null
   }>(),
-  { status: '', shift: null },
+  { status: '', shift: null, result: null, count: null },
 )
 
 const appearance = computed<StatusAppearance>(() => jobStatusAppearance(props.status))
+
+const resultLook = computed<ResultAppearance>(() => inspectionResultAppearance(props.result ?? ''))
+
+const resultText = computed(() =>
+  props.count === null ? resultLook.value.label : `${props.count} ${resultLook.value.label}`,
+)
 
 const shiftLabel = computed(() => (props.shift === 'on' ? 'On shift' : 'Off shift'))
 </script>
@@ -20,6 +33,9 @@ const shiftLabel = computed(() => (props.shift === 'on' ? 'On shift' : 'Off shif
 <template>
   <span v-if="shift" :class="['status-chip', 'status-chip--shift', `status-chip--${shift}-shift`]">
     <span class="status-chip__dot" aria-hidden="true"></span>{{ shiftLabel }}
+  </span>
+  <span v-else-if="result !== null" :class="['status-chip', `status-chip--${resultLook.tone}`]">
+    <AppIcon :name="resultLook.icon" :size="14" />{{ resultText }}
   </span>
   <span v-else :class="['status-chip', `status-chip--${appearance.tone}`]">
     <AppIcon :name="appearance.icon" :size="14" />{{ appearance.label }}
@@ -80,6 +96,12 @@ const shiftLabel = computed(() => (props.shift === 'on' ? 'On shift' : 'Off shif
   --chip-bg: var(--fs-gradient-chip-cancelled);
   --chip-shadow: var(--shadow-fs-chip-cancelled);
   --chip-fg: var(--color-fs-cancelled);
+}
+
+.status-chip--fail {
+  --chip-bg: var(--fs-gradient-chip-fail);
+  --chip-shadow: var(--shadow-fs-chip-fail);
+  --chip-fg: var(--color-fs-fail);
 }
 
 .status-chip--shift {

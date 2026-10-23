@@ -13,7 +13,7 @@ const props = withDefaults(
     message?: string | null
     reference?: string | null
     icon?: IconName
-    role?: 'status' | 'alert'
+    role?: 'status' | 'alert' | null
   }>(),
   { variant: 'info', message: null, reference: null, icon: undefined, role: 'status' },
 )
@@ -29,7 +29,7 @@ const iconName = computed(() => props.icon ?? defaultIcons[props.variant])
 </script>
 
 <template>
-  <div :role="role" :class="['banner', `banner--${variant}`]">
+  <div :role="role ?? undefined" :class="['banner', `banner--${variant}`]">
     <span class="banner__tile" aria-hidden="true">
       <AppIcon :name="iconName" :size="18" />
     </span>

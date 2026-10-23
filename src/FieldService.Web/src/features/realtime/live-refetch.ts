@@ -14,6 +14,7 @@ export interface LiveRefetchRegistration {
   readonly refetch: Refetch
   readonly refetchLists?: Refetch
   readonly applyJob?: (job: LiveJob) => void
+  readonly refetchWithJob?: (job: LiveJob) => Refetch | null
   readonly page?: LivePageCopy
 }
 
@@ -26,7 +27,7 @@ export interface RefetchOutcome {
   readonly failure: RefetchFailure | null
 }
 
-export type RefetchSource = 'lists' | 'cap'
+export type RefetchSource = 'lists' | 'job' | 'cap'
 
 export interface LiveRefetchDependencies {
   readonly getJob: (jobId: string) => Promise<LiveJob>
@@ -109,9 +110,27 @@ export function createLiveRefetch(dependencies: LiveRefetchDependencies): LiveRe
   }
 
   function applyJob(job: LiveJob): void {
+    const followUps: Refetch[] = []
     for (const registration of [...registrations]) {
       registration.applyJob?.(job)
+      const followUp = registration.refetchWithJob?.(job) ?? null
+      if (followUp !== null) {
+        followUps.push(followUp)
+      }
     }
+    if (followUps.length === 0) {
+      return
+    }
+    if (!take(followUps.length)) {
+      overCap()
+      return
+    }
+    const started = generation
+    void runRefetches(followUps).then((outcome) => {
+      if (started === generation) {
+        dependencies.onRefetched('job', outcome, noJobIds)
+      }
+    })
   }
 
   function take(count: number): boolean {

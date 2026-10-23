@@ -24,7 +24,7 @@ const props = withDefaults(
     rowKey: (row: Row) => string
     state?: DataTableState
     busy?: boolean
-    loadingLabel?: string
+    loadingLabel?: string | null
     minWidth?: 0 | 640 | 720 | 900 | 980
     inCard?: boolean
     skeletonRows?: number
@@ -152,7 +152,7 @@ defineExpose({ focusRegion })
     <div v-if="$slots.footer && state === 'content'" class="data-table__footer">
       <slot name="footer" />
     </div>
-    <LoadingState v-if="isBusy" :label="loadingLabel" />
+    <LoadingState v-if="isBusy && loadingLabel !== null" :label="loadingLabel" />
   </div>
 </template>
 

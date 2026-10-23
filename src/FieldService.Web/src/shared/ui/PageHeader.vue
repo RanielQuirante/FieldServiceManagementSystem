@@ -8,11 +8,19 @@ const props = withDefaults(
     title: string
     subline?: string | null
     jobNumber?: string | null
+    numberSuffix?: string | null
     loading?: boolean
     focusOnMount?: boolean
     headingId?: string
   }>(),
-  { subline: null, jobNumber: null, loading: false, focusOnMount: true, headingId: undefined },
+  {
+    subline: null,
+    jobNumber: null,
+    numberSuffix: null,
+    loading: false,
+    focusOnMount: true,
+    headingId: undefined,
+  },
 )
 
 const heading = useTemplateRef<HTMLHeadingElement>('heading')
@@ -35,6 +43,12 @@ defineExpose({ focusHeading })
   <header :class="['page-header', { 'page-header--loading': loading }]">
     <div class="page-header__text">
       <LoadingState v-if="loading" :shapes="['page-number']" />
+      <span v-else-if="jobNumber && numberSuffix" class="page-header__eyebrow"
+        ><span class="page-header__number">{{ jobNumber }}</span
+        ><span aria-hidden="true">{{ ' · ' }}</span
+        ><span class="visually-hidden">{{ ', ' }}</span
+        ><span>{{ numberSuffix }}</span></span
+      >
       <span v-else-if="jobNumber" class="page-header__number">{{ jobNumber }}</span>
       <h1 :id="headingId" ref="heading" class="page-header__title" tabindex="-1">
         <template v-if="loading">
@@ -77,6 +91,13 @@ defineExpose({ focusHeading })
   font-weight: 500;
   letter-spacing: var(--text-fs-mono--letter-spacing);
   font-variant-numeric: tabular-nums;
+}
+
+.page-header__eyebrow {
+  color: var(--color-fs-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .page-header__title {

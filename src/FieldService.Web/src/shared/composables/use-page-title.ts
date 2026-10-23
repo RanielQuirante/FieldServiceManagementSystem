@@ -16,12 +16,15 @@ export function useCurrentPageTitle(): ComputedRef<string | null> {
   return computed(() => titleOverride.value ?? route.meta.title ?? null)
 }
 
-export function usePageTitle(title: () => string | null): void {
+export function usePageTitle(
+  title: () => string | null,
+  documentTitle: () => string | null = () => null,
+): void {
   const route = useRoute()
   watchEffect(() => {
     const value = title()
     titleOverride.value = value
-    document.title = formatDocumentTitle(value ?? route.meta.title)
+    document.title = formatDocumentTitle(documentTitle() ?? value ?? route.meta.title)
   })
   onBeforeUnmount(() => {
     titleOverride.value = null

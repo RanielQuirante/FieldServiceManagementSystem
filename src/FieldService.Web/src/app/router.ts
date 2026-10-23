@@ -73,6 +73,17 @@ export const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/jobs/:jobId/inspection',
+    name: 'job-inspection',
+    component: () => import('@/features/jobs/pages/InspectionReportPage.vue'),
+    meta: {
+      requiresAdministrator: true,
+      title: 'Inspection report',
+      section: 'jobs',
+      breadcrumbs: [jobsCrumb],
+    },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('./NotFoundPage.vue'),

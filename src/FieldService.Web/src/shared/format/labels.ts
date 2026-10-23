@@ -12,6 +12,10 @@ export type UserRole = Schemas['UserRole']
 
 export type JobHistoryAction = Schemas['JobHistoryAction']
 
+export type InspectionResult = Schemas['InspectionResult']
+
+export const inspectionResults: readonly InspectionResult[] = ['Pass', 'Fail', 'NotApplicable']
+
 export const jobStatuses: readonly JobStatus[] = [
   'Unassigned',
   'Assigned',
@@ -61,6 +65,12 @@ const historyActionLabels: Readonly<Record<JobHistoryAction, string>> = {
   Cancelled: 'Cancelled',
 }
 
+const inspectionResultLabels: Readonly<Record<InspectionResult, string>> = {
+  Pass: 'Pass',
+  Fail: 'Fail',
+  NotApplicable: 'N/A',
+}
+
 function labelFrom<Key extends string>(
   labels: Readonly<Record<Key, string>>,
   value: string,
@@ -94,4 +104,12 @@ export function roleLabel(role: string): string {
 
 export function historyActionLabel(action: string): string {
   return labelFrom(historyActionLabels, action)
+}
+
+export function isInspectionResult(value: unknown): value is InspectionResult {
+  return typeof value === 'string' && (inspectionResults as readonly string[]).includes(value)
+}
+
+export function inspectionResultLabel(result: string): string {
+  return labelFrom(inspectionResultLabels, result)
 }

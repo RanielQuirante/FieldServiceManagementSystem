@@ -6,13 +6,36 @@ import { jobStatuses, type JobStatus } from '@/shared/format/labels'
 
 import type { JobFilters } from './composables/use-job-filters'
 import * as jobsApi from './jobs-api'
-import type { CreateJobRequest, JobDetails, JobList, JobListQuery } from './jobs-api'
+import type { CreateJobRequest, Inspection, JobDetails, JobList, JobListQuery } from './jobs-api'
 
 export const jobsPageSize = 12
 
 export type JobListStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type JobDetailStatus = 'idle' | 'loading' | 'ready' | 'not-found' | 'error'
+
+export type InspectionReportStatus = JobDetailStatus
+
+export interface InspectionReport {
+  readonly job: JobDetails
+  readonly inspection: Inspection
+}
+
+async function fetchInspectionReport(jobId: string): Promise<InspectionReport> {
+  const [job, inspection] = await Promise.allSettled([
+    jobsApi.getJobById(jobId),
+    jobsApi.getInspection(jobId),
+  ])
+  if (job.status === 'fulfilled' && inspection.status === 'fulfilled') {
+    return { job: job.value, inspection: inspection.value }
+  }
+  const reasons: unknown[] = [job, inspection].flatMap((result) =>
+    result.status === 'rejected' ? [result.reason] : [],
+  )
+  const unexpected = reasons.find((reason) => !isApiError(reason))
+  const missing = reasons.find((reason) => isApiError(reason) && reason.status === 404)
+  throw unexpected ?? missing ?? reasons[0]
+}
 
 export type JobConflictCode = 'concurrency.conflict' | 'job.not-assignable'
 
@@ -64,6 +87,15 @@ export const useJobsStore = defineStore('jobs', () => {
   let noticeCount = 0
   let openJobId: string | null = null
   let jobLoad: Promise<void> | null = null
+
+  const report = shallowRef<InspectionReport | null>(null)
+  const reportStatus = shallowRef<InspectionReportStatus>('idle')
+  const reportError = shallowRef<ApiError | null>(null)
+  let reportRequest = 0
+  let reportRefreshCount = 0
+  let reportRefreshApplied = 0
+  let openReportId: string | null = null
+  let reportLoad: Promise<void> | null = null
 
   const statusCounts = computed<Readonly<Record<JobStatus, number>> | null>(() => {
     if (list.value === null) {
@@ -318,6 +350,112 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
+  async function openReport(jobId: string): Promise<void> {
+    openReportId = jobId
+    const running = performOpenReport(jobId)
+    reportLoad = running
+    try {
+      await running
+    } finally {
+      if (reportLoad === running) {
+        reportLoad = null
+      }
+    }
+  }
+
+  async function performOpenReport(jobId: string): Promise<void> {
+    reportRequest += 1
+    const request = reportRequest
+    report.value = null
+    reportStatus.value = 'loading'
+    reportError.value = null
+    try {
+      const result = await fetchInspectionReport(jobId)
+      if (request !== reportRequest) {
+        return
+      }
+      report.value = result
+      reportStatus.value = 'ready'
+    } catch (error) {
+      if (request !== reportRequest) {
+        return
+      }
+      if (isApiError(error) && error.status === 404) {
+        reportStatus.value = 'not-found'
+        return
+      }
+      reportStatus.value = 'error'
+      if (!isApiError(error)) {
+        throw error
+      }
+      reportError.value = error
+    }
+  }
+
+  function acceptReport(jobId: string, refresh: number, result: InspectionReport): boolean {
+    const current = report.value
+    if (
+      openReportId !== jobId ||
+      reportStatus.value !== 'ready' ||
+      current === null ||
+      result.job.id !== jobId ||
+      refresh < reportRefreshApplied ||
+      Date.parse(current.job.updatedAt) > Date.parse(result.job.updatedAt)
+    ) {
+      return false
+    }
+    reportRefreshApplied = refresh
+    report.value = result
+    return true
+  }
+
+  async function runReportRefresh(
+    jobId: string,
+    fetch: () => Promise<InspectionReport>,
+  ): Promise<boolean> {
+    reportRefreshCount += 1
+    const refresh = reportRefreshCount
+    try {
+      return acceptReport(jobId, refresh, await fetch())
+    } catch (error) {
+      if (openReportId !== jobId && isApiError(error)) {
+        return false
+      }
+      throw error
+    }
+  }
+
+  async function refreshReport(): Promise<boolean> {
+    if (reportLoad !== null) {
+      await reportLoad.catch(() => undefined)
+    }
+    const jobId = openReportId
+    if (jobId === null || reportStatus.value !== 'ready') {
+      return false
+    }
+    return runReportRefresh(jobId, () => fetchInspectionReport(jobId))
+  }
+
+  function reportRefetchFor(job: JobDetails): (() => Promise<boolean>) | null {
+    if (job.id !== openReportId || reportStatus.value !== 'ready') {
+      return null
+    }
+    const jobId = job.id
+    return () =>
+      runReportRefresh(jobId, async () => ({
+        job,
+        inspection: await jobsApi.getInspection(jobId),
+      }))
+  }
+
+  function closeReport(): void {
+    openReportId = null
+    reportRequest += 1
+    report.value = null
+    reportStatus.value = 'idle'
+    reportError.value = null
+  }
+
   async function createJob(request: CreateJobRequest): Promise<JobDetails> {
     const created = await jobsApi.createJob(request)
     jobRequest += 1
@@ -348,5 +486,12 @@ export const useJobsStore = defineStore('jobs', () => {
     closeJob,
     createJob,
     assignJob,
+    report,
+    reportStatus,
+    reportError,
+    openReport,
+    refreshReport,
+    reportRefetchFor,
+    closeReport,
   }
 })

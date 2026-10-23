@@ -9,6 +9,8 @@ export type JobSummary = Schemas['JobSummaryResponse']
 
 export type JobDetails = Schemas['JobDetailsResponse']
 
+export type SubmitAffordance = Schemas['SubmitAffordance']
+
 export type JobHistoryEntry = Schemas['JobHistoryEntryResponse']
 
 export type JobStatusCount = Schemas['JobStatusCount']
@@ -25,6 +27,12 @@ export type Technician = Schemas['TechnicianResponse']
 
 export type TechnicianJobReference = Schemas['TechnicianJobReference']
 
+export type Inspection = Schemas['InspectionResponse']
+
+export type InspectionItem = Schemas['InspectionItemResponse']
+
+export type InspectionAnswer = Schemas['InspectionAnswerResponse']
+
 export interface JobListQuery {
   readonly search?: string
   readonly status?: JobStatus
@@ -40,6 +48,10 @@ export function getJobs(query: JobListQuery): Promise<JobList> {
 
 export function getJobById(jobId: string): Promise<JobDetails> {
   return unwrap(apiClient.GET('/api/jobs/{jobId}', { params: { path: { jobId } } }))
+}
+
+export function getInspection(jobId: string): Promise<Inspection> {
+  return unwrap(apiClient.GET('/api/jobs/{jobId}/inspection', { params: { path: { jobId } } }))
 }
 
 export function createJob(request: CreateJobRequest): Promise<JobDetails> {

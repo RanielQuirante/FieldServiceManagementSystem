@@ -8,10 +8,16 @@ import SectionCard from '@/shared/ui/SectionCard.vue'
 
 import type { JobDetails } from '../jobs-api'
 
-const props = defineProps<{
-  job: JobDetails
-  now: Date
-}>()
+const props = withDefaults(
+  defineProps<{
+    job: JobDetails
+    now: Date
+    variant?: 'page' | 'report'
+  }>(),
+  { variant: 'page' },
+)
+
+const isReport = computed(() => props.variant === 'report')
 
 const created = computed(
   () => `${formatMoment(props.job.createdAt, props.now)} by ${props.job.createdBy.displayName}`,
@@ -28,7 +34,7 @@ const hasContact = computed(() => props.job.contactName !== null || props.job.co
 
 <template>
   <SectionCard heading="Job details">
-    <dl class="job-details">
+    <dl :class="['job-details', { 'job-details--report': isReport }]">
       <div class="job-details__row">
         <dt>Customer</dt>
         <dd>{{ job.customerName }}</dd>
@@ -66,7 +72,11 @@ const hasContact = computed(() => props.job.contactName !== null || props.job.co
       <div class="job-details__row">
         <dt>Technician</dt>
         <dd>
-          <span v-if="job.assignedTechnician" class="job-details__technician">
+          <span v-if="job.assignedTechnician && isReport" class="job-details__technician">
+            <Avatar :name="job.assignedTechnician.displayName" :size="28" />
+            <span>{{ job.assignedTechnician.displayName }}</span>
+          </span>
+          <span v-else-if="job.assignedTechnician" class="job-details__technician">
             <Avatar :name="job.assignedTechnician.displayName" :size="28" />
             <span class="job-details__person">
               <span>{{ job.assignedTechnician.displayName }}</span>
@@ -83,7 +93,7 @@ const hasContact = computed(() => props.job.contactName !== null || props.job.co
         <dt>Checklist</dt>
         <dd>{{ job.checklistTemplate.name }}</dd>
       </div>
-      <div class="job-details__row">
+      <div v-if="!isReport" class="job-details__row">
         <dt>Created</dt>
         <dd class="job-details__numeric">{{ created }}</dd>
       </div>
@@ -161,8 +171,23 @@ dd {
   font-variant-numeric: tabular-nums;
 }
 
+.job-details--report .job-details__row {
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+
+.job-details--report .job-details__technician {
+  gap: var(--spacing-fs-8);
+}
+
 @container (max-width: 420px) {
-  .job-details__row {
+  .job-details:not(.job-details--report) .job-details__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-fs-4);
+  }
+}
+
+@container (max-width: 280px) {
+  .job-details--report .job-details__row {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--spacing-fs-4);
   }

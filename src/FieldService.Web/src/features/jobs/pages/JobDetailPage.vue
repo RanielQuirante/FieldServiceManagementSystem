@@ -145,6 +145,15 @@ onBeforeUnmount(() => {
           >Created {{ formatMoment(job.createdAt, now) }} by {{ job.createdBy.displayName }}</span
         >
       </template>
+      <template v-if="job.status === 'Completed'" #actions>
+        <AppButton
+          variant="secondary"
+          size="small"
+          icon="clipboard-check"
+          :to="{ name: 'job-inspection', params: { jobId: job.id } }"
+          >Inspection report</AppButton
+        >
+      </template>
     </PageHeader>
     <Banner
       v-if="pageNotice"
