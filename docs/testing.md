@@ -288,11 +288,11 @@ The workstation commands on this page were run on 2026-10-23 on macOS 26.5 (Appl
 
 | Suite | Result |
 |---|---|
-| API | 1401 of 1401 passed in Debug; both `dotnet format` checks passed; the Release build of the API had no warning, and the model has no pending change |
+| API | 1405 of 1405 passed in Debug in each of two runs, and in Release in the form of the CI step, with coverage, limited to two processors and two test threads; both `dotnet format` checks passed; the Release build of the API had no warning, and the model has no pending change |
 | Technician app | 523 of 523 passed in Debug; the Android Debug build succeeded with no warning |
 | Notification service | 464 of 464 passed in 50 suites; lint, formatting, both type-checks and the build passed |
 | Web dashboard, unit | 848 of 848 passed in 22 files; creating the API client, lint, formatting, the type-check with the end-to-end specs, and the build passed |
 | Web dashboard, end to end | The `host` project against `vite preview`, with the API and the notification service running: 26 of 26 passed in 6 files in each of three runs of about two minutes, with no Content Security Policy violation, no handshake URL with an extra query key, 45 axe audits without a violation, no match in the log search of 4 API and 4 notification service log files, and all 5 sessions signed out. In each run every live status change reached the dashboard in under a second. Against the Vite dev server 25 of 26 passed, the header test failing there as described above; both projects list 26 tests in 6 files |
 | Repository checks | Both scripts passed |
 
-Not run on that date: the Release forms with coverage and the quarantine steps of the CI jobs; the Windows commands, because no Windows host was available; and the `compose` project and the Compose database, because no container runtime was available.
+Not run on that date: the Release forms with coverage of the other CI jobs and the quarantine steps; the Windows commands, because no Windows host was available; and the `compose` project and the Compose database, because no container runtime was available.

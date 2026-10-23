@@ -22,17 +22,43 @@ public sealed class JobEventDispatcher(
         HttpStatusCode.TooManyRequests,
     ];
 
+    private readonly Lock _gate = new();
+
     private readonly CancellationTokenSource _drainDeadline = new(Timeout.InfiniteTimeSpan, time);
+
+    private bool _stopRequested;
+
+    private bool _disposed;
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         queue.Complete();
-        _drainDeadline.CancelAfter(DrainTimeout);
+        lock (_gate)
+        {
+            if (!_stopRequested && !_disposed)
+            {
+                _drainDeadline.CancelAfter(DrainTimeout);
+            }
+
+            _stopRequested = true;
+        }
+
         await base.StopAsync(cancellationToken);
     }
 
     public override void Dispose()
     {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+        }
+
+        _drainDeadline.Cancel();
         _drainDeadline.Dispose();
         base.Dispose();
     }
@@ -44,6 +70,7 @@ public sealed class JobEventDispatcher(
             return;
         }
 
+        var drain = DrainToken();
         var signer = WebhookSigner.FromSecret(options.Value.WebhookSecret);
         var reader = queue.Reader;
         try
@@ -52,7 +79,7 @@ public sealed class JobEventDispatcher(
             {
                 while (!stoppingToken.IsCancellationRequested && reader.TryRead(out var jobEvent))
                 {
-                    await DispatchAsync(jobEvent, signer, _drainDeadline.Token);
+                    await DispatchAsync(jobEvent, signer, drain);
                 }
             }
         }
@@ -60,9 +87,9 @@ public sealed class JobEventDispatcher(
         {
         }
 
-        while (!_drainDeadline.IsCancellationRequested && reader.TryRead(out var remaining))
+        while (!drain.IsCancellationRequested && reader.TryRead(out var remaining))
         {
-            await DispatchAsync(remaining, signer, _drainDeadline.Token);
+            await DispatchAsync(remaining, signer, drain);
         }
 
         if (reader.Count > 0)
@@ -97,6 +124,14 @@ public sealed class JobEventDispatcher(
         catch (Exception exception)
         {
             LogFailure(jobEvent, ReasonOf(exception), null);
+        }
+    }
+
+    private CancellationToken DrainToken()
+    {
+        lock (_gate)
+        {
+            return _disposed ? new CancellationToken(canceled: true) : _drainDeadline.Token;
         }
     }
 

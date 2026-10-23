@@ -115,35 +115,24 @@ public sealed class JobEventDispatcherTests
     public async Task AHangingServiceGetsTwoSecondAttemptsNoAttemptAfterTheTenSecondBudgetAndThenOneWarning()
     {
         await using var harness = await DispatcherHarness.StartAsync();
-        var attempts = new ConcurrentQueue<(DateTimeOffset Started, DateTimeOffset Cancelled)>();
-        harness.Stub.Respond = async (_, cancellationToken) =>
-        {
-            var started = harness.Clock.GetUtcNow();
-            try
-            {
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-                return HttpStatusCode.Accepted;
-            }
-            catch (OperationCanceledException)
-            {
-                attempts.Enqueue((started, harness.Clock.GetUtcNow()));
-                throw;
-            }
-        };
+        var service = new HangingService(harness);
+        harness.Stub.Respond = service.RespondAsync;
         var jobEvent = JobEventFixtures.EventOf("job.assigned.v1.json");
         var start = harness.Clock.GetUtcNow();
 
         harness.Queue.Enqueue(jobEvent);
-        await harness.AdvanceUntilAsync(() => harness.Logs.Named(RealtimeLog.DispatchFailedEvent).Count == 1, TimeSpan.FromSeconds(15));
+        await service.RunTimersUntilAsync(
+            () => harness.Logs.Named(RealtimeLog.DispatchFailedEvent).Count > 0,
+            TimeSpan.FromSeconds(15));
 
-        var elapsed = harness.Clock.GetUtcNow() - start;
-        Assert.InRange(elapsed, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10.2));
-        var recorded = attempts.ToList();
+        var recorded = service.Attempts;
+        Assert.Equal(service.Started, recorded.Count);
         Assert.InRange(recorded.Count, 2, 4);
+        Assert.Equal(start, recorded[0].Started);
+        Assert.Equal(TimeSpan.FromSeconds(10), harness.Clock.GetUtcNow() - start);
         Assert.All(recorded, attempt => Assert.True(attempt.Started - start < TimeSpan.FromSeconds(10)));
-        Assert.All(recorded.SkipLast(1), attempt =>
-            Assert.InRange(attempt.Cancelled - attempt.Started, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2.1)));
-        Assert.True(recorded[^1].Cancelled - recorded[^1].Started <= TimeSpan.FromSeconds(2.1));
+        Assert.All(recorded.SkipLast(1), attempt => Assert.Equal(TimeSpan.FromSeconds(2), attempt.Cancelled - attempt.Started));
+        Assert.True(recorded[^1].Cancelled - recorded[^1].Started <= TimeSpan.FromSeconds(2));
         var failure = Assert.Single(harness.Logs.Named(RealtimeLog.DispatchFailedEvent));
         Assert.Equal(LogEventLevel.Warning, failure.Level);
         Assert.Equal(RealtimeLog.TimedOut, CapturingLogSink.Scalar(failure, "Reason"));
@@ -279,6 +268,87 @@ public sealed class JobEventDispatcherTests
         var incomplete = Assert.Single(harness.Logs.Named(RealtimeLog.DrainIncompleteEvent));
         Assert.Equal(LogEventLevel.Warning, incomplete.Level);
         Assert.Equal("2", CapturingLogSink.Scalar(incomplete, "Remaining"));
+    }
+
+    [Fact]
+    public async Task ASecondStopDuringTheDrainDoesNotExtendTheFiveSecondsThatTheFirstStopStarted()
+    {
+        await using var harness = await DispatcherHarness.StartAsync();
+        harness.Stub.Respond = NotificationsStub.Hang;
+        var events = JobEventFixtures.InternalNames.Select(JobEventFixtures.EventOf).ToList();
+        foreach (var jobEvent in events)
+        {
+            harness.Queue.Enqueue(jobEvent);
+        }
+
+        await harness.Stub.WaitForRequestsAsync(1);
+        var stoppedAt = harness.Clock.GetUtcNow();
+        var firstStop = harness.Dispatcher.StopAsync(CancellationToken.None);
+        await harness.AdvanceUntilAsync(() => harness.Clock.GetUtcNow() - stoppedAt >= TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(4));
+        var secondStop = harness.Dispatcher.StopAsync(CancellationToken.None);
+        await harness.AdvanceUntilAsync(() => firstStop.IsCompleted && secondStop.IsCompleted, TimeSpan.FromSeconds(6));
+        await Task.WhenAll(firstStop, secondStop);
+
+        Assert.InRange(harness.Clock.GetUtcNow() - stoppedAt, JobEventDispatcher.DrainTimeout, JobEventDispatcher.DrainTimeout + TimeSpan.FromSeconds(0.2));
+        Assert.All(harness.Stub.Requests, webhook => Assert.Equal(events[0].Id.ToString(), webhook.Header("webhook-id")));
+        var failure = Assert.Single(harness.Logs.Named(RealtimeLog.DispatchFailedEvent));
+        Assert.Equal(RealtimeLog.ShuttingDown, CapturingLogSink.Scalar(failure, "Reason"));
+        Assert.Equal(events[0].Id.ToString(), CapturingLogSink.Scalar(failure, "JobEventId"));
+        var incomplete = Assert.Single(harness.Logs.Named(RealtimeLog.DrainIncompleteEvent));
+        Assert.Equal("2", CapturingLogSink.Scalar(incomplete, "Remaining"));
+    }
+
+    [Fact]
+    public async Task StopAfterDisposeDoesNotThrowStillCompletesTheQueueAndSendsNothingFurther()
+    {
+        await using var harness = await DispatcherHarness.StartAsync();
+        harness.Stub.Respond = NotificationsStub.Hang;
+        var inFlight = JobEventFixtures.EventOf("job.created.v1.json");
+        var queued = JobEventFixtures.EventOf("job.assigned.v1.json");
+        harness.Queue.Enqueue(inFlight);
+        harness.Queue.Enqueue(queued);
+        await harness.Stub.WaitForRequestsAsync(1);
+
+        harness.Dispatcher.Dispose();
+        var stopFailure = await Record.ExceptionAsync(() => harness.Dispatcher
+            .StopAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        var late = JobEventFixtures.NewEvent(9);
+        harness.Queue.Enqueue(late);
+        await harness.AdvanceUntilAsync(() => false, TimeSpan.FromSeconds(12), failWhenUnreached: false);
+
+        Assert.Null(stopFailure);
+        Assert.Equal([inFlight.Id.ToString()], harness.Stub.Requests.Select(webhook => webhook.Header("webhook-id")));
+        Assert.Empty(harness.Logs.Named(RealtimeLog.DispatchedEvent));
+        var cancelled = Assert.Single(
+            harness.Logs.Named(RealtimeLog.DispatchFailedEvent),
+            entry => CapturingLogSink.Scalar(entry, "JobEventId") == inFlight.Id.ToString());
+        Assert.Equal(RealtimeLog.ShuttingDown, CapturingLogSink.Scalar(cancelled, "Reason"));
+        var dropped = Assert.Single(harness.Logs.Named(RealtimeLog.DroppedEvent));
+        Assert.Equal(late.Id.ToString(), CapturingLogSink.Scalar(dropped, "JobEventId"));
+        Assert.Equal(RealtimeLog.QueueStopped, CapturingLogSink.Scalar(dropped, "Reason"));
+    }
+
+    [Fact]
+    public async Task StopAndDisposeEachRunTwiceInTheInterleavedOrderOfTwoHostStopsWithoutThrowing()
+    {
+        await using var harness = await DispatcherHarness.StartAsync();
+        var dispatcher = harness.Dispatcher;
+
+        var failures = new[]
+        {
+            await Record.ExceptionAsync(() => dispatcher.StopAsync(CancellationToken.None)),
+            Record.Exception(dispatcher.Dispose),
+            await Record.ExceptionAsync(() => dispatcher.StopAsync(CancellationToken.None)),
+            Record.Exception(dispatcher.Dispose),
+        };
+
+        Assert.All(failures, Assert.Null);
+        var late = JobEventFixtures.NewEvent(9);
+        harness.Queue.Enqueue(late);
+        var dropped = Assert.Single(harness.Logs.Named(RealtimeLog.DroppedEvent));
+        Assert.Equal(late.Id.ToString(), CapturingLogSink.Scalar(dropped, "JobEventId"));
+        Assert.Empty(harness.Stub.Requests);
     }
 
     [Fact]
@@ -431,6 +501,184 @@ internal sealed class NotificationsStub : HttpMessageHandler
     }
 }
 
+internal sealed record HangingAttempt(DateTimeOffset Started, DateTimeOffset Cancelled, long TimerSequence);
+
+internal sealed class HangingService(DispatcherHarness harness)
+{
+    private readonly ConcurrentQueue<DateTimeOffset> _started = new();
+
+    private readonly ConcurrentQueue<HangingAttempt> _attempts = new();
+
+    public int Started => _started.Count;
+
+    public IReadOnlyList<HangingAttempt> Attempts => [.. _attempts];
+
+    public async Task<HttpStatusCode> RespondAsync(RecordedWebhook webhook, CancellationToken cancellationToken)
+    {
+        var started = harness.Clock.GetUtcNow();
+        _started.Enqueue(started);
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return HttpStatusCode.Accepted;
+        }
+        catch (OperationCanceledException)
+        {
+            _attempts.Enqueue(new HangingAttempt(started, harness.Clock.GetUtcNow(), harness.Timers.Sequence));
+            throw;
+        }
+    }
+
+    public async Task RunTimersUntilAsync(Func<bool> done, TimeSpan limit)
+    {
+        var end = harness.Clock.GetUtcNow() + limit;
+        while (true)
+        {
+            await DispatcherHarness.WaitUntilAsync(() => done() || IsWaitingOnATimer(), State);
+            if (done())
+            {
+                return;
+            }
+
+            var next = harness.Timers.NextDue;
+            Assert.True(next <= end, $"No timer is due within {limit} of fake time and the condition is not met: {State()}");
+            var before = Progress();
+            harness.Clock.Advance(next!.Value - harness.Clock.GetUtcNow());
+            await DispatcherHarness.WaitUntilAsync(() => done() || Progress() != before, State);
+        }
+    }
+
+    private bool IsWaitingOnATimer()
+    {
+        var attempts = Attempts;
+        if (Started > attempts.Count)
+        {
+            return true;
+        }
+
+        return attempts.Count > 0 && harness.Timers.HasPendingAfter(attempts[^1].TimerSequence);
+    }
+
+    private (int Started, int Ended) Progress() => (Started, _attempts.Count);
+
+    private string State() =>
+        $"now {harness.Clock.GetUtcNow():O}, {Started} attempts started, {_attempts.Count} ended, next timer {harness.Timers.NextDue:O}";
+}
+
+internal sealed class TrackedClock(FakeTimeProvider clock) : TimeProvider
+{
+    private readonly FakeTimeProvider _clock = clock;
+
+    private readonly Lock _gate = new();
+
+    private readonly Dictionary<TrackedTimer, (DateTimeOffset Due, long Sequence)> _pending = [];
+
+    private long _sequence;
+
+    public override TimeZoneInfo LocalTimeZone => _clock.LocalTimeZone;
+
+    public override long TimestampFrequency => _clock.TimestampFrequency;
+
+    public long Sequence
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _sequence;
+            }
+        }
+    }
+
+    public DateTimeOffset? NextDue
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _pending.Count == 0 ? null : _pending.Values.Min(entry => entry.Due);
+            }
+        }
+    }
+
+    public override DateTimeOffset GetUtcNow() => _clock.GetUtcNow();
+
+    public override long GetTimestamp() => _clock.GetTimestamp();
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+        new TrackedTimer(this, callback, state, dueTime, period);
+
+    public bool HasPendingAfter(long sequence)
+    {
+        lock (_gate)
+        {
+            return _pending.Values.Any(entry => entry.Sequence > sequence);
+        }
+    }
+
+    private void Schedule(TrackedTimer timer, TimeSpan dueTime)
+    {
+        lock (_gate)
+        {
+            if (dueTime == Timeout.InfiniteTimeSpan)
+            {
+                _pending.Remove(timer);
+            }
+            else
+            {
+                _pending[timer] = (_clock.GetUtcNow() + dueTime, ++_sequence);
+            }
+        }
+    }
+
+    private sealed class TrackedTimer : ITimer
+    {
+        private readonly TrackedClock _owner;
+
+        private readonly TimerCallback _callback;
+
+        private readonly object? _state;
+
+        private readonly ITimer _inner;
+
+        private TimeSpan _period = Timeout.InfiniteTimeSpan;
+
+        public TrackedTimer(TrackedClock owner, TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            _owner = owner;
+            _callback = callback;
+            _state = state;
+            _inner = owner._clock.CreateTimer(_ => Fire(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            Change(dueTime, period);
+        }
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            _period = period;
+            _owner.Schedule(this, dueTime);
+            return _inner.Change(dueTime, period);
+        }
+
+        public void Dispose()
+        {
+            _owner.Schedule(this, Timeout.InfiniteTimeSpan);
+            _inner.Dispose();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
+            return ValueTask.CompletedTask;
+        }
+
+        private void Fire()
+        {
+            _owner.Schedule(this, _period == TimeSpan.Zero ? Timeout.InfiniteTimeSpan : _period);
+            _callback(_state);
+        }
+    }
+}
+
 internal static class JobEventFixtures
 {
     public static readonly string[] InternalNames = ["job.created.v1.json", "job.assigned.v1.json", "job.status-changed.v1.json"];
@@ -514,17 +762,21 @@ internal sealed class DispatcherHarness : IAsyncDisposable
 
     private static readonly TimeSpan _settle = TimeSpan.FromMilliseconds(10);
 
+    private static readonly TimeSpan _patience = TimeSpan.FromSeconds(10);
+
     private readonly ServiceProvider _services;
 
     private DispatcherHarness(
         ServiceProvider services,
         FakeTimeProvider clock,
+        TrackedClock timers,
         CapturingLogSink logs,
         NotificationsStub stub,
         string secret)
     {
         _services = services;
         Clock = clock;
+        Timers = timers;
         Logs = logs;
         Stub = stub;
         Secret = secret;
@@ -534,6 +786,8 @@ internal sealed class DispatcherHarness : IAsyncDisposable
     }
 
     public FakeTimeProvider Clock { get; }
+
+    public TrackedClock Timers { get; }
 
     public CapturingLogSink Logs { get; }
 
@@ -553,6 +807,7 @@ internal sealed class DispatcherHarness : IAsyncDisposable
     {
         var secret = SecretKeyRules.WebhookSecretPrefix + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 19, 14, 42, 0, TimeSpan.Zero));
+        var timers = new TrackedClock(clock);
         var logs = new CapturingLogSink();
         var stub = new NotificationsStub();
         var configuration = new ConfigurationBuilder()
@@ -565,7 +820,7 @@ internal sealed class DispatcherHarness : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
         services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = ApiFactory.TestingEnvironment });
-        services.AddSingleton<TimeProvider>(clock);
+        services.AddSingleton<TimeProvider>(timers);
         services.AddLogging(logging => logging
             .SetMinimumLevel(LogLevel.Trace)
             .AddSerilog(
@@ -574,13 +829,23 @@ internal sealed class DispatcherHarness : IAsyncDisposable
         services.AddRealtime(configuration);
         services.AddHttpClient<NotificationsClient>().ConfigurePrimaryHttpMessageHandler(() => stub);
         var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-        var harness = new DispatcherHarness(provider, clock, logs, stub, secret);
+        var harness = new DispatcherHarness(provider, clock, timers, logs, stub, secret);
         await harness.Dispatcher.StartAsync(TestContext.Current.CancellationToken);
         return harness;
     }
 
     public Task AdvanceUntilAsync(Func<bool> done, TimeSpan limit, bool failWhenUnreached = true) =>
         AdvanceUntilAsync(Clock, done, limit, failWhenUnreached);
+
+    public static async Task WaitUntilAsync(Func<bool> condition, Func<string> state)
+    {
+        var deadline = DateTime.UtcNow + _patience;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"Nothing happened within {_patience} of real time: {state()}");
+            await Task.Delay(_settle, TestContext.Current.CancellationToken);
+        }
+    }
 
     public Task WaitForLogsAsync(string eventName, int count) => WaitForLogsAsync(Logs, eventName, count);
 
