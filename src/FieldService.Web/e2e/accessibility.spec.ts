@@ -19,6 +19,7 @@ import {
   historyCopy,
   jobDetailCopy,
   jobsCopy,
+  liveCopy,
   notFoundCopy,
   shellCopy,
   signInCopy,
@@ -27,6 +28,7 @@ import {
 } from './support/copy.ts'
 import {
   assignRowName,
+  createAssignedJob,
   createOnHoldJob,
   createUnassignedJob,
   expectedAssignOrder,
@@ -35,6 +37,7 @@ import {
   rowNamed,
 } from './support/jobs.ts'
 import { e2eTitle, openInApp, readJsonFile, resultsFile, writeJsonFile } from './support/run.ts'
+import { SocketGate } from './support/websocket.ts'
 
 const axeTags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
 
@@ -913,5 +916,55 @@ test.describe('E2E-19 accessibility of the W1 to W3 routes and states', () => {
     await page.getByRole('button', { name: jobsCopy.tryAgain }).click()
     await expect(tableRows(page).first()).toBeVisible()
     await expect(jobsRegion(page)).toBeFocused()
+  })
+})
+
+test.describe('E2E-19 accessibility of the W4 live states', () => {
+  test('the Live pill with an event toast and a row flash, the Reconnecting banner and Back online pass axe at 1280 and 375 px and reflow at 320 px', async ({
+    adminPage: page,
+    api,
+    guards,
+    technician,
+    runId,
+  }, testInfo) => {
+    const lenaApi = await technician(demoTechnicians.assignments.email)
+    const lena = lenaApi.user
+    const job = await createAssignedJob(api, runId, 'live states', lena.id)
+    const gate = new SocketGate()
+    await gate.install(page, guards)
+    const pill = page.getByRole('banner').getByText(liveCopy.pillAnyState)
+    const notice = page.getByRole('main').getByRole('status').first()
+    const notifications = page.getByRole('region', { name: shellCopy.notifications })
+    const row = jobsRegion(page)
+      .locator('tbody tr')
+      .filter({ has: page.getByRole('link', { name: job.title, exact: true }) })
+
+    await page.goto('/jobs')
+    await expect(pill).toHaveText(liveCopy.pillLive, { timeout: 10_000 })
+    await lenaApi.start(job.id)
+    await expect(
+      notifications.getByText(liveCopy.started(lena.displayName), { exact: true }),
+    ).toBeVisible()
+    await expect(row).toContainText(liveCopy.justNow)
+
+    await audit(page, testInfo, runId, 'jobs with an event toast and a row flash 1280')
+    await page.setViewportSize(widths[1])
+    await expect(pill).toHaveText(liveCopy.pillLive)
+    await audit(page, testInfo, runId, 'jobs with an event toast and a row flash 375')
+
+    await gate.drop()
+    await expect(notice).toHaveText(liveCopy.reconnectingBanner, { timeout: 6_000 })
+    await expect(pill).toHaveText(liveCopy.pillReconnecting)
+    await audit(page, testInfo, runId, 'the Reconnecting banner 375')
+    await page.setViewportSize({ width: 320, height: 800 })
+    expect(await pageScrollWidth(page), 'the Reconnecting banner at 320 px').toBeLessThanOrEqual(
+      320,
+    )
+    await page.setViewportSize(widths[0])
+    await audit(page, testInfo, runId, 'the Reconnecting banner 1280')
+
+    gate.allow()
+    await expect(notice).toHaveText(liveCopy.backOnlineBanner, { timeout: 12_000 })
+    await audit(page, testInfo, runId, 'Back online 1280')
   })
 })

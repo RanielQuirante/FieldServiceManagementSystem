@@ -115,15 +115,15 @@ public sealed partial class OpenApiConventionsTests(DatabaseFixture fixture) : D
     }
 
     [Fact]
-    public void WriteOperationsDocument400ProtectedOperations401And403EveryOperation429AndJobRoutes404()
+    public void WriteOperationsWithABodyOrAParameterDocument400ProtectedOperations401And403EveryOperation429AndJobRoutes404()
     {
         var findings = new List<string>();
         foreach (var operation in Operations())
         {
             var statuses = Responses(operation).Select(response => response.Status).ToHashSet();
-            if (operation.Method is "post" or "put" or "patch" or "delete" && !statuses.Contains(400))
+            if (IsWriteWithInput(operation) && !statuses.Contains(400))
             {
-                findings.Add($"{operation.Name}: a write operation without 400");
+                findings.Add($"{operation.Name}: a write operation with a body or a parameter without 400");
             }
 
             if (IsProtected(operation) && !(statuses.Contains(401) && statuses.Contains(403)))
@@ -148,6 +148,61 @@ public sealed partial class OpenApiConventionsTests(DatabaseFixture fixture) : D
         }
 
         Assert.True(findings.Count == 0, string.Join("\n", findings));
+    }
+
+    [Fact]
+    public void TheOnlyWriteOperationWithoutABodyOrAParameterIsIssueSocketTicketAndItDocumentsNo400()
+    {
+        var exempt = Operations()
+            .Where(operation => IsWrite(operation) && !IsWriteWithInput(operation))
+            .ToList();
+
+        var issueSocketTicket = Assert.Single(exempt);
+        Assert.Equal("IssueSocketTicket", StringOf(issueSocketTicket.Body, "operationId"));
+        Assert.Equal("POST /api/auth/socket-tickets", issueSocketTicket.Name);
+        Assert.Equal([200, 401, 403, 429], Responses(issueSocketTicket).Select(response => response.Status).Order());
+    }
+
+    [Fact]
+    public void The400RuleReportsAWriteOperationWithABodyOrAParameterAndExemptsOneWithNeither()
+    {
+        const string Document = """
+            {
+              "openapi": "3.1.1",
+              "paths": {
+                "/api/with-body": {
+                  "post": {
+                    "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                },
+                "/api/with-parameter/{jobId}": {
+                  "put": {
+                    "parameters": [ { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+                    "responses": { "200": { "description": "OK" } }
+                  },
+                  "delete": {
+                    "parameters": [ { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+                    "responses": { "204": { "description": "No Content" }, "400": { "description": "Bad Request" } }
+                  }
+                },
+                "/api/without-input": {
+                  "post": {
+                    "parameters": [],
+                    "responses": { "200": { "description": "OK" } }
+                  },
+                  "get": {
+                    "parameters": [ { "name": "page", "in": "query", "schema": { "type": "integer" } } ],
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                }
+              }
+            }
+            """;
+
+        var findings = WriteOperationsWithInputWithout400(Document);
+
+        Assert.Equal(["POST /api/with-body", "PUT /api/with-parameter/{jobId}"], findings);
     }
 
     [Fact]
@@ -250,9 +305,26 @@ public sealed partial class OpenApiConventionsTests(DatabaseFixture fixture) : D
         Assert.True(findings.Count == 0, string.Join("\n", findings));
     }
 
-    private static List<Operation> Operations()
+    public static List<string> WriteOperationsWithInputWithout400(string json) =>
+    [
+        .. Operations(json)
+            .Where(IsWriteWithInput)
+            .Where(operation => !Responses(operation).Any(response => response.Status == 400))
+            .Select(operation => operation.Name),
+    ];
+
+    private static bool IsWrite(Operation operation) => operation.Method is "post" or "put" or "patch" or "delete";
+
+    private static bool IsWriteWithInput(Operation operation) =>
+        IsWrite(operation)
+        && (operation.Body.TryGetProperty("requestBody", out _)
+            || (operation.Body.TryGetProperty("parameters", out var parameters) && parameters.GetArrayLength() > 0));
+
+    private static List<Operation> Operations() => Operations(File.ReadAllText(OpenApiSnapshotTests.SnapshotPath));
+
+    private static List<Operation> Operations(string json)
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(OpenApiSnapshotTests.SnapshotPath));
+        using var document = JsonDocument.Parse(json);
         return
         [
             .. document.RootElement.GetProperty("paths").EnumerateObject()

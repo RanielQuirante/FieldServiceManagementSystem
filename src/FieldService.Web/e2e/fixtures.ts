@@ -17,6 +17,7 @@ import {
   refreshCookieFrom,
   refreshCookieName,
   refreshWithCookie,
+  socketTicketsPath,
   signIn,
   signInTechnician,
   signOutWithCookie,
@@ -24,8 +25,22 @@ import {
   type SessionUser,
   type TechnicianApi,
 } from './support/api.ts'
-import { budgetViolations, recordAuthCall } from './support/budget.ts'
+import {
+  budgetViolations,
+  countsAgainstTheUserLimit,
+  recordAdministratorRequest,
+  budgetPauseFor,
+  recordAuthCall,
+  testReserve,
+  waitForBudgetRoom,
+  type AuthCall,
+} from './support/budget.ts'
 import { recordSessionEvent } from './support/sessions.ts'
+import {
+  handshakeUrlProblem,
+  isRealtimeHandshake,
+  type HandshakeChecker,
+} from './support/websocket.ts'
 import { currentRunId, resultsFile, writeJsonFile } from './support/run.ts'
 import { demoAccountSentinels, SentinelCollector, sentinelFile } from './support/sentinels.ts'
 
@@ -74,11 +89,17 @@ export const consolePatterns = {
   reportedError: (marker: string): RegExp => new RegExp(escapeForPattern(marker)),
 } as const
 
-export class PageGuards {
+function withoutSocketQueries(text: string): string {
+  return text.replace(/(\/socket\.io\/)\?[^\s'"]*/g, '$1?<query not shown>')
+}
+
+export class PageGuards implements HandshakeChecker {
   readonly cspViolations: CspViolation[] = []
   private readonly foreignRequests: string[] = []
   private readonly pageErrors: string[] = []
   private readonly consoleErrors: string[] = []
+  private readonly handshakeProblems: string[] = []
+  private handshakes = 0
   private readonly allowedConsole: RegExp[]
   private readonly allowedPageErrors: RegExp[]
   private readonly watched = new WeakSet<Page>()
@@ -120,8 +141,9 @@ export class PageGuards {
       })
     }, cspBinding)
     page.on('request', (request) => this.checkOrigin(request))
+    page.on('websocket', (socket) => this.checkSocketUrl(socket.url()))
     page.on('pageerror', (error) => {
-      const text = `${error.name}: ${error.message}`
+      const text = withoutSocketQueries(`${error.name}: ${error.message}`)
       if (!this.allowedPageErrors.some((pattern) => pattern.test(text))) {
         this.pageErrors.push(text)
       }
@@ -130,11 +152,26 @@ export class PageGuards {
       if (message.type() !== 'error') {
         return
       }
-      const text = `${message.text()} @ ${message.location().url}`
+      const text = withoutSocketQueries(`${message.text()} @ ${message.location().url}`)
       if (!this.allowedConsole.some((pattern) => pattern.test(text))) {
         this.consoleErrors.push(text)
       }
     })
+  }
+
+  checkSocketUrl(url: string): void {
+    if (!isRealtimeHandshake(url)) {
+      return
+    }
+    this.handshakes += 1
+    const problem = handshakeUrlProblem(url)
+    if (problem !== null) {
+      this.handshakeProblems.push(problem)
+    }
+  }
+
+  handshakesChecked(): number {
+    return this.handshakes
   }
 
   private checkOrigin(request: Request): void {
@@ -156,6 +193,7 @@ export class PageGuards {
       ...this.foreignRequests.map((request) => `Request to another origin: ${request}`),
       ...this.pageErrors.map((error) => `Page error: ${error}`),
       ...this.consoleErrors.map((message) => `Console error: ${message}`),
+      ...this.handshakeProblems,
     ]
   }
 }
@@ -212,13 +250,16 @@ export function problemBody(
   }
 }
 
-function authCallOf(request: Request): 'sign-in' | 'refresh' | null {
+function authCallOf(request: Request): AuthCall | null {
   if (request.method() !== 'POST') {
     return null
   }
   const path = new URL(request.url()).pathname
   if (path === '/api/auth/sign-in') {
     return 'sign-in'
+  }
+  if (path === socketTicketsPath) {
+    return 'socket-ticket'
   }
   return path === '/api/auth/refresh' ? 'refresh' : null
 }
@@ -255,15 +296,26 @@ async function observeAuthResponse(response: Response, sink: SentinelSink): Prom
     recordSessionEvent('opened', 'Web sign-in in the browser')
   }
   try {
-    const body = (await response.json()) as { accessToken?: string; refreshToken?: string | null }
+    const body = (await response.json()) as {
+      accessToken?: string
+      refreshToken?: string | null
+      ticket?: string
+    }
     sink('access token', body.accessToken)
     sink('refresh token', body.refreshToken)
+    sink('socket ticket', body.ticket)
+    sink('socket ticket signature', body.ticket?.split('.')[2])
   } catch {
     return
   }
 }
 
 function instrumentContext(context: BrowserContext, sink: SentinelSink): void {
+  context.on('requestfinished', (request) => {
+    if (!stubbedRequests.has(request) && countsAgainstTheUserLimit(request.url())) {
+      recordAdministratorRequest()
+    }
+  })
   context.on('response', (response) => {
     void observeAuthResponse(response, sink)
   })
@@ -519,9 +571,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   expectedPageErrors: [nothingExpected, { option: true }],
 
   guards: [
-    async ({ baseURL, expectedConsole, expectedPageErrors, cspLog }, use) => {
+    async ({ baseURL, expectedConsole, expectedPageErrors, cspLog }, use, testInfo) => {
       if (baseURL === undefined) {
         throw new Error('The project has no baseURL.')
+      }
+      const pause = budgetPauseFor(testReserve)
+      if (pause > 0) {
+        testInfo.setTimeout(testInfo.timeout + pause + 1_000)
+        testInfo.annotations.push({
+          type: 'budget pause',
+          description: `${pause} ms before the test, to keep the run inside its per-minute budgets (R64, DEC-067 (d))`,
+        })
+        await waitForBudgetRoom(testReserve)
       }
       const guards = new PageGuards(new URL(baseURL).origin, expectedConsole, expectedPageErrors)
       await use(guards)

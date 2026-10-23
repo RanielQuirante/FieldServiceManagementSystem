@@ -14,6 +14,7 @@ using FieldService.Api.Persistence.Seeding;
 using FieldService.Api.Shared.Errors;
 using FieldService.Api.Shared.Realtime;
 using FieldService.Api.Tests.Infrastructure;
+using FieldService.Api.Tests.Shared.Realtime;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
@@ -644,6 +645,103 @@ public sealed class UpdateJobStatusTests(DatabaseFixture fixture) : DatabaseTest
         {
             await factory.DisposeAsync();
         }
+    }
+
+    [Fact]
+    public async Task ACommittedStatusChangeIsPostedOnceSignedToTheNotificationServiceWithTheRequestsCorrelationId()
+    {
+        NotificationsStub? stub = null;
+        await using var factory = Fixture.CreateFactory(factory =>
+        {
+            factory.Settings["Serilog:MinimumLevel:Default"] = "Information";
+            stub = NotificationsStub.AttachTo(factory);
+        });
+        var (_, technician, job) = await ArrangeAsync(JobStatus.Assigned);
+        using var client = factory.CreateApiClient();
+        client.AccessToken = TestTokens.For(factory, technician.User);
+
+        using var response = await client.PutJsonAsync(PathOf(job.Id), Body(JobStatus.InProgress, null, job.Version));
+        var updated = await ReadJobAsync(response);
+        await stub!.WaitForRequestsAsync(1);
+        await DispatcherHarness.WaitForLogsAsync(factory.LogSink, RealtimeLog.DispatchedEvent, 1);
+
+        var correlationId = client.LastCorrelationId!;
+        var webhook = Assert.Single(stub.Requests);
+        NotificationsStub.AssertSignedEnvelope(
+            factory,
+            webhook,
+            correlationId,
+            JobEventTypes.StatusChanged,
+            job.Id,
+            updated.Number,
+            JobStatus.InProgress,
+            JobStatus.Assigned);
+        var dispatched = Assert.Single(factory.LogSink.Named(RealtimeLog.DispatchedEvent));
+        Assert.Equal(correlationId, CapturingLogSink.Scalar(dispatched, "CorrelationId"));
+        Assert.Equal(webhook.Header("webhook-id"), CapturingLogSink.Scalar(dispatched, "JobEventId"));
+        Assert.Contains(factory.LogSink.Events, entry =>
+            CapturingLogSink.Scalar(entry, "SourceContext") == "Serilog.AspNetCore.RequestLoggingMiddleware"
+            && CapturingLogSink.Scalar(entry, "CorrelationId") == correlationId);
+    }
+
+    [Fact]
+    public async Task A409IsNeverPostedAndTheNextCommittedChangeIsTheFirstEventTheNotificationServiceReceives()
+    {
+        NotificationsStub? stub = null;
+        await using var factory = Fixture.CreateFactory(factory => stub = NotificationsStub.AttachTo(factory));
+        var (_, technician, job) = await ArrangeAsync(JobStatus.Assigned);
+        using var client = factory.CreateApiClient();
+        client.AccessToken = TestTokens.For(factory, technician.User);
+
+        using var stale = await client.PutJsonAsync(PathOf(job.Id), Body(JobStatus.InProgress, null, job.Version + 1));
+        using var invalid = await client.PutJsonAsync(PathOf(job.Id), Body(JobStatus.OnHold, "Waiting for a part", job.Version));
+        using var started = await client.PutJsonAsync(PathOf(job.Id), Body(JobStatus.InProgress, null, job.Version));
+        var updated = await ReadJobAsync(started);
+        await stub!.WaitForRequestsAsync(1);
+
+        using var staleProblem = await ApiClient.AssertProblemAsync(stale, HttpStatusCode.Conflict, "concurrency.conflict");
+        using var invalidProblem = await ApiClient.AssertProblemAsync(invalid, HttpStatusCode.Conflict, Invalid);
+        var webhook = Assert.Single(stub.Requests);
+        NotificationsStub.AssertSignedEnvelope(
+            factory,
+            webhook,
+            client.LastCorrelationId!,
+            JobEventTypes.StatusChanged,
+            job.Id,
+            updated.Number,
+            JobStatus.InProgress,
+            JobStatus.Assigned);
+    }
+
+    [Fact]
+    public async Task WithTheNotificationServiceDownTheStatusChangeSucceedsStaysCommittedAndOneWarningFollowsTheBudget()
+    {
+        NotificationsStub? stub = null;
+        await using var factory = Fixture.CreateFactory(factory => stub = NotificationsStub.AttachTo(factory));
+        stub!.Respond = (_, _) => Task.FromResult(HttpStatusCode.ServiceUnavailable);
+        var (_, technician, job) = await ArrangeAsync(JobStatus.Assigned);
+        using var client = factory.CreateApiClient();
+        client.AccessToken = TestTokens.For(factory, technician.User);
+
+        using var response = await client.PutJsonAsync(PathOf(job.Id), Body(JobStatus.InProgress, null, job.Version));
+        var updated = await ReadJobAsync(response);
+        await DispatcherHarness.AdvanceUntilAsync(
+            factory.Clock,
+            () => factory.LogSink.Named(RealtimeLog.DispatchFailedEvent).Count == 1,
+            TimeSpan.FromSeconds(15));
+
+        Assert.Equal(JobStatus.InProgress, updated.Status);
+        Assert.InRange(stub.Requests.Count, 2, 4);
+        var failure = Assert.Single(factory.LogSink.Named(RealtimeLog.DispatchFailedEvent));
+        Assert.Equal(Serilog.Events.LogEventLevel.Warning, failure.Level);
+        Assert.Contains(CapturingLogSink.Scalar(failure, "Reason"), new[] { RealtimeLog.Unavailable, RealtimeLog.TimedOut });
+        Assert.Equal(client.LastCorrelationId, CapturingLogSink.Scalar(failure, "CorrelationId"));
+        Assert.Equal(job.Id.ToString(), CapturingLogSink.Scalar(failure, "JobId"));
+        await using var db = Fixture.CreateAppDbContext();
+        var stored = await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == job.Id, CancellationToken);
+        Assert.Equal(JobStatus.InProgress, stored.Status);
+        Assert.Equal(updated.Version, stored.Version);
+        Assert.Equal(1, await db.JobHistory.CountAsync(entry => entry.JobId == job.Id && entry.Action == JobHistoryAction.Started, CancellationToken));
     }
 
     public static object Body(JobStatus status, string? note, uint version) => new { status, note, version };

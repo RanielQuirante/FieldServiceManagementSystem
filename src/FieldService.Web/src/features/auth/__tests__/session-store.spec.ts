@@ -1,7 +1,9 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
+import { useRealtimeStore } from '@/features/realtime/realtime-store'
 import { apiClient } from '@/shared/api/api-client'
+import { lastFakeSocket } from '@/shared/testing/fake-socket'
 import type { InProcessBroadcastChannelClass } from '@/shared/testing/broadcast-channel'
 import {
   deferred,
@@ -277,6 +279,36 @@ describe('sign-out', () => {
     expect(broadcastChannelClass().posted).toEqual([
       { name: sessionChannelName, data: { type: 'signed-out' } },
     ])
+  })
+
+  it('disconnects live updates when the session signs out', async () => {
+    stubFetch({ [signInRoute]: json(sessionResponse()), [signOutRoute]: noContent() })
+    const session = useSessionStore()
+    await session.signIn(demoAdministratorEmail, password())
+    const realtime = useRealtimeStore()
+    realtime.start()
+    const socket = lastFakeSocket()
+
+    await session.signOut()
+
+    expect(socket.disconnectCalls).toBe(1)
+    expect(realtime.state).toBe('idle')
+  })
+
+  it('ends the session as expired when the realtime ticket reports an expired session', async () => {
+    const stub = stubFetch({ [signInRoute]: json(sessionResponse()) })
+    const session = useSessionStore()
+    const ends = recordEnds(session)
+    await session.signIn(demoAdministratorEmail, password())
+
+    session.expireSession()
+    session.expireSession()
+
+    expect(session.status).toBe('signed-out')
+    expect(session.endReason).toBe('expired')
+    expect(ends).toEqual(['expired'])
+    expect(stub.requests).toHaveLength(1)
+    expect(broadcastChannelClass().posted).toEqual([])
   })
 
   it('clears the session even when the sign-out request fails', async () => {

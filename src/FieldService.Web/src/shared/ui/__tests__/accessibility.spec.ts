@@ -11,6 +11,7 @@ import AppIcon from '../AppIcon.vue'
 import AppShell from '../AppShell.vue'
 import Avatar from '../Avatar.vue'
 import Banner from '../Banner.vue'
+import ConnectionBanner from '../ConnectionBanner.vue'
 import CountCapsule from '../CountCapsule.vue'
 import EmptyState from '../EmptyState.vue'
 import ErrorState from '../ErrorState.vue'
@@ -18,6 +19,7 @@ import FilterChipGroup from '../FilterChipGroup.vue'
 import IconButton from '../IconButton.vue'
 import { icons, type IconName } from '../icons'
 import IconTile from '../IconTile.vue'
+import LivePill from '../LivePill.vue'
 import LoadingState from '../LoadingState.vue'
 import PageHeader from '../PageHeader.vue'
 import PriorityLabel from '../PriorityLabel.vue'
@@ -733,11 +735,39 @@ describe('AppShell', () => {
     expect(wrapper.emitted('sign-out')).toHaveLength(1)
   })
 
-  it('holds the notification region inside main', async () => {
+  it('puts the notification region last in the shell, after main, without a live attribute', async () => {
     const { wrapper } = await shellAt('/jobs')
     unmount = () => wrapper.unmount()
 
-    expect(wrapper.find('main [role="region"][aria-label="Notifications"]').exists()).toBe(true)
+    const region = wrapper.find('[role="region"][aria-label="Notifications"]')
+    expect(wrapper.find('main [role="region"][aria-label="Notifications"]').exists()).toBe(false)
+    expect(wrapper.find('.app-shell').element.lastElementChild).toBe(region.element)
+    expect(region.attributes('aria-live')).toBeUndefined()
+    expect(region.find('[role="status"][aria-atomic="false"]').exists()).toBe(true)
+  })
+
+  it('has the live pill in the top bar as plain text and the polite banner slot first in main', async () => {
+    const router: Router = createRouter({ history: createMemoryHistory(), routes: shellRoutes })
+    await router.push('/jobs')
+    const wrapper = mount(AppShell, {
+      props: { userName: 'Dana Whitfield', userRole: 'Dispatcher' },
+      slots: {
+        default: () => h('h1', 'Page'),
+        status: () => h(LivePill, { state: 'live', updatedAt: new Date(2026, 9, 19, 10, 42) }),
+        notice: () => h(ConnectionBanner, { notice: null }),
+      },
+      global: { plugins: [router] },
+      attachTo: document.body,
+    })
+    unmount = () => wrapper.unmount()
+
+    const pill = wrapper.find('header .live-pill')
+    expect(pill.exists()).toBe(true)
+    expect(pill.attributes('role')).toBeUndefined()
+    expect(pill.findAll('[role]')).toHaveLength(0)
+    const first = wrapper.find('main').element.firstElementChild
+    expect(first?.getAttribute('role')).toBe('status')
+    expect(first?.classList.contains('connection-banner')).toBe(true)
   })
 })
 

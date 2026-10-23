@@ -55,6 +55,8 @@ export default async function globalTeardown(config: FullConfig): Promise<void> 
       `  sentinels: ${sentinels.length}; scanned: ${scanned.join(', ')}`,
       `  CSP violations in the run: ${violations.length}`,
       `  sign-ins: ${budget.signIns}; refresh calls: ${budget.refreshes}; busiest minute: ${budget.busiestRefreshMinute}`,
+      `  socket tickets: ${budget.tickets}; busiest ticket minute: ${budget.busiestTicketMinute}; budget pauses: ${budget.pauses} (${budget.pauseMilliseconds} ms)`,
+      `  administrator API requests: ${budget.administratorRequests}; busiest minute: ${budget.busiestAdministratorMinute}`,
       `  sessions opened: ${sessions.opened}; signed out: ${sessions.signedOut}`,
       '',
     ].join('\n'),

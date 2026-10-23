@@ -5,6 +5,8 @@ import {
   createRequiredEnvironment,
   createSocketTicketKey,
   createWebhookSecret,
+  readSignatureVector,
+  readSocketTicketVector,
   type Environment,
 } from '../support/fixtures.ts'
 
@@ -435,6 +437,139 @@ describe('loadConfig published and patterned keys', () => {
       assertValueNotDisclosed(error, value)
     })
   }
+})
+
+describe('loadConfig refuses the values published in the two test vector files', () => {
+  const signatureSecret = readSignatureVector().secret
+  const ticketKey = readSocketTicketVector().key
+  const cases: readonly [string, string, string][] = [
+    ['the signature vector secret', 'WEBHOOK_SECRETS', signatureSecret],
+    [
+      'the signature vector secret as the second entry',
+      'WEBHOOK_SECRETS',
+      `${createWebhookSecret()} ${signatureSecret}`,
+    ],
+    [
+      'the signature vector secret bytes',
+      'SOCKET_TICKET_KEY',
+      signatureSecret.slice('whsec_'.length),
+    ],
+    ['the socket ticket vector key', 'SOCKET_TICKET_KEY', ticketKey],
+    ['the socket ticket vector key in whsec_ form', 'WEBHOOK_SECRETS', `whsec_${ticketKey}`],
+  ]
+
+  for (const [name, variable, value] of cases) {
+    test(`refuses ${name} as ${variable}`, () => {
+      const error = assertRejected(
+        createRequiredEnvironment({ [variable]: value }),
+        variable,
+        /published test key/,
+      )
+
+      assertValueNotDisclosed(error, value)
+    })
+  }
+})
+
+describe('loadConfig refuses a webhook secret that equals SOCKET_TICKET_KEY', () => {
+  const sharedKeyRule = /^entries must differ from SOCKET_TICKET_KEY$/
+
+  test('refuses a first WEBHOOK_SECRETS entry whose bytes equal SOCKET_TICKET_KEY', () => {
+    const keyText = base64Of(randomSecretBytes())
+    const error = assertRejected(
+      createRequiredEnvironment({
+        WEBHOOK_SECRETS: `whsec_${keyText}`,
+        SOCKET_TICKET_KEY: keyText,
+      }),
+      'WEBHOOK_SECRETS',
+      sharedKeyRule,
+    )
+
+    assert.ok(error.message.includes('SOCKET_TICKET_KEY'), 'the message names SOCKET_TICKET_KEY')
+    assertValueNotDisclosed(error, keyText)
+  })
+
+  test('refuses a second, older WEBHOOK_SECRETS entry whose bytes equal SOCKET_TICKET_KEY', () => {
+    const newest = createWebhookSecret()
+    const keyText = base64Of(randomSecretBytes())
+    const error = assertRejected(
+      createRequiredEnvironment({
+        WEBHOOK_SECRETS: `${newest} whsec_${keyText}`,
+        SOCKET_TICKET_KEY: keyText,
+      }),
+      'WEBHOOK_SECRETS',
+      sharedKeyRule,
+    )
+
+    assert.ok(error.message.includes('SOCKET_TICKET_KEY'), 'the message names SOCKET_TICKET_KEY')
+    assertValueNotDisclosed(error, newest.slice('whsec_'.length))
+    assertValueNotDisclosed(error, keyText)
+  })
+
+  test('compares decoded bytes, so an unpadded SOCKET_TICKET_KEY matches a padded entry', () => {
+    const keyText = base64Of(randomSecretBytes())
+    const unpaddedKeyText = keyText.replace(/=+$/, '')
+    assert.notEqual(unpaddedKeyText, keyText)
+
+    const error = assertRejected(
+      createRequiredEnvironment({
+        WEBHOOK_SECRETS: `whsec_${keyText}`,
+        SOCKET_TICKET_KEY: unpaddedKeyText,
+      }),
+      'WEBHOOK_SECRETS',
+      sharedKeyRule,
+    )
+
+    assertValueNotDisclosed(error, unpaddedKeyText)
+  })
+
+  test('accepts two entries and a key whose bytes all differ', () => {
+    const newest = randomSecretBytes()
+    const oldest = randomSecretBytes()
+    const key = randomSecretBytes()
+    const config = loadConfig(
+      createRequiredEnvironment({
+        WEBHOOK_SECRETS: `whsec_${base64Of(newest)} whsec_${base64Of(oldest)}`,
+        SOCKET_TICKET_KEY: base64Of(key),
+      }),
+    )
+
+    assert.deepEqual(
+      config.webhookSecrets.map((secret) => Buffer.from(secret)),
+      [newest, oldest],
+    )
+    assert.deepEqual(Buffer.from(config.socketTicketKey), key)
+  })
+
+  test('accepts an entry that only starts with the bytes of SOCKET_TICKET_KEY', () => {
+    const key = randomSecretBytes()
+    const longer = Buffer.concat([key, randomSecretBytes()])
+    const config = loadConfig(
+      createRequiredEnvironment({
+        WEBHOOK_SECRETS: `whsec_${base64Of(longer)}`,
+        SOCKET_TICKET_KEY: base64Of(key),
+      }),
+    )
+
+    assert.deepEqual(Buffer.from(config.webhookSecrets[0] ?? []), longer)
+  })
+
+  test('reports the shared key together with every other invalid variable', () => {
+    const keyText = base64Of(randomSecretBytes())
+    const error = rejectionOf(
+      createRequiredEnvironment({
+        PORT: 'not-a-port',
+        WEBHOOK_SECRETS: `whsec_${keyText}`,
+        SOCKET_TICKET_KEY: keyText,
+      }),
+    )
+
+    assert.deepEqual(error.issues.map((issue) => issue.variable).sort(), [
+      'PORT',
+      'WEBHOOK_SECRETS',
+    ])
+    assertValueNotDisclosed(error, keyText)
+  })
 })
 
 describe('loadConfig allowed origins', () => {

@@ -2,7 +2,7 @@ import process from 'node:process'
 
 import type { APIRequestContext, APIResponse } from '@playwright/test'
 
-import { recordAuthCall } from './budget.ts'
+import { recordAdministratorRequest, recordAuthCall } from './budget.ts'
 import { recordSessionEvent } from './sessions.ts'
 
 export type SessionClient = 'Web' | 'Mobile'
@@ -183,6 +183,8 @@ export const demoTechnicians = {
 
 export const refreshCookieName = 'fs_refresh'
 
+export const socketTicketsPath = '/api/auth/socket-tickets'
+
 export const csrfHeader = { 'X-FieldService-Csrf': '1' } as const
 
 export type SentinelSink = (label: string, value: string | null | undefined) => void
@@ -313,12 +315,14 @@ export class AdminApi {
   ) {}
 
   async send(method: ApiMethod, path: string, data?: unknown): Promise<APIResponse> {
-    const attempt = (token: string): Promise<APIResponse> =>
-      this.request.fetch(path, {
+    const attempt = (token: string): Promise<APIResponse> => {
+      recordAdministratorRequest()
+      return this.request.fetch(path, {
         method,
         headers: { Authorization: `Bearer ${token}` },
         ...(data !== undefined ? { data } : {}),
       })
+    }
     const response = await attempt(this.tokens.current())
     if (response.status() !== 401) {
       return response

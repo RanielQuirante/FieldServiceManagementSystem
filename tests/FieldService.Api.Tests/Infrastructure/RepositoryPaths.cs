@@ -13,6 +13,8 @@ public static class RepositoryPaths
     public static string MigrationsDirectory =>
         Path.Combine(Root, "src", "FieldService.Api", "Persistence", "Migrations");
 
+    public static string EventContractsDirectory => Path.Combine(Root, "docs", "contracts", "events");
+
     private static string FindRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

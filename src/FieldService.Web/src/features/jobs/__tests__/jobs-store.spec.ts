@@ -12,6 +12,10 @@ import {
   readTokens,
 } from '@/app/styles/__tests__/stylesheet-source'
 import { sessionResponse } from '@/features/auth/__tests__/session-fixtures'
+import { jobEvent, ticketReply, ticketRoute } from '@/features/realtime/__tests__/realtime-fixtures'
+import { listDebounceMilliseconds } from '@/features/realtime/live-refetch'
+import { rowFlashMilliseconds } from '@/features/realtime/realtime-store'
+import { lastFakeSocket, type FakeSocket } from '@/shared/testing/fake-socket'
 import type { JobHistoryAction } from '@/shared/format/labels'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import type { IconName } from '@/shared/ui/icons'
@@ -1280,5 +1284,264 @@ describe('the job detail page', () => {
     slow.resolve(new Response(JSON.stringify(job), { status: 200 }))
     await flushPromises()
     expect(wrapper.find('h1').text()).toBe('Rooftop HVAC unit not cooling')
+  })
+})
+
+describe('live updates on the jobs pages', () => {
+  const eventRowIndex = 3
+
+  const eventRowId = `01a15488-9680-7989-92af-${String(eventRowIndex).padStart(12, '0')}`
+
+  const priyaReference = { id: priya.id, displayName: priya.displayName }
+
+  function startedRowList(): ReturnType<typeof jobList> {
+    const items = demoSummaries(12).map((summary) =>
+      summary.id === eventRowId
+        ? { ...summary, status: 'InProgress' as const, updatedAt: demoToday.toISOString() }
+        : summary,
+    )
+    return jobList(items)
+  }
+
+  function startedRowJob(): JobDetails {
+    return jobDetails({
+      id: eventRowId,
+      number: 1052,
+      title: 'Demo job 1052',
+      status: 'InProgress',
+      assignedTechnician: priya,
+      updatedAt: demoToday.toISOString(),
+      history: [
+        historyEntry({ occurredAt: onDemoDay(0, 8, 0) }),
+        historyEntry({
+          id: '01a1549c-bac0-7b02-8af7-000000000052',
+          action: 'Started',
+          fromStatus: 'Assigned',
+          toStatus: 'InProgress',
+          actor: priyaReference,
+          occurredAt: demoToday.toISOString(),
+        }),
+      ],
+    })
+  }
+
+  async function liveApp(
+    path: string,
+    routeTable: RouteTable,
+  ): Promise<OpenApp & { readonly socket: FakeSocket }> {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], now: demoToday })
+    const opened = await openApp(path, { [ticketRoute]: ticketReply(), ...routeTable })
+    const socket = lastFakeSocket()
+    await socket.simulateConnect()
+    await flushPromises()
+    return { ...opened, socket }
+  }
+
+  function row(wrapper: VueWrapper, id: string) {
+    const link = wrapper
+      .findAll('tbody a')
+      .find((anchor) => anchor.attributes('href') === `/jobs/${id}`)
+    const element = link?.element.closest('tr')
+    if (element === null || element === undefined) {
+      throw new Error(`No row for ${id}`)
+    }
+    return element
+  }
+
+  it('refreshes the list after an event with no busy state, then flashes the row with Just now', async () => {
+    const slow = deferred()
+    const { wrapper, stub, socket } = await liveApp('/jobs', {
+      [listRoute]: [firstPage(), firstPage(), slow.reply],
+      [`GET /api/jobs/${eventRowId}`]: json(startedRowJob()),
+    })
+    const hiddenStatus = wrapper.find('main p.visually-hidden[role="status"]').text()
+
+    socket.emitServerEvent('job.status-changed', jobEvent({ jobId: eventRowId, jobNumber: 1052 }))
+    await flushPromises()
+    vi.advanceTimersByTime(listDebounceMilliseconds)
+    await slow.requested
+
+    expect(stub.requestsTo(listRoute)).toHaveLength(3)
+    expect(wrapper.find('table').attributes('aria-busy')).toBeUndefined()
+    expect(wrapper.text()).not.toContain('Loading jobs')
+
+    slow.resolve(new Response(JSON.stringify(startedRowList()), { status: 200 }))
+    await flushPromises()
+
+    const updated = row(wrapper, eventRowId)
+    expect(updated.classList.contains('data-table__row--updated')).toBe(true)
+    expect(updated.querySelector('.jobs-table__just-now')?.textContent).toBe('Just now')
+    expect(updated.textContent).toContain('In progress')
+    expect(wrapper.find('main p.visually-hidden[role="status"]').text()).toBe(hiddenStatus)
+    expect(wrapper.find('[aria-label="Notifications"] [role="status"]').text()).toBe(
+      'JOB-1052. Priya Natarajan started work. Demo job 1052 is now In progress.',
+    )
+
+    vi.advanceTimersByTime(rowFlashMilliseconds)
+    await flushPromises()
+    expect(row(wrapper, eventRowId).classList.contains('data-table__row--updated')).toBe(false)
+    expect(row(wrapper, eventRowId).querySelector('.jobs-table__updated')?.textContent).toBe(
+      '10:42 AM',
+    )
+  })
+
+  it('keeps the rows when an event refetch fails, with no error state or banner', async () => {
+    const { wrapper, socket } = await liveApp('/jobs', {
+      [listRoute]: [firstPage(), firstPage(), problem(500, 'server.error')],
+      [`GET /api/jobs/${eventRowId}`]: json(startedRowJob()),
+    })
+
+    socket.emitServerEvent('job.status-changed', jobEvent({ jobId: eventRowId, jobNumber: 1052 }))
+    await flushPromises()
+    vi.advanceTimersByTime(listDebounceMilliseconds)
+    await flushPromises()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(12)
+    expect(wrapper.text()).not.toContain('Jobs could not be loaded.')
+    expect(wrapper.find('.connection-banner__banner').exists()).toBe(false)
+    expect(wrapper.find('.data-table__row--updated').exists()).toBe(false)
+  })
+
+  it('shows Refresh failed over kept rows when the connect refetch fails, and Try again recovers', async () => {
+    const { wrapper, stub } = await liveApp('/jobs', {
+      [listRoute]: [firstPage(), problem(500, 'server.error'), firstPage()],
+    })
+
+    const banner = wrapper.find('.connection-banner__banner')
+    expect(banner.text()).toContain('Jobs could not be refreshed. Showing jobs from 10:42 AM.')
+    expect(banner.text()).toMatch(/Reference [0-9a-f-]{36}/)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(12)
+    expect(wrapper.find('table').attributes('aria-busy')).toBeUndefined()
+
+    await banner.find('button').trigger('click')
+    await flushPromises()
+
+    expect(stub.requestsTo(listRoute)).toHaveLength(3)
+    expect(wrapper.find('.connection-banner__banner').exists()).toBe(false)
+  })
+
+  it('moves focus to the table region when the focused row leaves the page', async () => {
+    const shorter = jobList(demoSummaries(12).filter((summary) => summary.id !== eventRowId))
+    const { wrapper, socket } = await liveApp('/jobs', {
+      [listRoute]: [firstPage(), firstPage(), json(shorter)],
+      [`GET /api/jobs/${eventRowId}`]: json(startedRowJob()),
+    })
+    row(wrapper, eventRowId).querySelector('a')?.focus()
+
+    socket.emitServerEvent('job.status-changed', jobEvent({ jobId: eventRowId, jobNumber: 1052 }))
+    await flushPromises()
+    vi.advanceTimersByTime(listDebounceMilliseconds)
+    await flushPromises()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(11)
+    expect(document.activeElement?.getAttribute('role')).toBe('region')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Jobs')
+  })
+
+  it('re-renders the open job from the event refetch without a skeleton, keeping focus', async () => {
+    const assigned = jobDetails({
+      id: eventRowId,
+      number: 1052,
+      title: 'Demo job 1052',
+      status: 'Assigned',
+      assignedTechnician: priya,
+      updatedAt: onDemoDay(0, 9, 0),
+      affordances: { allowedStatusChanges: [], canAssign: false },
+    })
+    const started = {
+      ...startedRowJob(),
+      affordances: { allowedStatusChanges: [], canAssign: false },
+    }
+    const { wrapper, socket } = await liveApp(`/jobs/${eventRowId}`, {
+      [`GET /api/jobs/${eventRowId}`]: [json(assigned), json(assigned), json(started)],
+    })
+    const heading = wrapper.find<HTMLElement>('h1').element
+    heading.focus()
+    expect(wrapper.find('.job-detail__live-line').text()).toBe(
+      'Status changes from the technician app appear here in real time.',
+    )
+
+    socket.emitServerEvent('job.status-changed', jobEvent({ jobId: eventRowId, jobNumber: 1052 }))
+    await flushPromises()
+
+    expect(wrapper.find('.page-header__meta').text()).toContain('In progress')
+    expect(wrapper.find('.status-timeline').text()).toContain('Started by Priya Natarajan')
+    expect(wrapper.find('main [role="status"].visually-hidden').exists()).toBe(false)
+    expect(document.activeElement).toBe(heading)
+    expect(wrapper.find('[aria-label="Notifications"] .toast__title').text()).toBe(
+      'Priya Natarajan started work',
+    )
+  })
+
+  it('leaves out the live line on a completed job', async () => {
+    const completed = jobDetails({
+      status: 'Completed',
+      affordances: { allowedStatusChanges: [], canAssign: false },
+    })
+    const { wrapper } = await liveApp(`/jobs/${completed.id}`, {
+      [`GET /api/jobs/${completed.id}`]: json(completed),
+    })
+
+    expect(wrapper.find('h1').text()).toBe(completed.title)
+    expect(wrapper.find('.job-detail__live-line').exists()).toBe(false)
+  })
+
+  it('moves focus to the heading when the assign panel leaves while it holds focus', async () => {
+    const open = jobDetails({ id: eventRowId, number: 1052, title: 'Demo job 1052' })
+    const taken = jobDetails({
+      id: eventRowId,
+      number: 1052,
+      title: 'Demo job 1052',
+      status: 'Assigned',
+      assignedTechnician: marco,
+      updatedAt: demoToday.toISOString(),
+      affordances: { allowedStatusChanges: [], canAssign: false },
+      history: [
+        historyEntry(),
+        historyEntry({
+          id: '01a1547a-dae0-7a01-9e1c-000000000052',
+          action: 'Assigned',
+          toStatus: 'Assigned',
+          actor: { id: crypto.randomUUID(), displayName: 'Sam Rivera' },
+          technician: { id: marco.id, displayName: marco.displayName },
+          occurredAt: demoToday.toISOString(),
+        }),
+      ],
+    })
+    const { wrapper, socket } = await liveApp(`/jobs/${eventRowId}`, {
+      [`GET /api/jobs/${eventRowId}`]: [json(open), json(open), json(taken)],
+    })
+    wrapper.find<HTMLInputElement>('.job-detail__side input').element.focus()
+
+    socket.emitServerEvent('job.assigned', jobEvent({ jobId: eventRowId, jobNumber: 1052 }))
+    await flushPromises()
+
+    expect(wrapper.find('.job-detail__side').exists()).toBe(false)
+    expect(document.activeElement?.tagName).toBe('H1')
+  })
+
+  it('keeps every typed field and the chosen technician on New job when its list refetches', async () => {
+    const { wrapper, stub, socket } = await liveApp('/jobs/new', {
+      'GET /api/checklist-templates': json({ items: [] }),
+      [`GET /api/jobs/${eventRowId}`]: json(startedRowJob()),
+    })
+    const title = wrapper.find<HTMLInputElement>('input#job-title')
+    await title.setValue('Replace pressure relief valve')
+    const select = wrapper.find<HTMLSelectElement>('select#assign-technician')
+    await select.setValue(priya.id)
+
+    socket.simulateDisconnect('io server disconnect')
+    await socket.simulateConnect()
+    await flushPromises()
+
+    expect(stub.requestsTo(techniciansRoute).length).toBeGreaterThanOrEqual(3)
+    expect(title.element.value).toBe('Replace pressure relief valve')
+    expect(select.element.value).toBe(priya.id)
+    expect(wrapper.find('.connection-banner__banner').exists()).toBe(false)
+
+    socket.emitServerEvent('job.status-changed', jobEvent({ jobId: eventRowId, jobNumber: 1052 }))
+    await flushPromises()
+    expect(stub.requestsTo(`GET /api/jobs/${eventRowId}`)).toHaveLength(1)
+    expect(wrapper.find('[aria-label="Notifications"] .toast').exists()).toBe(false)
   })
 })

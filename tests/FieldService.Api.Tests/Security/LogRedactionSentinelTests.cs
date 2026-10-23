@@ -1,11 +1,15 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using FieldService.Api.Domain;
 using FieldService.Api.Persistence.Seeding;
+using FieldService.Api.Shared.Realtime;
 using FieldService.Api.Shared.Security;
 using FieldService.Api.Tests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Serilog.Events;
 
 namespace FieldService.Api.Tests.Security;
@@ -42,9 +46,15 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
                 SecurityLog.ReuseDetectedEvent,
                 SecurityLog.SignOutEvent,
                 SecurityLog.RateLimitRejectedEvent,
+                SecurityLog.SocketTicketIssuedEvent,
+                RealtimeLog.DispatchedEvent,
                 "seed.demo-data.completed",
             },
             name => Assert.Contains(flow.FileLines, line => line.Contains($"\"Name\":\"{name}\"", StringComparison.Ordinal)));
+        Assert.Equal(
+            flow.Webhooks,
+            flow.FileLines.Count(line => line.Contains($"\"Name\":\"{RealtimeLog.DispatchedEvent}\"", StringComparison.Ordinal)));
+        Assert.Contains(flow.FileLines, line => line.Contains("\"RequestPath\":\"/api/auth/socket-tickets\"", StringComparison.Ordinal));
         Assert.Contains(flow.FileLines, line => line.Contains("\"RequestPath\":\"/api/jobs\"", StringComparison.Ordinal));
         Assert.True(
             flow.FileLines.Count(line => line.Contains($"\"RequestPath\":\"{flow.StatusPath}\"", StringComparison.Ordinal)) >= 3,
@@ -145,14 +155,30 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
 
         var dana = DemoData.Users.Single(user => user.Person == DemoPerson.DanaWhitfield);
         var marco = DemoData.Users.Single(user => user.Person == DemoPerson.MarcoReyes);
+        var notifications = new RecordingNotifications();
         var factory = Fixture.CreateFactory(factory =>
         {
             factory.EnvironmentName = "Development";
             factory.Settings["Logs:FileEnabled"] = "true";
             factory.Settings["Seed:DemoData"] = "true";
             factory.Settings["Seed:DemoPassword"] = password;
+            factory.Settings[NotificationsOptions.BaseUrlName] = RecordingNotifications.BaseUrl;
+            factory.TestServices = services =>
+            {
+                services.RemoveAll<IJobEventQueue>();
+                services.AddSingleton<IJobEventQueue>(provider => provider.GetRequiredService<JobEventQueue>());
+                services.AddHttpClient<NotificationsClient>().ConfigurePrimaryHttpMessageHandler(() => notifications);
+            };
         });
+        foreach (var name in new[] { AuthOptions.AccessTokenKeyName, AuthOptions.SocketTicketKeyName, NotificationsOptions.WebhookSecretName })
+        {
+            var value = factory.Settings[name]!;
+            secrets.Add(($"the configured {name}", value));
+            secrets.Add(($"the key part of {name}", value[(value.IndexOf('_', StringComparison.Ordinal) + 1)..]));
+        }
+
         var addresses = new List<string>();
+        var webhooks = 0;
         try
         {
             using var web = factory.CreateApiClient();
@@ -191,12 +217,20 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             using var detail = await web.GetAsync(created.Headers.Location!.OriginalString);
             Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
             Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+            using var ticketResponse = await web.PostAsync(SocketTicketClaimsTests.SocketTicketsPath);
+            Assert.Equal(HttpStatusCode.OK, ticketResponse.StatusCode);
+            using var ticketBody = JsonDocument.Parse(await ticketResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            var ticket = ticketBody.RootElement.GetProperty("ticket").GetString()!;
+            secrets.Add(("the socket ticket", ticket));
+            secrets.Add(("the socket ticket signature", ticket[(ticket.LastIndexOf('.') + 1)..]));
 
             factory.Clock.Advance(TimeSpan.FromSeconds(31));
             using var reuse = await web.RefreshWithCookieAsync(firstCookie);
             Assert.Equal(HttpStatusCode.Unauthorized, reuse.StatusCode);
             using var signOut = await web.SignOutWithCookieAsync(secondCookie);
             Assert.Equal(HttpStatusCode.NoContent, signOut.StatusCode);
+            using var ticketAfterSignOut = await web.PostAsync(SocketTicketClaimsTests.SocketTicketsPath);
+            Assert.Equal(HttpStatusCode.Unauthorized, ticketAfterSignOut.StatusCode);
 
             using var mobileSignIn = await mobile.SignInAsync(marco.Email, password, SessionClient.Mobile);
             Assert.Equal(HttpStatusCode.OK, mobileSignIn.StatusCode);
@@ -222,6 +256,16 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
                 using var limited = await flood.PostJsonAsync(ApiClient.SignInPath, new { });
             }
 
+            await notifications.WaitForAsync(4);
+            await WaitForLogsAsync(factory.LogSink, RealtimeLog.DispatchedEvent, 4);
+            foreach (var webhook in notifications.Requests)
+            {
+                secrets.Add(("a webhook signature", webhook.Signature));
+                secrets.Add(("the base64 part of a webhook signature", webhook.Signature[(webhook.Signature.IndexOf(',', StringComparison.Ordinal) + 1)..]));
+                secrets.Add(("a webhook body", webhook.Body));
+            }
+
+            webhooks = notifications.Requests.Count;
             secrets.AddRange(
             [
                 ("the first access token", firstSession.AccessToken),
@@ -244,7 +288,17 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             .Select(logEvent => new LogRecord($"captured event \"{logEvent.MessageTemplate.Text}\"", CapturingLogSink.Text(logEvent)))
             .Concat(lines.Select((line, index) => new LogRecord($"log file line {index + 1}", DecodedText(line))))
             .ToList();
-        return new Flow(secrets, records, factory.LogSink.Events, lines, addresses, statusPath);
+        return new Flow(secrets, records, factory.LogSink.Events, lines, addresses, statusPath, webhooks);
+    }
+
+    private static async Task WaitForLogsAsync(CapturingLogSink sink, string eventName, int count)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (sink.Named(eventName).Count < count)
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"Only {sink.Named(eventName).Count} of {count} {eventName} entries were logged.");
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
     }
 
     private static async Task<string> StartHoldAndResumeAsync(ApiClient technician, string holdNote)
@@ -343,5 +397,42 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
         IReadOnlyList<LogEvent> Events,
         List<string> FileLines,
         List<string> Addresses,
-        string StatusPath);
+        string StatusPath,
+        int Webhooks);
+
+    private sealed record Webhook(string Signature, string Body)
+    {
+        public override string ToString() => "a recorded webhook";
+    }
+
+    private sealed class RecordingNotifications : HttpMessageHandler
+    {
+        public const string BaseUrl = "http://notifications.test:5090";
+
+        private readonly ConcurrentQueue<Webhook> _requests = new();
+
+        public IReadOnlyList<Webhook> Requests => [.. _requests];
+
+        public async Task WaitForAsync(int count)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (_requests.Count < count)
+            {
+                Assert.True(DateTime.UtcNow < deadline, $"The notification service stub received {_requests.Count} of {count} events.");
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            }
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var signature = request.Headers.TryGetValues("webhook-signature", out var values) ? string.Join(' ', values) : string.Empty;
+            _requests.Enqueue(new Webhook(signature, body));
+            return new HttpResponseMessage(HttpStatusCode.Accepted)
+            {
+                Content = new StringContent("{\"outcome\":\"broadcast\"}", Encoding.UTF8, "application/json"),
+                RequestMessage = request,
+            };
+        }
+    }
 }

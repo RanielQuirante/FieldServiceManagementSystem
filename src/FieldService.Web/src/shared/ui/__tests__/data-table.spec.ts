@@ -202,6 +202,63 @@ describe('DataTable', () => {
   it('drops its own glass inside a section card', () => {
     expect(mountTable('content', { inCard: true }).classes()).toContain('data-table--in-card')
   })
+
+  it('marks updated rows by key', async () => {
+    const table = mountTable('content', { updatedKeys: new Set(['b']) })
+
+    expect(table.findAll('tbody tr').map((row) => row.classes('data-table__row--updated'))).toEqual(
+      [false, true],
+    )
+
+    await table.setProps({ updatedKeys: new Set<string>() })
+    expect(table.findAll('.data-table__row--updated')).toHaveLength(0)
+  })
+
+  it('gives updated cells the flash, which wins over the hover tint', () => {
+    const css = readStyles('shared/ui/DataTable.vue')
+    const rules = Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g)).map((rule) => ({
+      prelude: (rule[1] ?? '').trim(),
+      body: rule[2] ?? '',
+      index: rule.index,
+    }))
+    const flash = rules.find((rule) => rule.body.includes('var(--color-fs-flash)'))
+    const hover = rules.find((rule) => rule.body.includes('var(--color-fs-row-hover)'))
+    const flashSelectors = flash?.prelude.split(',').map((selector) => selector.trim()) ?? []
+    const flashOnHover = flashSelectors.find((selector) => selector.includes(':hover')) ?? ''
+    const hoverSelector = (hover?.prelude ?? '').replace(/:not\([^)]*\)/g, '.not')
+
+    expect(flashSelectors).toEqual(
+      expect.arrayContaining(['.data-table__row.data-table__row--updated td']),
+    )
+    expect(flashOnHover).toContain(':hover')
+    expect(hoverSelector).toContain(':hover')
+    expect(outranks(hoverSelector, flashOnHover)).toBe(false)
+    expect((flash?.index ?? 0) > (hover?.index ?? 0)).toBe(true)
+  })
+
+  it('moves focus to the scroll region when the row holding focus leaves', async () => {
+    const table = mountTable('content')
+    table.find<HTMLElement>('tbody tr td').element.setAttribute('tabindex', '-1')
+    table.find<HTMLElement>('tbody tr td').element.focus()
+
+    await table.setProps({ rows: rows.slice(1) })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(document.activeElement?.getAttribute('role')).toBe('region')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Jobs')
+  })
+
+  it('leaves focus alone when the focused row stays', async () => {
+    const table = mountTable('content')
+    const cell = table.findAll<HTMLElement>('tbody tr td')[2]?.element
+    cell?.setAttribute('tabindex', '-1')
+    cell?.focus()
+
+    await table.setProps({ rows: [...rows] })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(document.activeElement).toBe(cell)
+  })
 })
 
 describe('Pagination', () => {

@@ -9,6 +9,7 @@ using FieldService.Api.Features.Technicians.GetAssignedJobs;
 using FieldService.Api.Persistence.Seeding;
 using FieldService.Api.Shared.Realtime;
 using FieldService.Api.Tests.Infrastructure;
+using FieldService.Api.Tests.Shared.Realtime;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -541,6 +542,33 @@ public sealed class AssignJobTests(DatabaseFixture fixture) : DatabaseTest(fixtu
         {
             await factory.DisposeAsync();
         }
+    }
+
+    [Fact]
+    public async Task ACommittedAssignmentIsPostedOnceAsASignedJobAssignedEnvelopeWithTheRequestsCorrelationId()
+    {
+        NotificationsStub? stub = null;
+        await using var factory = Fixture.CreateFactory(factory => stub = NotificationsStub.AttachTo(factory));
+        var administrator = await DataAt(Earlier).CreateAdministratorAsync(CancellationToken);
+        var technician = await DataAt(Earlier).CreateTechnicianAsync(Trade.Electrical, CancellationToken);
+        var job = await DataAt(Earlier).CreateJobAsync(administrator.Id, _templateId, CancellationToken);
+        using var client = factory.CreateApiClient();
+        client.AccessToken = TestTokens.For(factory, administrator);
+
+        using var response = await client.PutJsonAsync(PathOf(job.Id), Body(technician.UserId, job.Version));
+        var details = await ReadJobAsync(response);
+        await stub!.WaitForRequestsAsync(1);
+
+        var webhook = Assert.Single(stub.Requests);
+        NotificationsStub.AssertSignedEnvelope(
+            factory,
+            webhook,
+            client.LastCorrelationId!,
+            JobEventTypes.Assigned,
+            job.Id,
+            details.Number,
+            JobStatus.Assigned,
+            JobStatus.Unassigned);
     }
 
     public static object Body(Guid technicianId, uint version) => new { technicianId, version };

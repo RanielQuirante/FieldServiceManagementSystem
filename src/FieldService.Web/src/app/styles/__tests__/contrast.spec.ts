@@ -354,6 +354,59 @@ const recipePairs: ContrastCase[] = [
     minimum: NON_TEXT,
   },
   {
+    pair: 'ink-2 second sentence on the reconnecting banner',
+    text: ink2,
+    layers: [backdrop, gradient('--fs-gradient-reconnecting-banner')],
+    minimum: TEXT,
+  },
+  {
+    pair: 'ink-2 second sentence on the back online banner',
+    text: ink2,
+    layers: [backdrop, gradient('--fs-gradient-online-banner')],
+    minimum: TEXT,
+  },
+  ...(
+    [
+      ['ink', ink],
+      ['ink-2', ink2],
+    ] as const
+  ).map(([role, text]): ContrastCase => ({
+    pair: `${role} on the paused banner`,
+    text,
+    layers: [backdrop, webGlass],
+    minimum: TEXT,
+  })),
+  {
+    pair: 'ink icon on the reconnecting accent tile',
+    text: ink,
+    layers: [gradient('--fs-gradient-accent')],
+    minimum: NON_TEXT,
+  },
+  {
+    pair: '#FFFFFF icon on the back online tile',
+    text: onDark,
+    layers: [gradient('--fs-gradient-pass')],
+    minimum: NON_TEXT,
+  },
+  {
+    pair: 'ink on the live pill in the top bar',
+    text: ink,
+    layers: [backdrop, color('--fs-glass-topbar-bg'), webGlass],
+    minimum: TEXT,
+  },
+  {
+    pair: 'muted on a flashed table cell',
+    text: muted,
+    layers: [backdrop, webGlass, color('--color-fs-flash')],
+    minimum: TEXT,
+  },
+  {
+    pair: 'muted on a flashed table cell under the hover tint',
+    text: muted,
+    layers: [backdrop, webGlass, color('--color-fs-flash'), color('--color-fs-row-hover')],
+    minimum: TEXT,
+  },
+  {
     pair: '#FFFFFF on a toast',
     text: onDark,
     layers: [surface, gradient('--fs-gradient-toast')],

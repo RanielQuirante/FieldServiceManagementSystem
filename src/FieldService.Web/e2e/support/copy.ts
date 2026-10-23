@@ -165,3 +165,24 @@ export const toastCopy = {
   errorTitle: 'Something went wrong',
   dismiss: 'Dismiss notification',
 } as const
+
+export const liveCopy = {
+  pillAnyState: /^(?:Connecting…|Live|Reconnecting…|Live updates paused)/,
+  pillLive: /^Live(?! updates paused)/,
+  pillLiveName: /^Live, updated \d{1,2}:\d{2} [AP]M$/,
+  pillConnecting: 'Connecting…',
+  pillReconnecting: 'Reconnecting…',
+  pillPaused: 'Live updates paused',
+  reconnectingBanner: 'Reconnecting to live updates. Job statuses on this page may be out of date.',
+  pausedLead: 'Live updates are paused.',
+  pausedBanner: /^Live updates are paused\.(?: Showing data from \d{1,2}:\d{2} [AP]M\.)?$/,
+  backOnlineBanner: /^Back online\. Jobs refreshed at \d{1,2}:\d{2} [AP]M\.$/,
+  refreshNow: 'Refresh now',
+  justNow: 'Just now',
+  started: (actor: string): string => `${actor} started work`,
+  putOnHold: (actor: string): string => `${actor} put a job on hold`,
+  resumed: (actor: string): string => `${actor} resumed work`,
+  body: (title: string, status: string): string => `${title} is now ${status}.`,
+  announcement: (jobNumber: string, title: string, body: string): string =>
+    `${jobNumber}. ${title}. ${body}`,
+} as const

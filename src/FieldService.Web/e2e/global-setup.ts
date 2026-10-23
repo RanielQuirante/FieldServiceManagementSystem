@@ -38,6 +38,23 @@ async function apiReachedThroughProxy(baseUrl: string): Promise<Readiness> {
   }
 }
 
+function engineErrorCode(body: string): unknown {
+  try {
+    return (JSON.parse(body) as { code?: unknown }).code
+  } catch {
+    return null
+  }
+}
+
+async function realtimeReachedThroughProxy(baseUrl: string): Promise<Readiness> {
+  const response = await fetch(new URL('/socket.io/?EIO=4&transport=polling', baseUrl))
+  const code = engineErrorCode(await response.text())
+  return {
+    ready: response.status === 400 && code === 0,
+    detail: `GET /socket.io/ with the polling transport returned ${response.status}; the notification service answers 400 with code 0 when it refuses polling`,
+  }
+}
+
 async function waitFor(
   check: (baseUrl: string) => Promise<Readiness>,
   baseUrl: string,
@@ -67,5 +84,6 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const deadline = Date.now() + readinessMilliseconds
   await waitFor(dashboardServed, baseUrl, deadline)
   await waitFor(apiReachedThroughProxy, baseUrl, deadline)
+  await waitFor(realtimeReachedThroughProxy, baseUrl, deadline)
   process.stdout.write(`e2e run ${runId} against ${baseUrl}\n`)
 }

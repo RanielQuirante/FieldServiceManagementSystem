@@ -19,7 +19,9 @@ export interface MemoryLog {
   readonly entries: readonly LogEntry[]
   readonly lines: readonly string[]
   find(message: string): LogEntry | undefined
+  all(message: string): LogEntry[]
   levelOf(entry: LogEntry): string | undefined
+  clear(): void
 }
 
 export function createMemoryLog(): MemoryLog {
@@ -42,6 +44,11 @@ export function createMemoryLog(): MemoryLog {
     entries,
     lines,
     find: (message) => entries.find((entry) => entry.msg === message),
+    all: (message) => entries.filter((entry) => entry.msg === message),
     levelOf: (entry) => levelNames[entry.level],
+    clear: () => {
+      entries.length = 0
+      lines.length = 0
+    },
   }
 }

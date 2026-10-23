@@ -11,6 +11,7 @@ using FieldService.Api.Persistence.Seeding;
 using FieldService.Api.Shared.Errors;
 using FieldService.Api.Shared.Realtime;
 using FieldService.Api.Tests.Infrastructure;
+using FieldService.Api.Tests.Shared.Realtime;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -736,6 +737,32 @@ public sealed class CreateJobTests(DatabaseFixture fixture) : DatabaseTest(fixtu
 
         await ApiClient.AssertProblemAsync(response, HttpStatusCode.Forbidden, "auth.forbidden");
         await AssertNothingWrittenAsync();
+    }
+
+    [Fact]
+    public async Task ACommittedCreateIsPostedOnceAsASignedJobCreatedEnvelopeWithTheRequestsCorrelationId()
+    {
+        NotificationsStub? stub = null;
+        await using var factory = Fixture.CreateFactory(factory => stub = NotificationsStub.AttachTo(factory));
+        var administrator = await Data.CreateAdministratorAsync(CancellationToken);
+        using var client = factory.CreateApiClient();
+        client.AccessToken = TestTokens.For(factory, administrator);
+
+        using var response = await client.PostAsync(JobsPath, Json(ValidBody()));
+        var job = await ReadJobAsync(response);
+        await stub!.WaitForRequestsAsync(1);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var webhook = Assert.Single(stub.Requests);
+        NotificationsStub.AssertSignedEnvelope(
+            factory,
+            webhook,
+            client.LastCorrelationId!,
+            JobEventTypes.Created,
+            job.Id,
+            job.Number,
+            JobStatus.Unassigned,
+            null);
     }
 
     private static JsonObject ValidBody() => new()

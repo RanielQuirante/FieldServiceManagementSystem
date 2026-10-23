@@ -28,6 +28,8 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
 
     private const string DocumentRoute = "/openapi/{documentName}.json";
 
+    private const string SocketTicketsRoute = "/api/auth/socket-tickets";
+
     private static readonly string[] _callers = [Anonymous, AssignedTechnician, OtherTechnician, Administrator];
 
     public static TheoryData<string, string, string, int, string?> Matrix => new()
@@ -44,6 +46,10 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "POST", "/api/auth/sign-out", AssignedTechnician, 204, null },
         { "POST", "/api/auth/sign-out", OtherTechnician, 204, null },
         { "POST", "/api/auth/sign-out", Administrator, 204, null },
+        { "POST", SocketTicketsRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "POST", SocketTicketsRoute, AssignedTechnician, 403, "auth.forbidden" },
+        { "POST", SocketTicketsRoute, OtherTechnician, 403, "auth.forbidden" },
+        { "POST", SocketTicketsRoute, Administrator, 200, null },
         { "GET", "/api/checklist-templates", Anonymous, 401, "auth.unauthenticated" },
         { "GET", "/api/checklist-templates", AssignedTechnician, 403, "auth.forbidden" },
         { "GET", "/api/checklist-templates", OtherTechnician, 403, "auth.forbidden" },
@@ -108,8 +114,9 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         string? expectedCode)
     {
         var world = await ArrangeAsync(Fixture);
+        using var liveSession = await LiveSessionForAsync(route, caller, world);
         using var client = Fixture.Factory.CreateApiClient();
-        client.AccessToken = world.TokenFor(Fixture.Factory, caller);
+        client.AccessToken = liveSession?.Session.AccessToken ?? world.TokenFor(Fixture.Factory, caller);
 
         using var response = await SendAsync(client, method, route, world);
 
@@ -148,6 +155,20 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
             using var problem = await ApiClient.AssertProblemAsync(response, HttpStatusCode.Forbidden, expectedCode);
             Assert.Empty(ApiClient.SetCookieHeadersOf(response));
         }
+    }
+
+    [Fact]
+    public async Task AnAdministratorTokenWithoutALiveSessionGets401SessionExpiredFromTheSocketTicketEndpoint()
+    {
+        var world = await ArrangeAsync(Fixture);
+        using var client = Fixture.Factory.CreateApiClient();
+        client.AccessToken = world.TokenFor(Fixture.Factory, Administrator);
+
+        using var ticket = await SendAsync(client, "POST", SocketTicketsRoute, world);
+        using var jobs = await SendAsync(client, "GET", "/api/jobs", world);
+
+        using var problem = await ApiClient.AssertProblemAsync(ticket, HttpStatusCode.Unauthorized, "auth.session-expired");
+        Assert.Equal(HttpStatusCode.OK, jobs.StatusCode);
     }
 
     [Fact]
@@ -205,6 +226,16 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         return new World(administrator, assigned.User, other.User, job.Id, assignedJob.Version, data.Now);
     }
 
+    private async Task<TestData.SignedInSession?> LiveSessionForAsync(string route, string caller, World world)
+    {
+        if (route != SocketTicketsRoute || caller != Administrator)
+        {
+            return null;
+        }
+
+        return await new TestData(Fixture, world.Now).SignInAsync(Fixture.Factory, SessionClient.Web, CancellationToken);
+    }
+
     private static Task<HttpResponseMessage> SendAsync(ApiClient client, string method, string route, World world)
     {
         var path = route
@@ -218,6 +249,7 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
                 SessionClient.Web),
             ("POST", "/api/auth/refresh") => client.PostAsync(path),
             ("POST", "/api/auth/sign-out") => client.PostAsync(path),
+            ("POST", SocketTicketsRoute) => client.PostAsync(path),
             ("POST", "/api/jobs") => client.PostJsonAsync(path, CreateJobBody(world.Now, Guid.NewGuid().ToString("N")[..8])),
             ("PUT", AssignmentRoute) => client.PutJsonAsync(path, new { technicianId = world.AssignedTechnician.Id, version = 0u }),
             ("PUT", StatusRoute) => client.PutJsonAsync(path, new { status = "InProgress", note = (string?)null, version = world.JobVersion }),
