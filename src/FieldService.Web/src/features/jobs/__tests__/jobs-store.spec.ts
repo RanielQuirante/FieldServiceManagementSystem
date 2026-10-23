@@ -35,6 +35,7 @@ import { noJobFilters } from '../composables/use-job-filters'
 import type { JobDetails, JobHistoryEntry } from '../jobs-api'
 import { jobsPageSize, useJobsStore } from '../jobs-store'
 import {
+  administratorSubmit,
   assignedInProgressJob,
   dana,
   demoStatusCounts,
@@ -50,6 +51,7 @@ import {
   onDemoDay,
   onHoldJob,
   priya,
+  readOnlyAffordances,
   statusChangedJob,
 } from './job-fixtures'
 
@@ -1003,6 +1005,7 @@ describe('the job detail page', () => {
       ...statusChangedJob(),
       affordances: {
         allowedStatusChanges: [{ status: 'OnHold', requiresNote: true }],
+        canSubmit: administratorSubmit(0, 10),
         canAssign: false,
       },
     }
@@ -1446,11 +1449,11 @@ describe('live updates on the jobs pages', () => {
       status: 'Assigned',
       assignedTechnician: priya,
       updatedAt: onDemoDay(0, 9, 0),
-      affordances: { allowedStatusChanges: [], canAssign: false },
+      affordances: readOnlyAffordances(),
     })
     const started = {
       ...startedRowJob(),
-      affordances: { allowedStatusChanges: [], canAssign: false },
+      affordances: readOnlyAffordances(),
     }
     const { wrapper, socket } = await liveApp(`/jobs/${eventRowId}`, {
       [`GET /api/jobs/${eventRowId}`]: [json(assigned), json(assigned), json(started)],
@@ -1476,7 +1479,7 @@ describe('live updates on the jobs pages', () => {
   it('leaves out the live line on a completed job', async () => {
     const completed = jobDetails({
       status: 'Completed',
-      affordances: { allowedStatusChanges: [], canAssign: false },
+      affordances: readOnlyAffordances(),
     })
     const { wrapper } = await liveApp(`/jobs/${completed.id}`, {
       [`GET /api/jobs/${completed.id}`]: json(completed),
@@ -1495,7 +1498,7 @@ describe('live updates on the jobs pages', () => {
       status: 'Assigned',
       assignedTechnician: marco,
       updatedAt: demoToday.toISOString(),
-      affordances: { allowedStatusChanges: [], canAssign: false },
+      affordances: readOnlyAffordances(),
       history: [
         historyEntry(),
         historyEntry({

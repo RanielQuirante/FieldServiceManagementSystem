@@ -1,5 +1,7 @@
 export const applicationName = 'FieldService Admin'
 
+const noBreakSpace = String.fromCharCode(0xa0)
+
 export function documentTitle(page: string): string {
   return `${page} · ${applicationName}`
 }
@@ -152,7 +154,31 @@ export const historyCopy = {
   started: (name: string): string => `Started by ${name}`,
   putOnHold: (name: string): string => `Put on hold by ${name}`,
   resumed: (name: string): string => `Resumed by ${name}`,
+  completed: (name: string): string => `Completed by ${name}`,
   note: (text: string): string => `“${text}”`,
+} as const
+
+export const reportCopy = {
+  documentTitle: (jobNumber: string): string => documentTitle(`${jobNumber} inspection report`),
+  eyebrowSuffix: 'Inspection report',
+  reportLink: 'Inspection report',
+  jobDetailsLink: 'Job details',
+  results: 'Inspection results',
+  heading: (template: string): string => `Inspection · ${template}`,
+  technicianNotes: 'Technician notes',
+  statusHistory: 'Status history',
+  notStartedTitle: 'Not started yet.',
+  notStartedMessage: 'The checklist has no answers.',
+  notSubmittedTitle: 'Not submitted yet.',
+  notSubmittedMessage: 'This report shows the answers saved so far.',
+  notesPending: 'Notes are added when the job is submitted.',
+  notAnswered: 'Not answered',
+  lessThanAMinute: 'Less than a minute',
+  loading: 'Loading inspection report',
+  loadFailed: 'The inspection report could not be loaded.',
+  answered: (answered: number, total: number): string => `${answered} of ${total} answered`,
+  reading: (label: string, value: string, unit: string): string =>
+    `${label} ${value}${noBreakSpace}${unit}`,
 } as const
 
 export const notFoundCopy = {
@@ -182,6 +208,7 @@ export const liveCopy = {
   started: (actor: string): string => `${actor} started work`,
   putOnHold: (actor: string): string => `${actor} put a job on hold`,
   resumed: (actor: string): string => `${actor} resumed work`,
+  completed: (actor: string): string => `${actor} completed a job`,
   body: (title: string, status: string): string => `${title} is now ${status}.`,
   announcement: (jobNumber: string, title: string, body: string): string =>
     `${jobNumber}. ${title}. ${body}`,

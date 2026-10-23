@@ -524,6 +524,23 @@ const recipePairs: ContrastCase[] = [
     layers: [backdrop, webGlass, color('--color-fs-row-hover')],
     minimum: TEXT,
   },
+  ...(
+    [
+      ['ink-2 label', ink2],
+      ['ink value', ink],
+    ] as const
+  ).map(([role, text]): ContrastCase => ({
+    pair: `${role} on the neutral KPI tile`,
+    text,
+    layers: [backdrop, gradient('--fs-gradient-kpi-neutral')],
+    minimum: TEXT,
+  })),
+  {
+    pair: 'ink-2 note on a hovered table row',
+    text: ink2,
+    layers: [backdrop, webGlass, color('--color-fs-row-hover')],
+    minimum: TEXT,
+  },
 ]
 
 describe('contrast arithmetic', () => {

@@ -284,6 +284,7 @@ public sealed class JobDetailsViewModelTests
     public async Task APageThatIsNoLongerShownStopsListeningForTheEndOfTheSession()
     {
         var harness = new JobsHarness(StubHttpMessageHandler.Sequence(() => JobDtoBuilder.Json(JobDtoBuilder.Details1047())));
+        harness.Session.ClearReceivedCalls();
         var viewModel = harness.CreateDetails();
         viewModel.AppearingCommand.Execute(null);
         await viewModel.ShowJobAsync(JobDtoBuilder.Job1047);

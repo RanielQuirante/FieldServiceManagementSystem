@@ -46,10 +46,13 @@ public sealed class HeaderAndPaneLayoutTests
         var buttons = heroActions.Descendants(_maui + "Button").ToList();
         var primary = Style("Styles.xaml", "FsPrimaryOnDarkDesktopButton");
         Assert.Equal(
-            ["{Binding StartJobCommand}", "{Binding OpenStatusSheetCommand}", "{Binding NavigateCommand}", "{Binding CallCommand}"],
+            ["{Binding StartJobCommand}", "{Binding OpenChecklistCommand}", "{Binding OpenStatusSheetCommand}", "{Binding OpenStatusSheetCommand}", "{Binding NavigateCommand}", "{Binding CallCommand}"],
             buttons.Select(button => button.Attribute("Command")?.Value));
         Assert.Equal(
-            ["FsPrimaryOnDarkDesktopButton", "FsPrimaryOnDarkDesktopButton", "FsSecondaryOnDarkDesktopButton", "FsSecondaryOnDarkDesktopButton"],
+            ["{Binding ShowsStartJob}", "{Binding ShowsInspectionAction}", "{Binding ShowsUpdateStatusSecondary}", "{Binding ShowsUpdateStatusPrimary}"],
+            buttons.Take(4).Select(button => button.Parent!.Attribute("IsVisible")?.Value));
+        Assert.Equal(
+            ["FsPrimaryOnDarkDesktopButton", "FsPrimaryOnDarkDesktopButton", "FsSecondaryOnDarkDesktopButton", "FsPrimaryOnDarkDesktopButton", "FsSecondaryOnDarkDesktopButton", "FsSecondaryOnDarkDesktopButton"],
             buttons.Select(button => button.Attribute("Style")?.Value?.Replace("{StaticResource ", string.Empty, StringComparison.Ordinal).TrimEnd('}')));
         Assert.Equal("{StaticResource FsSecondaryOnDarkDesktopButton}", primary.Attribute("BasedOn")?.Value);
         Assert.Equal("{StaticResource FsPrimaryOnDarkBrush}", Setter(primary, "Background"));

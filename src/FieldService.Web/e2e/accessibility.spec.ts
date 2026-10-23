@@ -33,8 +33,10 @@ import {
   createUnassignedJob,
   expectedAssignOrder,
   holdNoteFor,
+  jobWithDraftInspection,
   momentSpansOf,
   rowNamed,
+  seededJobInStatus,
 } from './support/jobs.ts'
 import { e2eTitle, openInApp, readJsonFile, resultsFile, writeJsonFile } from './support/run.ts'
 import { SocketGate } from './support/websocket.ts'
@@ -408,7 +410,7 @@ test.describe('E2E-19 accessibility of the W1 to W3 routes and states', () => {
           consolePatterns.assignmentConflict,
         ),
       )
-      const seeded = await api.findJobByNumber(1042)
+      const seeded = await seededJobInStatus(api, 'InProgress')
       const assignable = await createUnassignedJob(api, runId, `axe ${viewport.width}`)
       await page.setViewportSize(viewport)
       await page.goto('/jobs')
@@ -545,7 +547,7 @@ test.describe('E2E-19 accessibility of the W1 to W3 routes and states', () => {
       anyOf(consolePatterns.reportedError(marker), consolePatterns.jobNotFound, signInConsole),
     )
     const viewport = { width: 320, height: 800 }
-    const seeded = await api.findJobByNumber(1042)
+    const seeded = await seededJobInStatus(api, 'InProgress')
     const assignable = await createUnassignedJob(api, runId, 'reflow 320')
     await stubSignedOutRestore(anonymousPage)
     await anonymousPage.setViewportSize(viewport)
@@ -966,5 +968,117 @@ test.describe('E2E-19 accessibility of the W4 live states', () => {
     gate.allow()
     await expect(notice).toHaveText(liveCopy.backOnlineBanner, { timeout: 12_000 })
     await audit(page, testInfo, runId, 'Back online 1280')
+  })
+})
+
+async function captureState(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const path = testInfo.outputPath(`${name}.png`)
+  await page.screenshot({ path, fullPage: true })
+  await testInfo.attach(name, { path, contentType: 'image/png' })
+}
+
+test.describe('E2E-19 accessibility of the W5 inspection report', () => {
+  test.use({
+    expectedConsole: anyOf(consolePatterns.jobNotFound, consolePatterns.inspectionServerError),
+  })
+
+  test('the submitted, not submitted, not started, loading, failed and not-found reports pass axe at 1280 and 375 px, reflow at 320 px, and keep their title in forced colours and reduced transparency', async ({
+    adminPage: page,
+    api,
+    runId,
+  }, testInfo) => {
+    const submitted = await api.getJob((await api.findJobByNumber(1039)).id)
+    const draft = await jobWithDraftInspection(api)
+    const notStarted = await seededJobInStatus(api, 'Assigned')
+    const states = [
+      { slug: 'submitted', job: submitted },
+      { slug: 'not-submitted', job: draft },
+      { slug: 'not-started', job: notStarted },
+    ] as const
+    const reportOf = (id: string): string => `/jobs/${id}/inspection`
+
+    await page.goto('/jobs')
+    await expect(tableRows(page)).toHaveCount(12)
+    for (const viewport of widths) {
+      await page.setViewportSize(viewport)
+      for (const state of states) {
+        await openInApp(page, reportOf(state.job.id))
+        await expect(page.getByRole('heading', { level: 1, name: state.job.title })).toBeVisible()
+        await expect(page.getByRole('region', { name: 'Inspection results' })).toBeVisible()
+        await audit(page, testInfo, runId, `report ${state.slug} ${viewport.width}`)
+        await captureState(page, testInfo, `w5-report-${state.slug}-${viewport.width}`)
+      }
+
+      const release = await holdNextRequest(page, `**/api/jobs/${draft.id}/inspection`)
+      await openInApp(page, reportOf(draft.id))
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Loading inspection report' }),
+      ).toBeAttached()
+      await audit(page, testInfo, runId, `report loading ${viewport.width}`)
+      await captureState(page, testInfo, `w5-report-loading-${viewport.width}`)
+      release()
+      await expect(page.getByRole('heading', { level: 1, name: draft.title })).toBeVisible()
+
+      await fulfilStub(
+        page,
+        `**/api/jobs/${submitted.id}/inspection`,
+        { status: 500, body: problemBody(500, 'server.error', 'An unexpected error occurred.') },
+        1,
+      )
+      await openInApp(page, reportOf(submitted.id))
+      await expect(page.getByText('The inspection report could not be loaded.')).toBeVisible()
+      await audit(page, testInfo, runId, `report load failure ${viewport.width}`)
+      await captureState(page, testInfo, `w5-report-failure-${viewport.width}`)
+
+      await openInApp(page, reportOf(randomUUID()))
+      await expect(
+        page.getByRole('heading', { level: 1, name: jobDetailCopy.notFoundHeading }),
+      ).toBeVisible()
+      await audit(page, testInfo, runId, `report job not found ${viewport.width}`)
+    }
+
+    await page.setViewportSize({ width: 320, height: 800 })
+    for (const state of states) {
+      await openInApp(page, reportOf(state.job.id))
+      await expect(page.getByRole('heading', { level: 1, name: state.job.title })).toBeVisible()
+      await expect(page.getByRole('region', { name: 'Inspection results' })).toBeVisible()
+      expect(await pageScrollWidth(page), `report ${state.slug} at 320 px`).toBeLessThanOrEqual(320)
+      await captureState(page, testInfo, `w5-report-${state.slug}-320`)
+    }
+
+    await page.setViewportSize({ width: 768, height: 1024 })
+    for (const state of states) {
+      await openInApp(page, reportOf(state.job.id))
+      await expect(page.getByRole('heading', { level: 1, name: state.job.title })).toBeVisible()
+      await captureState(page, testInfo, `w5-report-${state.slug}-768`)
+    }
+
+    await page.setViewportSize(widths[0])
+    await page.emulateMedia({ forcedColors: 'active' })
+    await openInApp(page, reportOf(submitted.id))
+    await expect(page.getByRole('heading', { level: 1, name: submitted.title })).toBeVisible()
+    const paint = await titlePaint(page)
+    expect(paint.image, 'report title background in forced colours').toBe('none')
+    expect(paint.fill, 'report title fill in forced colours').toMatch(/^rgb\(/)
+    await captureState(page, testInfo, 'w5-report-forced-colours-1280')
+    await page.emulateMedia({ forcedColors: 'none' })
+
+    const cdp = await page.context().newCDPSession(page)
+    try {
+      await cdp.send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }],
+      })
+      expect(
+        await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches),
+        'reduced transparency is emulated',
+      ).toBe(true)
+      await openInApp(page, reportOf(draft.id))
+      await expect(page.getByRole('heading', { level: 1, name: draft.title })).toBeVisible()
+      await audit(page, testInfo, runId, 'report reduced transparency 1280')
+      await captureState(page, testInfo, 'w5-report-reduced-transparency-1280')
+    } finally {
+      await cdp.send('Emulation.setEmulatedMedia', { features: [] })
+      await cdp.detach()
+    }
   })
 })

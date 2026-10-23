@@ -107,6 +107,88 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
         Assert.Equal(job.Id, recorded.JobId);
     }
 
+    [Theory]
+    [MemberData(nameof(AssignedStatuses))]
+    public async Task ATechnicianGets404ForAnotherTechniciansInspectionAndSubmissionInEveryStatusAndNothingChanges(JobStatus status)
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var intruder = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await ArrangeJobAsync(data, administrator, owner, status);
+        var version = await VersionOfAsync(job.Id);
+        var before = await ReadRowAsync(job.Id);
+        var inspectionBefore = await ReadInspectionAsync(job.Id);
+        var missingId = Guid.CreateVersion7();
+        Fixture.Factory.Events.Clear();
+        using var intruderClient = Fixture.Factory.CreateApiClient();
+        intruderClient.AccessToken = TestTokens.For(Fixture.Factory, intruder.User);
+        using var ownerClient = Fixture.Factory.CreateApiClient();
+        ownerClient.AccessToken = TestTokens.For(Fixture.Factory, owner.User);
+
+        using var foreignRead = await intruderClient.GetAsync(InspectionPath(job.Id));
+        using var missingRead = await intruderClient.GetAsync(InspectionPath(missingId));
+        using var foreignSave = await intruderClient.PutJsonAsync(InspectionPath(job.Id), CompleteSave(version));
+        using var missingSave = await intruderClient.PutJsonAsync(InspectionPath(missingId), CompleteSave(version));
+        using var foreignSubmission = await intruderClient.PostJsonAsync(SubmissionPath(job.Id), Submission(version));
+        using var missingSubmission = await intruderClient.PostJsonAsync(SubmissionPath(missingId), Submission(version));
+        using var foreignJob = await intruderClient.GetAsync($"/api/jobs/{job.Id}");
+        using var own = await ownerClient.GetAsync(InspectionPath(job.Id));
+
+        using var jobProblem = await ApiClient.AssertProblemAsync(foreignJob, HttpStatusCode.NotFound, "job.not-found");
+        foreach (var (foreign, missing) in new[] { (foreignRead, missingRead), (foreignSave, missingSave), (foreignSubmission, missingSubmission) })
+        {
+            using var foreignProblem = await ApiClient.AssertProblemAsync(foreign, HttpStatusCode.NotFound, "job.not-found");
+            using var missingProblem = await ApiClient.AssertProblemAsync(missing, HttpStatusCode.NotFound, "job.not-found");
+            Assert.Equal(WithoutRequestMembers(missingProblem), WithoutRequestMembers(foreignProblem));
+            Assert.Equal(WithoutRequestMembers(jobProblem), WithoutRequestMembers(foreignProblem));
+        }
+
+        Assert.Equal(HttpStatusCode.OK, own.StatusCode);
+        using var ownBody = JsonDocument.Parse(await own.Content.ReadAsStringAsync(CancellationToken));
+        Assert.Equal(status.ToString(), ownBody.RootElement.GetProperty("jobStatus").GetString());
+        Assert.Equal(before, await ReadRowAsync(job.Id));
+        Assert.Equal(inspectionBefore, await ReadInspectionAsync(job.Id));
+        Fixture.Factory.Events.AssertEmpty();
+    }
+
+    [Fact]
+    public async Task AnotherTechniciansSaveAndSubmissionGet404WhileTheOwnerSavesAndSubmitsWithTheSameVersions()
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var intruder = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await ArrangeJobAsync(data, administrator, owner, JobStatus.InProgress);
+        Fixture.Factory.Events.Clear();
+        using var intruderClient = Fixture.Factory.CreateApiClient();
+        intruderClient.AccessToken = TestTokens.For(Fixture.Factory, intruder.User);
+        using var ownerClient = Fixture.Factory.CreateApiClient();
+        ownerClient.AccessToken = TestTokens.For(Fixture.Factory, owner.User);
+
+        using var foreignSave = await intruderClient.PutJsonAsync(InspectionPath(job.Id), CompleteSave(job.Version));
+        using var foreignSaveProblem = await ApiClient.AssertProblemAsync(foreignSave, HttpStatusCode.NotFound, "job.not-found");
+        Assert.Equal(job.Version, await VersionOfAsync(job.Id));
+        Assert.Equal(string.Empty, await ReadInspectionAsync(job.Id));
+        using var ownSave = await ownerClient.PutJsonAsync(InspectionPath(job.Id), CompleteSave(job.Version));
+        Assert.Equal(HttpStatusCode.OK, ownSave.StatusCode);
+        using var savedBody = JsonDocument.Parse(await ownSave.Content.ReadAsStringAsync(CancellationToken));
+        var saved = savedBody.RootElement.GetProperty("version").GetUInt32();
+        Assert.Equal(10, savedBody.RootElement.GetProperty("progress").GetProperty("answered").GetInt32());
+
+        using var foreignSubmission = await intruderClient.PostJsonAsync(SubmissionPath(job.Id), Submission(saved));
+        using var foreignSubmissionProblem = await ApiClient.AssertProblemAsync(foreignSubmission, HttpStatusCode.NotFound, "job.not-found");
+        Assert.Equal(saved, await VersionOfAsync(job.Id));
+        Fixture.Factory.Events.AssertEmpty();
+        using var ownSubmission = await ownerClient.PostJsonAsync(SubmissionPath(job.Id), Submission(saved));
+
+        Assert.Equal(HttpStatusCode.OK, ownSubmission.StatusCode);
+        using var submittedBody = JsonDocument.Parse(await ownSubmission.Content.ReadAsStringAsync(CancellationToken));
+        Assert.Equal(nameof(JobStatus.Completed), submittedBody.RootElement.GetProperty("status").GetString());
+        var recorded = Assert.Single(Fixture.Factory.Events.Events);
+        Assert.Equal(job.Id, recorded.JobId);
+    }
+
     [Fact]
     public async Task AnUnassignedJobIsInvisibleToEveryTechnicianAndVisibleToTheAdministrator()
     {
@@ -127,11 +209,20 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
             StatusPath(job.Id),
             new { status = "InProgress", note = (string?)null, version = job.Version });
         using var visible = await administratorClient.GetAsync($"/api/jobs/{job.Id}");
+        using var hiddenInspection = await technicianClient.GetAsync(InspectionPath(job.Id));
+        using var hiddenSave = await technicianClient.PutJsonAsync(InspectionPath(job.Id), CompleteSave(job.Version));
+        using var hiddenSubmission = await technicianClient.PostJsonAsync(SubmissionPath(job.Id), Submission(job.Version));
+        using var visibleInspection = await administratorClient.GetAsync(InspectionPath(job.Id));
 
         using var problem = await ApiClient.AssertProblemAsync(hidden, HttpStatusCode.NotFound, "job.not-found");
         using var changeProblem = await ApiClient.AssertProblemAsync(hiddenChange, HttpStatusCode.NotFound, "job.not-found");
+        using var inspectionProblem = await ApiClient.AssertProblemAsync(hiddenInspection, HttpStatusCode.NotFound, "job.not-found");
+        using var saveProblem = await ApiClient.AssertProblemAsync(hiddenSave, HttpStatusCode.NotFound, "job.not-found");
+        using var submissionProblem = await ApiClient.AssertProblemAsync(hiddenSubmission, HttpStatusCode.NotFound, "job.not-found");
         Assert.Equal(HttpStatusCode.OK, visible.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, visibleInspection.StatusCode);
         Assert.Equal(before, await ReadRowAsync(job.Id));
+        Assert.Equal(string.Empty, await ReadInspectionAsync(job.Id));
         Fixture.Factory.Events.AssertEmpty();
     }
 
@@ -207,7 +298,11 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
         using var previousCompleted = await previousClient.GetAsync(MyJobsPath + "?view=completed");
         using var own = await nextClient.GetAsync($"/api/jobs/{job.Id}");
         using var nextActive = await nextClient.GetAsync(MyJobsPath);
+        using var foreignInspection = await previousClient.GetAsync(InspectionPath(job.Id));
+        using var ownInspection = await nextClient.GetAsync(InspectionPath(job.Id));
 
+        using var foreignInspectionProblem = await ApiClient.AssertProblemAsync(foreignInspection, HttpStatusCode.NotFound, "job.not-found");
+        Assert.Equal(HttpStatusCode.OK, ownInspection.StatusCode);
         using var foreignProblem = await ApiClient.AssertProblemAsync(foreign, HttpStatusCode.NotFound, "job.not-found");
         using var missingProblem = await ApiClient.AssertProblemAsync(missing, HttpStatusCode.NotFound, "job.not-found");
         Assert.Equal(WithoutRequestMembers(missingProblem), WithoutRequestMembers(foreignProblem));
@@ -224,6 +319,46 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
     private static bool IsFinished(JobStatus status) => status is JobStatus.Completed or JobStatus.Cancelled;
 
     private static string StatusPath(Guid jobId) => $"/api/jobs/{jobId}/status";
+
+    private static string InspectionPath(Guid jobId) => $"/api/jobs/{jobId}/inspection";
+
+    private static string SubmissionPath(Guid jobId) => $"/api/jobs/{jobId}/submission";
+
+    private static object CompleteSave(uint version) => new
+    {
+        answers = TestData.ChecklistOf(TestData.HvacTemplateId).Items
+            .Select(item => new
+            {
+                checklistItemId = item.Id,
+                result = "Pass",
+                readings = item.ReadingFieldIds.Select(fieldId => new { readingFieldId = fieldId, value = 12.5m }).ToArray(),
+            })
+            .ToArray(),
+        version,
+    };
+
+    private static object Submission(uint version) => new { technicianNotes = "Unit running normally.", siteSafetyConfirmed = true, version };
+
+    private async Task<uint> VersionOfAsync(Guid jobId)
+    {
+        await using var db = Fixture.CreateAppDbContext();
+        return (await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == jobId, CancellationToken)).Version;
+    }
+
+    private async Task<string> ReadInspectionAsync(Guid jobId)
+    {
+        await using var db = Fixture.CreateAppDbContext();
+        var inspection = await db.Inspections.AsNoTracking()
+            .Include(entry => entry.Answers)
+            .ThenInclude(answer => answer.Readings)
+            .SingleOrDefaultAsync(entry => entry.JobId == jobId, CancellationToken);
+        return inspection is null
+            ? string.Empty
+            : $"{inspection.UpdatedAt:O}|{inspection.SubmittedAt:O}|{inspection.TechnicianNotes}|"
+                + string.Join(';', inspection.Answers
+                    .OrderBy(answer => answer.ChecklistItemId)
+                    .Select(answer => $"{answer.ChecklistItemId}:{answer.Result}:{answer.Note}:{answer.AnsweredAt:O}:{answer.Readings.Count}"));
+    }
 
     private static object OwnersNextChange(Job job) => job.Status == JobStatus.InProgress
         ? new { status = "OnHold", note = (string?)TestData.HoldNote, version = job.Version }

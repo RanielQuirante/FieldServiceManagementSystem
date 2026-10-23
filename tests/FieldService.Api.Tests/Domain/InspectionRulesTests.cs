@@ -336,6 +336,58 @@ public sealed class InspectionRulesTests
     }
 
     [Theory]
+    [InlineData(JobStatus.Completed)]
+    [InlineData(JobStatus.OnHold)]
+    [InlineData(JobStatus.Cancelled)]
+    [InlineData(JobStatus.Assigned)]
+    public void AFieldErrorIsReportedBeforeTheLock(JobStatus status)
+    {
+        var arrangement = TestData.ArrangeJob(status, _start);
+        var inspection = arrangement.Inspection ?? Inspection.Start(arrangement.Job, arrangement.Later);
+
+        var failWithoutNote = inspection.SaveAnswers(
+            arrangement.Job,
+            _hvac,
+            [Answer(_filtersItem, InspectionResult.Fail, " ")],
+            arrangement.AssigneeActor,
+            arrangement.Later);
+        var foreignItem = inspection.SaveAnswers(
+            arrangement.Job,
+            _hvac,
+            [Pass(ChecklistTemplateSeed.ItemId(1, 1))],
+            arrangement.AdministratorActor,
+            arrangement.Later);
+        var locked = inspection.SaveAnswers(arrangement.Job, _hvac, [Pass(_filtersItem)], arrangement.AssigneeActor, arrangement.Later);
+
+        Assert.Equal("answers[0].note", failWithoutNote?.Field);
+        Assert.Equal("answers[0].checklistItemId", foreignItem?.Field);
+        Assert.Equal(DomainErrors.InspectionLockedCode, locked?.Code);
+    }
+
+    [Fact]
+    public void AnswersAreAppliedInChecklistPositionOrderWhateverTheOrderTheyArrive()
+    {
+        var arrangement = TestData.ArrangeJob(JobStatus.InProgress, _start);
+        var inspection = Inspection.Start(arrangement.Job, arrangement.Later);
+
+        var error = inspection.SaveAnswers(
+            arrangement.Job,
+            _hvac,
+            [
+                Answer(ChecklistTemplateSeed.ItemId(2, 8), InspectionResult.Pass, null, new ChecklistReading(_supplyAir, 54m)),
+                Pass(_filtersItem),
+                Answer(ChecklistTemplateSeed.ItemId(2, 5), InspectionResult.Fail, "Bearing noise"),
+            ],
+            arrangement.AssigneeActor,
+            arrangement.Later);
+
+        Assert.Null(error);
+        Assert.Equal(
+            [_filtersItem, ChecklistTemplateSeed.ItemId(2, 5), ChecklistTemplateSeed.ItemId(2, 8)],
+            inspection.Answers.Select(answer => answer.ChecklistItemId));
+    }
+
+    [Theory]
     [InlineData(JobStatus.OnHold)]
     [InlineData(JobStatus.Cancelled)]
     [InlineData(JobStatus.Assigned)]

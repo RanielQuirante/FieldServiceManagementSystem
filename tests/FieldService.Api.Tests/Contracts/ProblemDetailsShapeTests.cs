@@ -10,6 +10,7 @@ using FieldService.Api.Tests.Infrastructure;
 using FieldService.Api.Tests.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Net.Http.Headers;
 
@@ -42,6 +43,8 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         ["job.not-assignable"] = (409, "rfc9110#section-15.5.10", "The job can no longer be assigned."),
         ["job.invalid-transition"] = (409, "rfc9110#section-15.5.10", "The job cannot move to that status."),
         ["technician.unavailable"] = (409, "rfc9110#section-15.5.10", "The technician is not available."),
+        ["inspection.incomplete"] = (409, "rfc9110#section-15.5.10", "The inspection checklist is not complete."),
+        ["inspection.locked"] = (409, "rfc9110#section-15.5.10", "The inspection can no longer be changed."),
         ["request.too-large"] = (413, "rfc9110#section-15.5.14", "The request body is too large."),
         ["request.unsupported-media-type"] = (415, "rfc9110#section-15.5.16", "The request body must be JSON."),
         ["rate-limit.exceeded"] = (429, "rfc6585#section-4", "Too many requests."),
@@ -77,6 +80,10 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         { "UpdateJobStatus OnHold without a note", "request.validation-failed", "note" },
         { "UpdateJobStatus on another technician's job", "job.not-found", "" },
         { "UpdateJobStatus as an administrator", "auth.forbidden", "" },
+        { "SaveInspection with a Fail without a note in the third answer", "request.validation-failed", "answers[2].note" },
+        { "SaveInspection after the submission", "inspection.locked", "" },
+        { "SubmitJob with four items unanswered", "inspection.incomplete", "" },
+        { "SubmitJob without the site-safety confirmation", "request.validation-failed", "siteSafetyConfirmed" },
         { "a job request of 1 MB + 1", "request.too-large", "" },
         { "CreateJob with a text/plain body", "request.unsupported-media-type", "" },
         { "the eleventh sign-in in a minute", "rate-limit.exceeded", "" },
@@ -347,6 +354,41 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
             case "UpdateJobStatus as an administrator":
                 (path, response) = await ChangeStatusAsync(client, data, JobStatus.Assigned, "InProgress", null, StatusCaller.Administrator, staleVersion: false, marker);
                 break;
+            case "SaveInspection with a Fail without a note in the third answer":
+                (path, response) = await InspectionRequestAsync(client, data, JobStatus.InProgress, answered: 0, marker, version => new
+                {
+                    answers = new object[]
+                    {
+                        new { checklistItemId = ItemOf(1), result = "Pass" },
+                        new { checklistItemId = ItemOf(2), result = "Pass" },
+                        new { checklistItemId = ItemOf(5), result = "Fail", note = (string?)null },
+                    },
+                    version,
+                });
+                break;
+            case "SaveInspection after the submission":
+                (path, response) = await InspectionRequestAsync(client, data, JobStatus.Completed, answered: 10, marker, version => new
+                {
+                    answers = new[] { new { checklistItemId = ItemOf(5), result = "Fail", note = "Bearing noise at start-up." } },
+                    version,
+                });
+                break;
+            case "SubmitJob with four items unanswered":
+                (path, response) = await SubmissionRequestAsync(client, data, answered: 6, marker, version => new
+                {
+                    technicianNotes = (string?)null,
+                    siteSafetyConfirmed = true,
+                    version,
+                });
+                break;
+            case "SubmitJob without the site-safety confirmation":
+                (path, response) = await SubmissionRequestAsync(client, data, answered: 10, marker, version => new
+                {
+                    technicianNotes = (string?)null,
+                    siteSafetyConfirmed = false,
+                    version,
+                });
+                break;
             case "CreateJob with a text/plain body":
                 client.AccessToken = administratorToken;
                 path = "/api/jobs";
@@ -415,6 +457,62 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         var path = $"/api/jobs/{job.Id}/status";
         var version = staleVersion ? created.Version : job.Version;
         var response = await client.PutJsonAsync($"{path}?probe={marker}", new { status = target, note, version });
+        return (path, response);
+    }
+
+    private static Guid ItemOf(int position) => TestData.ChecklistOf(TestData.HvacTemplateId).Items[position - 1].Id;
+
+    private async Task<(Job Job, Technician Owner)> ArrangeInspectionAsync(TestData data, JobStatus status, int answered)
+    {
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var created = await data.CreateJobAsync(administrator.Id, TestData.HvacTemplateId, CancellationToken);
+        if (status == JobStatus.Completed)
+        {
+            await data.CreateInspectionAsync(created, owner, submitted: true, CancellationToken);
+        }
+        else
+        {
+            var job = await data.MoveToAsync(created, owner, JobStatus.InProgress, CancellationToken);
+            if (answered > 0)
+            {
+                await data.SaveInspectionAsync(
+                    job,
+                    TestData.PassingAnswers(TestData.ChecklistOf(TestData.HvacTemplateId), answered),
+                    CancellationToken);
+            }
+        }
+
+        await using var db = Fixture.CreateAppDbContext();
+        return (await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == created.Id, CancellationToken), owner);
+    }
+
+    private async Task<(string Path, HttpResponseMessage Response)> InspectionRequestAsync(
+        ApiClient client,
+        TestData data,
+        JobStatus status,
+        int answered,
+        string marker,
+        Func<uint, object> body)
+    {
+        var (job, owner) = await ArrangeInspectionAsync(data, status, answered);
+        client.AccessToken = TestTokens.For(Fixture.Factory, owner.User);
+        var path = $"/api/jobs/{job.Id}/inspection";
+        var response = await client.PutJsonAsync($"{path}?probe={marker}", body(job.Version));
+        return (path, response);
+    }
+
+    private async Task<(string Path, HttpResponseMessage Response)> SubmissionRequestAsync(
+        ApiClient client,
+        TestData data,
+        int answered,
+        string marker,
+        Func<uint, object> body)
+    {
+        var (job, owner) = await ArrangeInspectionAsync(data, JobStatus.InProgress, answered);
+        client.AccessToken = TestTokens.For(Fixture.Factory, owner.User);
+        var path = $"/api/jobs/{job.Id}/submission";
+        var response = await client.PostJsonAsync($"{path}?probe={marker}", body(job.Version));
         return (path, response);
     }
 

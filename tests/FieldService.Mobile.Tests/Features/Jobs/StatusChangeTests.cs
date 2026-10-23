@@ -224,7 +224,7 @@ public sealed class StatusChangeTests
     }
 
     [Fact]
-    public async Task AnInProgressJobOffersOnlyPutOnHoldPreselectedWithTheReasonField()
+    public async Task AnInProgressJobOffersPutOnHoldPreselectedWithTheReasonFieldAndADisabledCompleteJob()
     {
         var (viewModel, _, _) = await OpenAsync(JobDtoBuilder.Details1042());
 
@@ -232,7 +232,10 @@ public sealed class StatusChangeTests
 
         Assert.True(viewModel.IsStatusSheetOpen);
         Assert.True(viewModel.ShowsPhoneSheet);
-        var option = Assert.Single(viewModel.StatusOptions);
+        Assert.Equal([StatusAction.PutOnHold, StatusAction.Complete], viewModel.StatusOptions.Select(candidate => candidate.Action));
+        Assert.False(viewModel.StatusOptions[1].IsAvailable);
+        Assert.Equal(StatusOption.CompleteIncompleteHelper, viewModel.StatusOptions[1].Helper);
+        var option = viewModel.StatusOptions[0];
         Assert.Equal(StatusAction.PutOnHold, option.Action);
         Assert.Equal("Put on hold", option.Title);
         Assert.Equal("Waiting on parts, access or the customer", option.Helper);
@@ -248,13 +251,16 @@ public sealed class StatusChangeTests
     }
 
     [Fact]
-    public async Task AnOnHoldJobOffersOnlyResumeWithoutTheReasonField()
+    public async Task AnOnHoldJobOffersResumeWithoutTheReasonFieldAndACompleteJobRowThatAsksToResumeFirst()
     {
         var (viewModel, _, _) = await OpenAsync(JobDtoBuilder.Details1037());
 
         viewModel.OpenStatusSheetCommand.Execute(null);
 
-        var option = Assert.Single(viewModel.StatusOptions);
+        Assert.Equal([StatusAction.Resume, StatusAction.Complete], viewModel.StatusOptions.Select(candidate => candidate.Action));
+        Assert.False(viewModel.StatusOptions[1].IsAvailable);
+        Assert.Equal(StatusOption.CompleteResumeHelper, viewModel.StatusOptions[1].Helper);
+        var option = viewModel.StatusOptions[0];
         Assert.Equal(StatusAction.Resume, option.Action);
         Assert.Equal("Resume", option.Title);
         Assert.Equal("Carry on where you left off", option.Helper);
@@ -280,10 +286,10 @@ public sealed class StatusChangeTests
 
         viewModel.OpenStatusSheetCommand.Execute(null);
 
-        Assert.Equal([StatusAction.PutOnHold], viewModel.StatusOptions.Select(option => option.Action));
-        Assert.False(none.ShowsUpdateStatus);
-        Assert.False(none.ShowsDock);
-        Assert.False(none.OpenStatusSheetCommand.CanExecute(null));
+        Assert.Equal([StatusAction.PutOnHold, StatusAction.Complete], viewModel.StatusOptions.Select(option => option.Action));
+        none.OpenStatusSheetCommand.Execute(null);
+        Assert.Equal([StatusAction.Complete], none.StatusOptions.Select(option => option.Action));
+        Assert.True(none.ShowsUpdateStatus);
     }
 
     [Fact]
@@ -429,7 +435,7 @@ public sealed class StatusChangeTests
         Assert.Equal(1, viewModel.SheetScrollRequest);
         Assert.Null(viewModel.ActionBanner);
         Assert.Equal(HoldNote, viewModel.HoldReason);
-        Assert.True(viewModel.StatusOptions.Single().IsSelected);
+        Assert.True(viewModel.StatusOptions.Single(option => option.Action == StatusAction.PutOnHold).IsSelected);
         Assert.Equal(JobStatus.InProgress, viewModel.Status);
         Assert.Single(harness.Stub.Requests, request => request.Method == HttpMethod.Put);
     }
@@ -450,7 +456,7 @@ public sealed class StatusChangeTests
 
         Assert.True(viewModel.IsStatusSheetOpen);
         Assert.Equal(HoldNote, viewModel.HoldReason);
-        Assert.True(viewModel.StatusOptions.Single().IsSelected);
+        Assert.True(viewModel.StatusOptions.Single(option => option.Action == StatusAction.PutOnHold).IsSelected);
     }
 
     [Theory]

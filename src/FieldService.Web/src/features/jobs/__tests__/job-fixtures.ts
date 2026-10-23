@@ -6,11 +6,20 @@ import type {
   JobHistoryEntry,
   JobList,
   JobSummary,
+  SubmitAffordance,
   Technician,
   TechnicianJobReference,
 } from '../jobs-api'
 
 export const demoToday = new Date(2026, 9, 19, 10, 42)
+
+export function administratorSubmit(answered = 0, total = 8): SubmitAffordance {
+  return { allowed: false, blockingCode: 'auth.forbidden', answered, total }
+}
+
+export function readOnlyAffordances(): JobDetails['affordances'] {
+  return { allowedStatusChanges: [], canSubmit: administratorSubmit(), canAssign: false }
+}
 
 export function onDemoDay(dayOffset: number, hours: number, minutes: number): string {
   return new Date(2026, 9, 19 + dayOffset, hours, minutes).toISOString()
@@ -266,7 +275,7 @@ export function jobDetails(overrides: Partial<JobDetails> = {}): JobDetails {
     cancelledAt: null,
     history: [historyEntry()],
     version: 48101,
-    affordances: { allowedStatusChanges: [], canAssign: true },
+    affordances: { allowedStatusChanges: [], canSubmit: administratorSubmit(), canAssign: true },
     ...overrides,
   }
 }
@@ -317,7 +326,11 @@ export function assignedInProgressJob(): JobDetails {
       }),
     ],
     version: 48213,
-    affordances: { allowedStatusChanges: [], canAssign: false },
+    affordances: {
+      allowedStatusChanges: [],
+      canSubmit: administratorSubmit(6, 10),
+      canAssign: false,
+    },
   })
 }
 
@@ -373,7 +386,7 @@ export function onHoldJob(): JobDetails {
         occurredAt: onDemoDay(-3, 13, 50),
       }),
     ],
-    affordances: { allowedStatusChanges: [], canAssign: false },
+    affordances: readOnlyAffordances(),
   })
 }
 
@@ -443,6 +456,10 @@ export function statusChangedJob(note: string = holdNote): JobDetails {
       }),
     ],
     version: 48300,
-    affordances: { allowedStatusChanges: [], canAssign: false },
+    affordances: {
+      allowedStatusChanges: [],
+      canSubmit: administratorSubmit(0, 10),
+      canAssign: false,
+    },
   })
 }

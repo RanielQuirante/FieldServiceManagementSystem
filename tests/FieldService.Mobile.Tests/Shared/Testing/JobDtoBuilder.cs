@@ -102,7 +102,7 @@ public static class JobDtoBuilder
             History(JobHistoryAction.Started, JobStatus.Assigned, JobStatus.InProgress, _marco, null, null, Local(10, 19, 9, 12)),
         ],
         11,
-        new JobAffordances([new AllowedStatusChange(JobStatus.OnHold, true)], false));
+        new JobAffordances([new AllowedStatusChange(JobStatus.OnHold, true)], false) { CanSubmit = new SubmitAffordance(false, SubmitAffordance.IncompleteCode, 6, 10) });
 
     public static JobDetailsResponse Details1047() => new(
         Job1047,
@@ -185,7 +185,7 @@ public static class JobDtoBuilder
         Number = 1037,
         Title = "Annual boiler service",
         Status = JobStatus.OnHold,
-        Affordances = new JobAffordances([new AllowedStatusChange(JobStatus.InProgress, false)], false),
+        Affordances = new JobAffordances([new AllowedStatusChange(JobStatus.InProgress, false)], false) { CanSubmit = new SubmitAffordance(false, SubmitAffordance.InvalidTransitionCode, 0, 8) },
         History =
         [
             History(JobHistoryAction.Created, null, JobStatus.Unassigned, _dana, null, null, Local(10, 15, 10, 15)),

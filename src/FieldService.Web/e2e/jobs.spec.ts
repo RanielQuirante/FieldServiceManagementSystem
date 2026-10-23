@@ -34,6 +34,7 @@ import {
   notAssignableStatuses,
   rowNamed,
   technicianOptionLabel,
+  titleLinkPath,
   tomorrowInUtc,
 } from './support/jobs.ts'
 import { e2eTitle, openInApp } from './support/run.ts'
@@ -473,6 +474,9 @@ test.describe('W1 job list', () => {
 
     await rowsOf(page).getByRole('link', { name: job.title, exact: true }).click()
 
+    await expect(page).toHaveURL(titleLinkPath(job))
+    await expect(page.getByRole('heading', { level: 1, name: job.title })).toBeVisible()
+    await openInApp(page, `/jobs/${job.id}`)
     await expect(page).toHaveURL(`/jobs/${job.id}`)
     await expect(page.getByRole('heading', { level: 1, name: job.title })).toBeVisible()
     await expect(page).toHaveTitle(documentTitle('JOB-1042'))

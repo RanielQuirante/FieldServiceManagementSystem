@@ -80,6 +80,7 @@ export const consolePatterns = {
   signInRateLimited: failedResource(429, '/api/auth/sign-in'),
   signInServerError: failedResource(500, '/api/auth/sign-in'),
   jobNotFound: failedResource(404, '/api/jobs/'),
+  inspectionServerError: failedResource(500, '/inspection'),
   jobsServerError: failedResource(500, '/api/jobs'),
   createJobRejected: failedResource(400, '/api/jobs'),
   assignmentConflict: failedResource(409, '/assignment'),

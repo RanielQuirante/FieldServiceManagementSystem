@@ -281,8 +281,75 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
         Assert.Equal(expected, details.Affordances.AllowedStatusChanges);
     }
 
+    [Theory]
+    [InlineData(JobStatus.Unassigned, false, "auth.forbidden", 0)]
+    [InlineData(JobStatus.Assigned, false, "auth.forbidden", 0)]
+    [InlineData(JobStatus.InProgress, false, "auth.forbidden", 0)]
+    [InlineData(JobStatus.OnHold, false, "auth.forbidden", 0)]
+    [InlineData(JobStatus.Completed, false, "auth.forbidden", 10)]
+    [InlineData(JobStatus.Cancelled, false, "auth.forbidden", 0)]
+    [InlineData(JobStatus.Assigned, true, "job.invalid-transition", 0)]
+    [InlineData(JobStatus.InProgress, true, "inspection.incomplete", 0)]
+    [InlineData(JobStatus.OnHold, true, "job.invalid-transition", 0)]
+    [InlineData(JobStatus.Completed, true, "job.invalid-transition", 10)]
+    [InlineData(JobStatus.Cancelled, true, "job.invalid-transition", 0)]
+    public async Task CanSubmitFollowsTheTransitionTableForTheCallerAndTheJobStatusWithTheTemplateItemCount(
+        JobStatus status,
+        bool asAssignee,
+        string blockingCode,
+        int answered)
+    {
+        var data = new TestData(Fixture, Now);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await data.MoveToAsync(
+            await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken),
+            technician,
+            status,
+            CancellationToken);
+        using var client = ClientFor(asAssignee ? technician.User : administrator);
+
+        using var response = await client.GetAsync(PathOf(job.Id));
+
+        var details = await ReadJobAsync(response);
+        Assert.Equal(status, details.Status);
+        Assert.Equal(new SubmitAffordance(false, blockingCode, answered, 10), details.Affordances.CanSubmit);
+    }
+
+    [Theory]
+    [InlineData(true, 6, false, "inspection.incomplete")]
+    [InlineData(true, 10, true, null)]
+    [InlineData(false, 6, false, "auth.forbidden")]
+    [InlineData(false, 10, false, "auth.forbidden")]
+    public async Task CanSubmitCountsTheSavedAnswersAndIsAllowedOnlyForTheAssigneeOnceEveryItemIsAnswered(
+        bool asAssignee,
+        int answeredItems,
+        bool allowed,
+        string? blockingCode)
+    {
+        var data = new TestData(Fixture, Now);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await data.MoveToAsync(
+            await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken),
+            technician,
+            JobStatus.InProgress,
+            CancellationToken);
+        await data.SaveInspectionAsync(
+            job,
+            TestData.PassingAnswers(TestData.ChecklistOf(_templateId), answeredItems),
+            CancellationToken);
+        using var client = ClientFor(asAssignee ? technician.User : administrator);
+
+        using var response = await client.GetAsync(PathOf(job.Id));
+
+        var details = await ReadJobAsync(response);
+        Assert.Equal(JobStatus.InProgress, details.Status);
+        Assert.Equal(new SubmitAffordance(allowed, blockingCode, answeredItems, 10), details.Affordances.CanSubmit);
+    }
+
     [Fact]
-    public async Task TheAffordancesMemberIsLastAndHoldsAllowedStatusChangesThenCanAssign()
+    public async Task TheAffordancesMemberIsLastAndHoldsAllowedStatusChangesCanSubmitAndCanAssignInThatOrder()
     {
         var data = new TestData(Fixture, Now);
         var administrator = await data.CreateAdministratorAsync(CancellationToken);
@@ -302,11 +369,14 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
         Assert.Equal(["version", "affordances"], members.TakeLast(2));
         var affordances = document.RootElement.GetProperty("affordances");
         Assert.Equal(
-            ["allowedStatusChanges", "canAssign"],
+            ["allowedStatusChanges", "canSubmit", "canAssign"],
             affordances.EnumerateObject().Select(member => member.Name));
         Assert.Equal(
             """[{"status":"OnHold","requiresNote":true}]""",
             affordances.GetProperty("allowedStatusChanges").GetRawText());
+        Assert.Equal(
+            """{"allowed":false,"blockingCode":"inspection.incomplete","answered":0,"total":10}""",
+            affordances.GetProperty("canSubmit").GetRawText());
         Assert.Equal(JsonValueKind.False, affordances.GetProperty("canAssign").ValueKind);
     }
 

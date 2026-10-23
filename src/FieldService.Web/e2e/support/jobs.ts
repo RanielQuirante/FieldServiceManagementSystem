@@ -1,5 +1,6 @@
 import type { Locator } from '@playwright/test'
 
+import { seededJobNumbers } from '../fixtures.ts'
 import type { AdminApi, JobDetails, JobStatus, Technician, TechnicianApi, Trade } from './api.ts'
 import { assignCopy, openJobsLabel, tradeLabels } from './copy.ts'
 import { e2eTitle } from './run.ts'
@@ -53,6 +54,36 @@ export async function createUnassignedJob(
     checklistTemplateId: template.id,
     ...(technicianId !== undefined ? { technicianId } : {}),
   })
+}
+
+export async function seededJobInStatus(api: AdminApi, status: JobStatus): Promise<JobDetails> {
+  const match = (await api.getJobs({ status, pageSize: 100 })).items.find(
+    (job) =>
+      !job.title.startsWith('E2E ') &&
+      job.number >= seededJobNumbers.first &&
+      job.number <= seededJobNumbers.last,
+  )
+  if (match === undefined) {
+    throw new Error(`No seeded job is ${status}.`)
+  }
+  return api.getJob(match.id)
+}
+
+export function titleLinkPath(job: Pick<JobDetails, 'id' | 'status'>): string {
+  return job.status === 'Completed' ? `/jobs/${job.id}/inspection` : `/jobs/${job.id}`
+}
+
+export async function jobWithDraftInspection(api: AdminApi): Promise<JobDetails> {
+  const candidates = (await api.getJobs({ status: 'InProgress', pageSize: 100 })).items
+    .filter((job) => !job.title.startsWith('E2E '))
+    .sort((first, second) => first.number - second.number)
+  for (const candidate of candidates) {
+    const inspection = await api.getInspection(candidate.id)
+    if (inspection.submittedAt === null && inspection.progress.answered > 0) {
+      return api.getJob(candidate.id)
+    }
+  }
+  throw new Error('No In progress job outside the e2e runs holds a draft inspection.')
 }
 
 export async function createAssignedJob(

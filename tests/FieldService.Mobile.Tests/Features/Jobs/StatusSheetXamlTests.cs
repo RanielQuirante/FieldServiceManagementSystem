@@ -123,13 +123,32 @@ public sealed class StatusSheetXamlTests
 
         Assert.Equal("{Binding DockHelper}", dock.Attribute("HelperText")?.Value);
         Assert.Equal("{Binding IsStatusSheetOpen}", dock.Attribute("AutomationProperties.ExcludedWithChildren")?.Value);
-        Assert.Equal(["{Binding StartJobCommand}", "{Binding OpenStatusSheetCommand}"], buttons.Select(button => button.Attribute("Command")?.Value));
-        Assert.Equal(["{Binding ShowsStartJob}", "{Binding ShowsUpdateStatus}"], buttons.Select(button => button.Attribute("IsVisible")?.Value));
+        var secondary = dock.Descendants(_maui + "Grid").Single(grid => grid.Attribute("IsVisible")?.Value == "{Binding ShowsUpdateStatusSecondary}");
+        var secondaryButton = secondary.Elements(_maui + "Button").Single();
+        Assert.Equal(["{Binding StartJobCommand}", "{Binding OpenStatusSheetCommand}", "{Binding OpenChecklistCommand}"], buttons.Select(button => button.Attribute("Command")?.Value));
+        Assert.Equal(["{Binding ShowsStartJob}", "{Binding ShowsUpdateStatusPrimary}", "{Binding ShowsInspectionAction}"], buttons.Select(button => button.Attribute("IsVisible")?.Value));
         Assert.Equal("Starting…", buttons[0].Attribute("BusyText")?.Value);
         Assert.Equal("{Binding IsStarting}", buttons[0].Attribute("IsBusy")?.Value);
         Assert.Equal("{StaticResource FsIconPlayCircle}", buttons[0].Attribute("IconData")?.Value);
         Assert.Equal("{StaticResource FsIconActivity}", buttons[1].Attribute("IconData")?.Value);
         Assert.Equal("{Binding UpdateStatusFocusRequest}", buttons[1].Attribute("SemanticFocusRequest")?.Value);
+        Assert.Equal("{Binding InspectionActionText}", buttons[2].Attribute("Text")?.Value);
+        Assert.Equal("{StaticResource FsIconClipboardCheck}", buttons[2].Attribute("IconData")?.Value);
+        Assert.Equal("{StaticResource FsSecondaryButton}", secondaryButton.Attribute("Style")?.Value);
+        Assert.Equal("{Binding OpenStatusSheetCommand}", secondaryButton.Attribute("Command")?.Value);
+        Assert.Equal("{Binding UpdateStatusFocusRequest}", secondaryButton.Attribute(_controls + "ScrollRequests.SemanticFocus")?.Value);
+        Assert.Contains(buttons[0], secondary.ElementsBeforeSelf());
+        Assert.Contains(buttons[2], secondary.ElementsAfterSelf());
+        var overlay = secondary.Elements(_maui + "HorizontalStackLayout").Single();
+        var triggers = overlay.Descendants(_maui + "DataTrigger").ToList();
+        Assert.Equal(2, triggers.Count);
+        Assert.All(triggers, trigger =>
+        {
+            Assert.Equal("{Binding CanUpdateStatus}", trigger.Attribute("Binding")?.Value);
+            Assert.Equal("False", trigger.Attribute("Value")?.Value);
+            Assert.Equal("{StaticResource FsDisabledText}", trigger.Elements(_maui + "Setter").Single().Attribute("Value")?.Value);
+        });
+        Assert.Equal(["Color", "TextColor"], triggers.Select(trigger => trigger.Elements(_maui + "Setter").Single().Attribute("Property")?.Value));
         Assert.Equal("{Binding ShowsPhoneSheet}", sheet.Attribute("IsOpen")?.Value);
         Assert.Equal("{Binding CloseStatusSheetCommand}", sheet.Attribute("CloseCommand")?.Value);
         Assert.Equal("{Binding SheetScrollRequest}", sheet.Attribute("ScrollToEndRequest")?.Value);

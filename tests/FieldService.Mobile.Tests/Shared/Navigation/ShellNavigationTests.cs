@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using FieldService.Mobile.Features.Inspection;
 using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Shared.Navigation;
 using FieldService.Mobile.Tests.Shared.Testing;
@@ -41,12 +42,82 @@ public sealed class ShellNavigationTests : IDisposable
     }
 
     [Fact]
-    public void TheShellDeclaresSignInAndMyJobsAndPushesJobDetails()
+    public void TheShellDeclaresSignInAndMyJobsAndPushesJobDetailsTheInspectionAndTheReview()
     {
         Assert.Equal([Routes.SignInRoute, Routes.JobsRoute], ShellContentRoutes());
-        var pushed = Assert.Single(AppShell.PushedRoutes);
-        Assert.Equal(Routes.JobDetailsRoute, pushed.Key);
-        Assert.Equal(typeof(JobDetailsPage), pushed.Value);
+        Assert.Equal(
+            [(Routes.JobDetailsRoute, typeof(JobDetailsPage)), (Routes.InspectionRoute, typeof(InspectionPage)), (Routes.ReviewRoute, typeof(ReviewAndSubmitPage))],
+            AppShell.PushedRoutes.Select(pair => (pair.Key, pair.Value)));
+        Assert.Equal("jobs/inspection", Routes.InspectionRoute);
+        Assert.Equal("jobs/review", Routes.ReviewRoute);
+    }
+
+    [Fact]
+    public async Task OpeningTheChecklistPushesTheInspectionOverJobDetailsWithTheJobId()
+    {
+        await _navigator.GoToAsync(Routes.Jobs);
+        await _navigator.GoToAsync(Routes.JobDetails, new Dictionary<string, object> { [Routes.JobIdParameter] = JobDtoBuilder.Job1042 });
+        var harness = new JobsHarness(StubHttpMessageHandler.Sequence(() => JobDtoBuilder.Json(JobDtoBuilder.Details1042())), navigator: _navigator);
+        var viewModel = harness.CreateDetails();
+        await viewModel.ShowJobAsync(JobDtoBuilder.Job1042);
+
+        await viewModel.OpenChecklistCommand.ExecuteAsync(null);
+
+        Assert.Equal("//" + Routes.JobDetailsRoute + "/" + Routes.InspectionPage, _shell.CurrentState.Location.OriginalString);
+        Assert.Equal(3, _shell.Navigation.NavigationStack.Count);
+        var page = Assert.IsType<ProbePage>(_shell.Navigation.NavigationStack[^1]);
+        Assert.Equal(JobDtoBuilder.Job1042, page.Query[Routes.JobIdParameter]);
+        Assert.DoesNotContain("jobs.navigate-failed", harness.Logs.AllText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheReviewStacksOverTheInspectionAndItsBackRoutesReturnToTheRightPage()
+    {
+        await OpenDetailsAsync();
+        await _navigator.GoToAsync(Routes.InspectionPage, JobsHarness.JobQuery(JobDtoBuilder.Job1042));
+        await _navigator.GoToAsync(Routes.ReviewPage, JobsHarness.JobQuery(JobDtoBuilder.Job1042));
+
+        Assert.Equal("//jobs/details/inspection/review", _shell.CurrentState.Location.OriginalString);
+        Assert.Equal(4, _shell.Navigation.NavigationStack.Count);
+
+        await _navigator.GoToAsync(Routes.Back, new Dictionary<string, object> { [Routes.NoticeParameter] = Routes.SubmissionIncompleteNotice });
+        Assert.Equal("//jobs/details/inspection", _shell.CurrentState.Location.OriginalString);
+        Assert.Equal(Routes.SubmissionIncompleteNotice, Assert.IsType<ProbePage>(_shell.Navigation.NavigationStack[^1]).Query[Routes.NoticeParameter]);
+
+        await _navigator.GoToAsync(Routes.ReviewPage, JobsHarness.JobQuery(JobDtoBuilder.Job1042));
+        await _navigator.GoToAsync(Routes.BackTwo, new Dictionary<string, object> { [Routes.NoticeParameter] = Routes.SubmissionInvalidTransitionNotice });
+        Assert.Equal("//" + Routes.JobDetailsRoute, _shell.CurrentState.Location.OriginalString);
+        Assert.Equal(2, _shell.Navigation.NavigationStack.Count);
+        Assert.Equal(Routes.SubmissionInvalidTransitionNotice, Assert.IsType<ProbePage>(_shell.Navigation.NavigationStack[^1]).Query[Routes.NoticeParameter]);
+    }
+
+    [Fact]
+    public async Task AReviewOpenedFromTheSheetSwapsItselfForTheInspectionWhenTheChecklistIsIncomplete()
+    {
+        await OpenDetailsAsync();
+        await _navigator.GoToAsync(Routes.ReviewPage, JobsHarness.JobQuery(JobDtoBuilder.Job1042));
+        Assert.Equal("//jobs/details/review", _shell.CurrentState.Location.OriginalString);
+
+        await _navigator.GoToAsync(Routes.BackToInspection, new Dictionary<string, object> { [Routes.JobIdParameter] = JobDtoBuilder.Job1042, [Routes.NoticeParameter] = Routes.SubmissionIncompleteNotice });
+
+        Assert.Equal("//jobs/details/inspection", _shell.CurrentState.Location.OriginalString);
+        Assert.Equal(3, _shell.Navigation.NavigationStack.Count);
+        var page = Assert.IsType<ProbePage>(_shell.Navigation.NavigationStack[^1]);
+        Assert.Equal(JobDtoBuilder.Job1042, page.Query[Routes.JobIdParameter]);
+        Assert.Equal(Routes.SubmissionIncompleteNotice, page.Query[Routes.NoticeParameter]);
+    }
+
+    [Fact]
+    public async Task ASubmittedJobReturnsFromTheReviewToMyJobsWithTheNotice()
+    {
+        await OpenDetailsAsync();
+        await _navigator.GoToAsync(Routes.InspectionPage, JobsHarness.JobQuery(JobDtoBuilder.Job1042));
+        await _navigator.GoToAsync(Routes.ReviewPage, JobsHarness.JobQuery(JobDtoBuilder.Job1042));
+
+        await _navigator.GoToAsync(Routes.Jobs, new Dictionary<string, object> { [Routes.NoticeParameter] = Routes.JobSubmittedNotice, [Routes.JobNumberParameter] = "JOB-1042" });
+
+        Assert.Equal("//" + Routes.JobsRoute, _shell.CurrentState.Location.OriginalString);
+        Assert.Single(_shell.Navigation.NavigationStack);
     }
 
     [Fact]
@@ -118,6 +189,12 @@ public sealed class ShellNavigationTests : IDisposable
 
         Assert.Contains("Relative routing to shell elements is currently not supported", failure.Message, StringComparison.Ordinal);
         Assert.StartsWith("//", Routes.JobDetails, StringComparison.Ordinal);
+    }
+
+    private async Task OpenDetailsAsync()
+    {
+        await _navigator.GoToAsync(Routes.Jobs);
+        await _navigator.GoToAsync(Routes.JobDetails, JobsHarness.JobQuery(JobDtoBuilder.Job1042));
     }
 
     private static List<string> ShellContentRoutes() =>

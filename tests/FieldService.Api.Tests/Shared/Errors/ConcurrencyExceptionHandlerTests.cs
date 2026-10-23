@@ -23,6 +23,7 @@ public sealed class ConcurrencyExceptionHandlerTests
         PostgresErrorCodes.ForeignKeyViolation,
         PostgresErrorCodes.InsufficientPrivilege,
         PostgresErrorCodes.QueryCanceled,
+        PostgresErrorCodes.DeadlockDetected,
     ];
 
     [Theory]
@@ -34,6 +35,32 @@ public sealed class ConcurrencyExceptionHandlerTests
         var outcome = await HandleAsync(exception);
 
         AssertConflict(outcome, code);
+    }
+
+    [Theory]
+    [MemberData(nameof(MappedSqlStates))]
+    public async Task SaveFailureWrappedByTheExecutionStrategyAsTransientIsClassifiedLikeTheSaveFailure(string sqlState, string code)
+    {
+        var exception = new InvalidOperationException(
+            "An exception has been raised that is likely due to a transient failure.",
+            new DbUpdateException("save failed", new PostgresException("probe", "ERROR", "ERROR", sqlState)));
+
+        var outcome = await HandleAsync(exception);
+
+        AssertConflict(outcome, code);
+    }
+
+    [Theory]
+    [MemberData(nameof(UnmappedSqlStates))]
+    public async Task WrappedSaveFailureWithAnyOtherSqlStateIsLeftToTheNextHandler(string sqlState)
+    {
+        var exception = new InvalidOperationException(
+            "An exception has been raised that is likely due to a transient failure.",
+            new DbUpdateException("save failed", new PostgresException("probe", "ERROR", "ERROR", sqlState)));
+
+        var outcome = await HandleAsync(exception);
+
+        AssertNotHandled(outcome);
     }
 
     [Fact]

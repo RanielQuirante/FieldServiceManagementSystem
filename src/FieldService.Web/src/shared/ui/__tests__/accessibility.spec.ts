@@ -162,6 +162,42 @@ describe('StatusChip', () => {
       })
     },
   )
+
+  it.each([
+    ['Pass', 'Pass', 'check', 'completed'],
+    ['Fail', 'Fail', 'x', 'fail'],
+    ['NotApplicable', 'N/A', 'minus', 'cancelled'],
+  ] as const)(
+    'shows the %s result as its hidden %s icon and the label, in the %s tone',
+    (result, label, icon, tone) => {
+      const wrapper = mount(StatusChip, { props: { result } })
+      const counted = mount(StatusChip, { props: { result, count: 8 } })
+
+      expect(wrapper.text()).toBe(label)
+      expect(counted.text()).toBe(`8 ${label}`)
+      expect(wrapper.classes()).toEqual(['status-chip', `status-chip--${tone}`])
+      expect(wrapper.find('svg').attributes('aria-hidden')).toBe('true')
+      expect(wrapper.find('svg').element.innerHTML).toBe(
+        mount(AppIcon, { props: { name: icon, size: 14 } }).element.innerHTML,
+      )
+    },
+  )
+
+  it('shows a zero count, and an unknown result as its raw value with neutral styling', () => {
+    expect(mount(StatusChip, { props: { result: 'Fail', count: 0 } }).text()).toBe('0 Fail')
+    const unknown = mount(StatusChip, { props: { result: 'Skipped' } })
+
+    expect(unknown.text()).toBe('Skipped')
+    expect(unknown.classes()).toContain('status-chip--unknown')
+  })
+
+  it('draws Fail with the inspection fail values of 2.2', () => {
+    expect(ruleDeclarations('shared/ui/StatusChip.vue', '.status-chip--fail')).toEqual({
+      '--chip-bg': 'var(--fs-gradient-chip-fail)',
+      '--chip-shadow': 'var(--shadow-fs-chip-fail)',
+      '--chip-fg': 'var(--color-fs-fail)',
+    })
+  })
 })
 
 describe('TextField', () => {
@@ -296,6 +332,24 @@ describe('Banner', () => {
     })
 
     expect(wrapper.find('button').text()).toBe('Refresh now')
+  })
+
+  it('has no role when it is a page notice read with the content', () => {
+    const wrapper = mount(Banner, {
+      props: {
+        role: null,
+        icon: 'clock',
+        title: 'Not submitted yet.',
+        message: 'This report shows the answers saved so far.',
+      },
+    })
+
+    expect(wrapper.attributes('role')).toBeUndefined()
+    expect(wrapper.classes()).toContain('banner--info')
+    expect(wrapper.text()).toBe('Not submitted yet. This report shows the answers saved so far.')
+    expect(wrapper.find('.banner__message').text()).toBe(
+      'This report shows the answers saved so far.',
+    )
   })
 })
 
@@ -681,6 +735,32 @@ describe('AppShell', () => {
     expect(document.title).toBe('JOB-1051 · FieldService Admin')
   })
 
+  it('lets a page name the document apart from its crumb', async () => {
+    const ReportPage = defineComponent({
+      setup() {
+        usePageTitle(
+          () => 'JOB-1039',
+          () => 'JOB-1039 inspection report',
+        )
+        return () => h('h1', 'Boiler pressure drop')
+      },
+    })
+    const router = createRouter({ history: createMemoryHistory(), routes: shellRoutes })
+    await router.push('/jobs/01a15488-9680-7989-92af-ed07fc34a890')
+    const wrapper = mount(AppShell, {
+      props: { userName: 'Dana Whitfield', userRole: 'Dispatcher' },
+      slots: { default: () => h(ReportPage) },
+      global: { plugins: [router] },
+    })
+    unmount = () => wrapper.unmount()
+    await nextTick()
+
+    const current = wrapper.find('nav[aria-label="Breadcrumb"] [aria-current="page"]')
+    expect(current.text()).toBe('JOB-1039')
+    expect(current.classes()).toContain('app-shell__crumb-current--mono')
+    expect(document.title).toBe('JOB-1039 inspection report · FieldService Admin')
+  })
+
   it.each([
     ['while the job loads', null, 'Job details'],
     ['for a missing job', 'Job not found', 'Job not found'],
@@ -1058,6 +1138,30 @@ describe('PageHeader', () => {
 
     expect(wrapper.find('.page-header__number').text()).toBe('JOB-1051')
     expect(wrapper.find('h1').text()).toBe('Replace faulty breaker panel')
+  })
+
+  it('reads the report eyebrow as the job number, then the page name, with the dot hidden', () => {
+    const wrapper = mount(PageHeader, {
+      props: {
+        title: 'Boiler pressure drop',
+        jobNumber: 'JOB-1039',
+        numberSuffix: 'Inspection report',
+        focusOnMount: false,
+      },
+    })
+    const eyebrow = wrapper.find('.page-header__eyebrow')
+
+    expect(eyebrow.find('.page-header__number').text()).toBe('JOB-1039')
+    expect(eyebrow.find('[aria-hidden="true"]').element.textContent).toBe(' · ')
+    expect(eyebrow.find('.visually-hidden').element.textContent).toBe(', ')
+    expect(eyebrow.element.textContent).toBe('JOB-1039 · , Inspection report')
+    expect(wrapper.findAll('.page-header__number')).toHaveLength(1)
+    expect(ruleDeclarations('shared/ui/PageHeader.vue', '.page-header__eyebrow')).toEqual({
+      color: 'var(--color-fs-muted)',
+      'font-size': '0.875rem',
+      'font-weight': '500',
+      'line-height': '1.4',
+    })
   })
 
   it('keeps a named heading while its skeleton title is shown', () => {

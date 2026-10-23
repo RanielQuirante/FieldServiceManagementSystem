@@ -1,3 +1,4 @@
+using FieldService.Mobile.Features.Inspection;
 using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Shared.Connectivity;
 using FieldService.Mobile.Shared.Navigation;
@@ -42,7 +43,19 @@ public sealed class JobsHarness
         Layout = Substitute.For<IWindowLayout>();
         Layout.IsTwoPane.Returns(twoPane);
         Jobs = new JobsApiClient(TestSession.CreateClient(stub, Logs, Session));
+        Inspections = new InspectionApiClient(TestSession.CreateClient(stub, Logs, Session));
+        Store = new InspectionStore(Session);
     }
+
+    public InspectionApiClient Inspections { get; }
+
+    public InspectionStore Store { get; }
+
+    public InspectionViewModel CreateInspection() =>
+        new(Inspections, Store, Session, Navigator, ScreenReader, Layout, Network, Clock, Logs.CreateLogger<InspectionViewModel>());
+
+    public ReviewAndSubmitViewModel CreateReview() =>
+        new(Inspections, Jobs, Store, Session, Navigator, Layout, Network, Clock, Logs.CreateLogger<ReviewAndSubmitViewModel>());
 
     public StubHttpMessageHandler Stub { get; }
 
@@ -73,10 +86,10 @@ public sealed class JobsHarness
     public JobsApiClient Jobs { get; }
 
     public JobDetailsViewModel CreateDetails() =>
-        new(Jobs, Session, Map, Dialer, Launcher, Navigator, ScreenReader, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
+        new(Jobs, Store, Session, Map, Dialer, Launcher, Navigator, ScreenReader, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
 
     public MyJobsViewModel CreateMyJobs() =>
-        new(Jobs, Session, Navigator, Startup, Layout, CreateDetails, Network, Clock, Logs.CreateLogger<MyJobsViewModel>());
+        new(Jobs, Session, Navigator, Startup, Layout, CreateDetails, ScreenReader, Network, Clock, Logs.CreateLogger<MyJobsViewModel>());
 
     public void SetOnline(bool online)
     {

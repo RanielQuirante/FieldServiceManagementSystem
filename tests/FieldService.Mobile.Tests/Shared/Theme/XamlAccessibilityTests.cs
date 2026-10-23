@@ -193,8 +193,18 @@ public sealed class XamlAccessibilityTests
         {
             foreach (var element in document.Descendants().Where(element => element.Name.Namespace == _maui && _interactiveTypes.Contains(element.Name.LocalName)))
             {
+                if (IsVisualOnly(element))
+                {
+                    if (!element.Ancestors().Any(ancestor => HeightOf(ancestor) >= MinimumTarget))
+                    {
+                        findings.Add(Where(path, element));
+                    }
+
+                    continue;
+                }
+
                 var styled = element.Attribute("Style") is not null || element.Name.LocalName is "Entry" or "Editor" or "CheckBox" or "RadioButton";
-                var height = Resolve(element.Attribute("MinimumHeightRequest")?.Value) ?? Resolve(element.Attribute("HeightRequest")?.Value);
+                var height = HeightOf(element);
                 if ((height is not null && height < MinimumTarget) || (!styled && height is null))
                 {
                     findings.Add(Where(path, element));
@@ -242,6 +252,12 @@ public sealed class XamlAccessibilityTests
         RepositoryPaths.MobileSources("*.xaml")
             .Where(path => !RepositoryPaths.ToRelative(path).StartsWith("Shared/Theme/", StringComparison.Ordinal))
             .Select(path => (path, XDocument.Load(path, LoadOptions.SetLineInfo)));
+
+    private static bool IsVisualOnly(XElement element) =>
+        element.Attribute("InputTransparent")?.Value == "True" && element.Attribute(InAccessibleTreeAttribute)?.Value == "False";
+
+    private static double? HeightOf(XElement element) =>
+        Resolve(element.Attribute("MinimumHeightRequest")?.Value) ?? Resolve(element.Attribute("HeightRequest")?.Value);
 
     private static string Where(string path, XElement element) =>
         $"{RepositoryPaths.ToRelative(path)}:{((IXmlLineInfo)element).LineNumber} {element.Name.LocalName}";

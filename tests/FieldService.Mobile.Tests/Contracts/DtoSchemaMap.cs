@@ -1,3 +1,4 @@
+using FieldService.Mobile.Features.Inspection;
 using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Features.SignIn;
 using FieldService.Mobile.Shared.Http;
@@ -32,6 +33,18 @@ public static class DtoSchemaMap
         new(typeof(JobAffordances), "JobAffordances", DtoDirection.Response),
         new(typeof(AllowedStatusChange), "AllowedStatusChange", DtoDirection.Response),
         new(typeof(UpdateJobStatusRequest), "UpdateJobStatusRequest", DtoDirection.Request),
+        new(typeof(SubmitAffordance), "SubmitAffordance", DtoDirection.Response),
+        new(typeof(InspectionResponse), "InspectionResponse", DtoDirection.Response),
+        new(typeof(InspectionItemResponse), "InspectionItemResponse", DtoDirection.Response),
+        new(typeof(InspectionReadingFieldResponse), "InspectionReadingFieldResponse", DtoDirection.Response),
+        new(typeof(InspectionAnswerResponse), "InspectionAnswerResponse", DtoDirection.Response),
+        new(typeof(InspectionReadingResponse), "InspectionReadingResponse", DtoDirection.Response),
+        new(typeof(InspectionProgress), "InspectionProgress", DtoDirection.Response),
+        new(typeof(InspectionAffordances), "InspectionAffordances", DtoDirection.Response),
+        new(typeof(SaveInspectionRequest), "SaveInspectionRequest", DtoDirection.Request),
+        new(typeof(InspectionAnswerInput), "InspectionAnswerInput", DtoDirection.Request),
+        new(typeof(InspectionReadingInput), "InspectionReadingInput", DtoDirection.Request),
+        new(typeof(SubmitJobRequest), "SubmitJobRequest", DtoDirection.Request),
     ];
 
     public static IReadOnlyDictionary<Type, string> Enums { get; } = new Dictionary<Type, string>
@@ -42,6 +55,7 @@ public static class DtoSchemaMap
         [typeof(JobPriority)] = "JobPriority",
         [typeof(JobHistoryAction)] = "JobHistoryAction",
         [typeof(Trade)] = "Trade",
+        [typeof(InspectionResult)] = "InspectionResult",
     };
 
     public static IReadOnlyList<string> RequiredSchemas { get; } =
@@ -57,6 +71,10 @@ public static class DtoSchemaMap
         "AllowedStatusChange",
         "UpdateJobStatusRequest",
         "HttpValidationProblemDetails",
+        "SubmitAffordance",
+        "InspectionResponse",
+        "SaveInspectionRequest",
+        "SubmitJobRequest",
     ];
 
     public static string? SchemaFor(Type type) =>

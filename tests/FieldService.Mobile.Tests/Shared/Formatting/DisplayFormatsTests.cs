@@ -72,6 +72,22 @@ public sealed partial class DisplayFormatsTests
         });
     }
 
+    [Fact]
+    public void TheWellTimeMayBreakOnlyAfterItsEnDash()
+    {
+        var window = DisplayFormats.TimeWindow(At(10, 21, 11, 30), At(10, 21, 13, 0), _zone, _today);
+
+        var wellTime = DisplayFormats.BreakAfterEnDash(window);
+
+        Assert.NotNull(wellTime);
+        Assert.Equal(window.Replace("–", "–​", StringComparison.Ordinal), wellTime);
+        Assert.Equal(1, wellTime.Count(character => character == '​'));
+        Assert.Equal(window, wellTime.Replace("​", string.Empty, StringComparison.Ordinal));
+        Assert.DoesNotMatch(BrokenTime(), wellTime);
+        Assert.Equal("9:00–11:00 AM", DisplayFormats.BreakAfterEnDash("9:00–11:00 AM")!.Replace("​", string.Empty, StringComparison.Ordinal));
+        Assert.Null(DisplayFormats.BreakAfterEnDash(null));
+    }
+
     private static DateTimeOffset At(int month, int day, int hour, int minute) => new(2026, month, day, hour, minute, 0, TimeSpan.Zero);
 
     [GeneratedRegex(@"\d[ \t](AM|PM)", RegexOptions.CultureInvariant)]

@@ -19,6 +19,7 @@ public sealed class DatabaseRoleTests(DatabaseFixture fixture) : DatabaseTest(fi
         "INSERT INTO fieldservice.checklist_templates DEFAULT VALUES",
         "UPDATE fieldservice.checklist_items SET id = id WHERE false",
         "DELETE FROM fieldservice.checklist_reading_fields WHERE false",
+        "SELECT 1 FROM fieldservice.checklist_items FOR KEY SHARE",
         "DELETE FROM fieldservice.\"__EFMigrationsHistory\" WHERE false",
         "CREATE TABLE fieldservice.probe (id integer)",
         "CREATE TABLE public.probe (id integer)",

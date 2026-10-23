@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using FieldService.Mobile.Features.Inspection;
 using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Shared.Http;
 using FieldService.Mobile.Tests.Shared.Testing;
@@ -143,6 +144,44 @@ public sealed class OpenApiDriftTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TheInspectionClientReadsSavesAndSubmitsThroughTheContractRoutesAndSchemas()
+    {
+        var paths = _snapshot.Value.RootElement.GetProperty("paths");
+        Assert.True(paths.TryGetProperty(InspectionApiClient.InspectionRoute, out var inspection));
+        Assert.True(paths.TryGetProperty(InspectionApiClient.SubmissionRoute, out var submission));
+        var get = inspection.GetProperty("get");
+        var put = inspection.GetProperty("put");
+        var post = submission.GetProperty("post");
+
+        Assert.Equal("#/components/schemas/InspectionResponse", OkSchema(get));
+        Assert.Equal("#/components/schemas/SaveInspectionRequest", BodySchema(put));
+        Assert.Equal("#/components/schemas/InspectionResponse", OkSchema(put));
+        Assert.Equal("#/components/schemas/SubmitJobRequest", BodySchema(post));
+        Assert.Equal("#/components/schemas/JobDetailsResponse", OkSchema(post));
+        Assert.Equal(["200", "401", "403", "404", "429"], Responses(get));
+        Assert.Equal(["200", "400", "401", "403", "404", "409", "429"], Responses(put));
+        Assert.Equal(["200", "400", "401", "403", "404", "409", "429"], Responses(post));
+        Assert.Equal("/api/jobs/01a0f6b1-1042-7000-8000-000000001042/inspection", InspectionApiClient.PathFor(InspectionApiClient.InspectionRoute, JobDtoBuilder.Job1042));
+        Assert.Equal("/api/jobs/01a0f6b1-1042-7000-8000-000000001042/submission", InspectionApiClient.PathFor(InspectionApiClient.SubmissionRoute, JobDtoBuilder.Job1042));
+    }
+
+    [Fact]
+    public void TheChecklistAndSubmissionLimitsAreTheContractLimits()
+    {
+        var answers = Schemas().GetProperty("SaveInspectionRequest").GetProperty("properties").GetProperty("answers");
+        var note = Schemas().GetProperty("InspectionAnswerInput").GetProperty("properties").GetProperty("note");
+        var value = Schemas().GetProperty("InspectionReadingInput").GetProperty("properties").GetProperty("value");
+        var notes = Schemas().GetProperty("SubmitJobRequest").GetProperty("properties").GetProperty("technicianNotes");
+
+        Assert.Equal(1, answers.GetProperty("minItems").GetInt32());
+        Assert.Equal(InspectionItemViewModel.NoteMaxLength, note.GetProperty("maxLength").GetInt32());
+        Assert.Equal(ReviewAndSubmitViewModel.NotesMaxLength, notes.GetProperty("maxLength").GetInt32());
+        Assert.Equal(ReadingValue.Minimum, value.GetProperty("minimum").GetDecimal());
+        Assert.Equal(ReadingValue.Maximum, value.GetProperty("maximum").GetDecimal());
+        Assert.Equal(ReadingValue.MaxDecimals, ReadingValue.Maximum.Scale);
+    }
+
+    [Fact]
     public void TheCheckerCatchesAWrongTypeAMissingMemberAndANullabilityMismatch()
     {
         var entry = new DtoSchema(typeof(DriftedUserReference), "UserReference", DtoDirection.Response);
@@ -158,6 +197,15 @@ public sealed class OpenApiDriftTests(ITestOutputHelper output)
     }
 
     private static JsonElement Schemas() => _snapshot.Value.RootElement.GetProperty("components").GetProperty("schemas");
+
+    private static string? OkSchema(JsonElement operation) =>
+        operation.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString();
+
+    private static string? BodySchema(JsonElement operation) =>
+        operation.GetProperty("requestBody").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString();
+
+    private static IEnumerable<string> Responses(JsonElement operation) =>
+        operation.GetProperty("responses").EnumerateObject().Select(response => response.Name).Order(StringComparer.Ordinal);
 
     private static IEnumerable<JsonPropertyInfo> JsonProperties(Type type) => MobileJsonContext.Default.GetTypeInfo(type)?.Properties ?? [];
 

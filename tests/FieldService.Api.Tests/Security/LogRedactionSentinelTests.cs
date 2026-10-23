@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -103,6 +104,242 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             flow.Events.Where(logEvent => CapturingLogSink.HasEventName(logEvent, SecurityLog.SignInFailedEvent)),
             logEvent => CapturingLogSink.Scalar(logEvent, "Reason") == SecurityLog.WrongPassword);
         Assert.False(RateLimitTests.IsAbsentOrNull(wrongPassword, "UserId"), "The wrong-password event does not name the user id.");
+    }
+
+    [Fact]
+    public async Task AnInspectionFlowAtFullCaptureLeavesNoNoteReadingOrTechnicianNoteInAnyLogEventOrTheLogFile()
+    {
+        var flow = await RunInspectionFlowAsync();
+
+        var findings = flow.Secrets
+            .SelectMany(secret => flow.Records
+                .Where(record => record.Text.Contains(secret.Value, StringComparison.OrdinalIgnoreCase))
+                .Select(record => $"{secret.Label} appears in {record.Location}"))
+            .Distinct()
+            .ToList();
+
+        Assert.True(findings.Count == 0, "Log redaction failures:\n" + string.Join("\n", findings));
+        Assert.Contains(flow.Events, logEvent => logEvent.Level == LogEventLevel.Verbose);
+        Assert.Contains(flow.Events, logEvent => logEvent.Level == LogEventLevel.Debug);
+        Assert.Contains(flow.Events, logEvent => CapturingLogSink.Scalar(logEvent, "SourceContext") is { } source
+            && source.StartsWith("Microsoft.EntityFrameworkCore.Database.Command", StringComparison.Ordinal));
+        Assert.Contains(flow.Events, logEvent => CapturingLogSink.Scalar(logEvent, "SourceContext") is { } source
+            && source.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal)
+            && logEvent.Level < LogEventLevel.Information);
+        Assert.Contains(flow.FileLines, line => line.Contains("\"@l\":\"Verbose\"", StringComparison.Ordinal));
+        Assert.Contains(flow.FileLines, line => line.Contains("\"@l\":\"Debug\"", StringComparison.Ordinal));
+        Assert.True(
+            flow.FileLines.Count(line => line.Contains($"\"RequestPath\":\"{flow.StatusPath}\"", StringComparison.Ordinal)) >= 6,
+            "The log file holds fewer than six request lines for the inspection.");
+        Assert.Contains(flow.FileLines, line => line.Contains($"\"Name\":\"{RealtimeLog.DispatchedEvent}\"", StringComparison.Ordinal));
+        Assert.True(flow.Secrets.Count >= 20, $"Only {flow.Secrets.Count} sentinel values were scanned for.");
+    }
+
+    private async Task<Flow> RunInspectionFlowAsync()
+    {
+        var marker = Marker();
+        var suction = 98765432.17m;
+        var discharge = RandomNumberGenerator.GetInt32(10_000_000, 99_999_999) + 0.43m;
+        var supply = RandomNumberGenerator.GetInt32(10_000_000, 99_999_999) + 0.29m;
+        var refusedValue = RandomNumberGenerator.GetInt32(10_000_000, 99_999_999) + 0.123m;
+        var failNote = $"Sentinel fail note {marker}";
+        var notApplicableNote = $"Sentinel not applicable note {Marker()}";
+        var longNote = $"Sentinel long note {Marker()} {new string('x', 1000)}";
+        var lockedNote = $"Sentinel locked note {Marker()}";
+        var technicianNotesFirst = $"Sentinel technician notes {Marker()}";
+        var technicianNotesSecond = $"Second line of the technician notes {Marker()}";
+        var longTechnicianNotes = $"Sentinel long technician notes {Marker()} {new string('y', 2000)}";
+        var secrets = new List<(string Label, string Value)>
+        {
+            ("the shared marker", marker),
+            ("the fail note", failNote),
+            ("the not-applicable note", notApplicableNote),
+            ("the start of the long note", longNote[..40]),
+            ("the locked note", lockedNote),
+            ("the first line of the technician notes", technicianNotesFirst),
+            ("the second line of the technician notes", technicianNotesSecond),
+            ("the start of the long technician notes", longTechnicianNotes[..48]),
+        };
+        foreach (var (label, value) in new[] { ("suction", suction), ("discharge", discharge), ("supply", supply), ("refused", refusedValue) })
+        {
+            var text = value.ToString(CultureInfo.InvariantCulture);
+            secrets.Add(($"the {label} reading", text));
+            secrets.Add(($"the {label} reading with a decimal comma", text.Replace('.', ',')));
+            secrets.Add(($"the whole part of the {label} reading", decimal.Truncate(value).ToString(CultureInfo.InvariantCulture)));
+        }
+
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var created = await data.CreateJobAsync(administrator.Id, TestData.HvacTemplateId, CancellationToken);
+        var job = await data.MoveToAsync(created, technician, JobStatus.InProgress, CancellationToken);
+        var items = TestData.ChecklistOf(TestData.HvacTemplateId).Items;
+        var notifications = new RecordingNotifications();
+        var factory = Fixture.CreateFactory(factory =>
+        {
+            factory.Settings["Logs:FileEnabled"] = "true";
+            factory.Settings["Serilog:MinimumLevel:Default"] = "Verbose";
+            foreach (var source in new[] { "Microsoft", "Microsoft.AspNetCore", "Microsoft.AspNetCore.Hosting.Diagnostics", "Microsoft.EntityFrameworkCore", "System", "System.Net.Http", "Npgsql" })
+            {
+                factory.Settings[$"Serilog:MinimumLevel:Override:{source}"] = "Verbose";
+            }
+
+            factory.Settings[NotificationsOptions.BaseUrlName] = RecordingNotifications.BaseUrl;
+            factory.TestServices = services =>
+            {
+                services.RemoveAll<IJobEventQueue>();
+                services.AddSingleton<IJobEventQueue>(provider => provider.GetRequiredService<JobEventQueue>());
+                services.AddHttpClient<NotificationsClient>().ConfigurePrimaryHttpMessageHandler(() => notifications);
+            };
+        });
+        foreach (var name in new[] { AuthOptions.AccessTokenKeyName, AuthOptions.SocketTicketKeyName, NotificationsOptions.WebhookSecretName })
+        {
+            var value = factory.Settings[name]!;
+            secrets.Add(($"the configured {name}", value));
+            secrets.Add(($"the key part of {name}", value[(value.IndexOf('_', StringComparison.Ordinal) + 1)..]));
+        }
+
+        var path = $"/api/jobs/{job.Id}/inspection";
+        try
+        {
+            using var mobile = factory.CreateApiClient();
+            mobile.AccessToken = TestTokens.For(factory, technician.User);
+            using var web = factory.CreateApiClient();
+            web.AccessToken = TestTokens.For(factory, administrator);
+            secrets.Add(("the technician access token", mobile.AccessToken));
+            secrets.Add(("the administrator access token", web.AccessToken));
+
+            using var opened = await mobile.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+            using var draft = await mobile.PutJsonAsync(path, new
+            {
+                answers = new object[]
+                {
+                    new { checklistItemId = items[0].Id, result = "Pass" },
+                    new { checklistItemId = items[1].Id, result = "Pass" },
+                    new
+                    {
+                        checklistItemId = items[2].Id,
+                        result = "Pass",
+                        readings = new[]
+                        {
+                            new { readingFieldId = items[2].ReadingFieldIds[0], value = suction },
+                            new { readingFieldId = items[2].ReadingFieldIds[1], value = discharge },
+                        },
+                    },
+                    new { checklistItemId = items[4].Id, result = "Fail", note = failNote },
+                    new { checklistItemId = items[5].Id, result = "NotApplicable", note = notApplicableNote },
+                    new
+                    {
+                        checklistItemId = items[7].Id,
+                        result = "Pass",
+                        readings = new[] { new { readingFieldId = items[7].ReadingFieldIds[0], value = supply } },
+                    },
+                },
+                version = job.Version,
+            });
+            var draftVersion = await VersionOfAsync(draft, HttpStatusCode.OK);
+
+            using var noteTooLong = await mobile.PutJsonAsync(path, new
+            {
+                answers = new[] { new { checklistItemId = items[3].Id, result = "Fail", note = longNote } },
+                version = draftVersion,
+            });
+            await AssertFieldErrorsWithoutValuesAsync(noteTooLong, ["answers[0].note"], secrets);
+            using var thirdDecimal = await mobile.PutJsonAsync(path, new
+            {
+                answers = new[]
+                {
+                    new
+                    {
+                        checklistItemId = items[7].Id,
+                        result = "Pass",
+                        readings = new[] { new { readingFieldId = items[7].ReadingFieldIds[0], value = refusedValue } },
+                    },
+                },
+                version = draftVersion,
+            });
+            await AssertFieldErrorsWithoutValuesAsync(thirdDecimal, ["answers[0].readings[0].value"], secrets);
+
+            using var completed = await mobile.PutJsonAsync(path, new
+            {
+                answers = new[] { 3, 6, 8, 9 }.Select(index => new { checklistItemId = items[index].Id, result = "Pass" }).ToArray(),
+                version = draftVersion,
+            });
+            var completedVersion = await VersionOfAsync(completed, HttpStatusCode.OK);
+
+            using var tooLong = await mobile.PostJsonAsync($"/api/jobs/{job.Id}/submission", new
+            {
+                technicianNotes = longTechnicianNotes,
+                siteSafetyConfirmed = true,
+                version = completedVersion,
+            });
+            await AssertFieldErrorsWithoutValuesAsync(tooLong, ["technicianNotes"], secrets);
+
+            using var submitted = await mobile.PostJsonAsync($"/api/jobs/{job.Id}/submission", new
+            {
+                technicianNotes = $"{technicianNotesFirst}\n{technicianNotesSecond}",
+                siteSafetyConfirmed = true,
+                version = completedVersion,
+            });
+            var submittedVersion = await VersionOfAsync(submitted, HttpStatusCode.OK);
+
+            using var locked = await mobile.PutJsonAsync(path, new
+            {
+                answers = new[] { new { checklistItemId = items[4].Id, result = "Fail", note = lockedNote } },
+                version = submittedVersion,
+            });
+            using var lockedProblem = await ApiClient.AssertProblemAsync(locked, HttpStatusCode.Conflict, "inspection.locked");
+            Assert.DoesNotContain(lockedNote, lockedProblem.RootElement.GetRawText(), StringComparison.Ordinal);
+
+            using var report = await web.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+            var reportText = await report.Content.ReadAsStringAsync(CancellationToken);
+            Assert.Contains(failNote, reportText, StringComparison.Ordinal);
+            Assert.Contains(technicianNotesSecond, reportText, StringComparison.Ordinal);
+            Assert.Contains(suction.ToString(CultureInfo.InvariantCulture), reportText, StringComparison.Ordinal);
+            Assert.DoesNotContain(lockedNote, reportText, StringComparison.Ordinal);
+
+            await notifications.WaitForAsync(1);
+            await WaitForLogsAsync(factory.LogSink, RealtimeLog.DispatchedEvent, 1);
+            Assert.Empty(factory.LogSink.Named(RealtimeLog.DispatchFailedEvent));
+            foreach (var webhook in notifications.Requests)
+            {
+                secrets.Add(("a webhook signature", webhook.Signature));
+                secrets.Add(("a webhook body", webhook.Body));
+            }
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+
+        var lines = ReadLogFiles(factory.LogsDirectory);
+        var records = factory.LogSink.Events
+            .Select(logEvent => new LogRecord($"captured {logEvent.Level} event \"{logEvent.MessageTemplate.Text}\"", CapturingLogSink.Text(logEvent)))
+            .Concat(lines.Select((line, index) => new LogRecord($"log file line {index + 1}", DecodedText(line))))
+            .ToList();
+        return new Flow(secrets, records, factory.LogSink.Events, lines, [], path, notifications.Requests.Count);
+    }
+
+    private static async Task<uint> VersionOfAsync(HttpResponseMessage response, HttpStatusCode expected)
+    {
+        Assert.Equal(expected, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        return body.RootElement.GetProperty("version").GetUInt32();
+    }
+
+    private static async Task AssertFieldErrorsWithoutValuesAsync(
+        HttpResponseMessage response,
+        string[] keys,
+        List<(string Label, string Value)> secrets)
+    {
+        using var problem = await ApiClient.AssertProblemAsync(response, HttpStatusCode.BadRequest, "request.validation-failed");
+        Assert.Equal(
+            keys.Order(StringComparer.Ordinal),
+            problem.RootElement.GetProperty("errors").EnumerateObject().Select(member => member.Name).Order(StringComparer.Ordinal));
+        var text = problem.RootElement.GetRawText();
+        Assert.All(secrets, secret => Assert.DoesNotContain(secret.Value, text, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<Flow> RunFlowAsync()

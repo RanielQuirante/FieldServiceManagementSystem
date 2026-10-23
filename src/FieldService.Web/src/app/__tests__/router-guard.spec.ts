@@ -30,12 +30,13 @@ describe('the route table', () => {
     }
   })
 
-  it('holds the W1 pages under the route names of the plan, each loaded lazily', () => {
+  it('holds the pages under the route names of the plan, each loaded lazily', () => {
     expect(pageRoutes.map((route) => [route.name, route.path])).toEqual([
       ['sign-in', '/sign-in'],
       ['jobs', '/jobs'],
       ['job-create', '/jobs/new'],
       ['job-detail', '/jobs/:jobId'],
+      ['job-inspection', '/jobs/:jobId/inspection'],
       ['not-found', '/:pathMatch(.*)*'],
     ])
     for (const route of pageRoutes) {
@@ -51,7 +52,7 @@ describe('the route table', () => {
     ).toEqual(['sign-in'])
   })
 
-  it('files the jobs pages under Jobs, with New job and the job detail one level down', () => {
+  it('files the jobs pages under Jobs, with New job, the job detail and the report one level down', () => {
     const byName = Object.fromEntries(
       pageRoutes.map((route) => [String(route.name), route.meta] as const),
     )
@@ -59,9 +60,13 @@ describe('the route table', () => {
     expect(byName.jobs?.section).toBe('jobs')
     expect(byName['job-create']?.section).toBe('jobs')
     expect(byName['job-detail']?.section).toBe('jobs')
+    expect(byName['job-inspection']?.section).toBe('jobs')
     expect(byName['job-create']?.breadcrumbs?.map((crumb) => crumb.label)).toEqual(['Jobs'])
     expect(byName['job-create']?.newJobAction).toBe(false)
     expect(byName['job-detail']?.breadcrumbs?.map((crumb) => crumb.label)).toEqual(['Jobs'])
+    expect(byName['job-inspection']?.breadcrumbs?.map((crumb) => crumb.label)).toEqual(['Jobs'])
+    expect(byName['job-inspection']?.title).toBe('Inspection report')
+    expect(byName['job-inspection']?.newJobAction).toBeUndefined()
   })
 })
 
@@ -77,7 +82,12 @@ describe('the navigation guard', () => {
     expect(router.currentRoute.value.name).toBe('job-create')
   })
 
-  it.each(['/jobs', '/jobs/new', '/jobs/01a15488-9680-7989-92af-ed07fc34a890'])(
+  it.each([
+    '/jobs',
+    '/jobs/new',
+    '/jobs/01a15488-9680-7989-92af-ed07fc34a890',
+    '/jobs/01a15488-9680-7989-92af-ed07fc34a890/inspection',
+  ])(
     'sends a signed-out visitor from %s to sign-in with the path as the redirect',
     async (path) => {
       stubFetch({ [refreshRoute]: problem(401, 'auth.session-expired') })

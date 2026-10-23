@@ -314,6 +314,91 @@ describe('refetching', () => {
     expect(jobRequests(stub)).toBe(61)
   })
 
+  it('runs the follow-up of a view that shows the event job, after its job refetch', async () => {
+    const otherJobId = crypto.randomUUID()
+    const { realtime, socket } = await live({
+      [jobRoute(generatorJobId)]: json(generatorJob()),
+      [jobRoute(otherJobId)]: json(generatorJob({ id: otherJobId })),
+    })
+    const offered: string[] = []
+    const followed: string[] = []
+    realtime.register({
+      refetch: () => Promise.resolve(true),
+      refetchWithJob: (job) => {
+        offered.push(job.id)
+        return job.id === generatorJobId
+          ? () => {
+              followed.push(job.status)
+              return Promise.resolve(true)
+            }
+          : null
+      },
+    })
+
+    socket.emitServerEvent('job.status-changed', jobEvent())
+    socket.emitServerEvent('job.status-changed', jobEvent({ jobId: otherJobId }))
+    await flush()
+
+    expect(offered).toEqual([generatorJobId, otherJobId])
+    expect(followed).toEqual(['InProgress'])
+  })
+
+  it('counts follow-ups in the 60-a-minute budget and falls back to one full refetch', async () => {
+    const jobIds = Array.from({ length: 40 }, () => crypto.randomUUID())
+    const routes = Object.fromEntries(
+      jobIds.map((jobId) => [jobRoute(jobId), json(generatorJob({ id: jobId }))]),
+    )
+    const { stub, realtime, view, socket } = await live(routes)
+    let followUps = 0
+    realtime.register({
+      refetch: () => Promise.resolve(true),
+      refetchWithJob: () => () => {
+        followUps += 1
+        return Promise.resolve(true)
+      },
+    })
+
+    for (const jobId of jobIds) {
+      socket.emitServerEvent('job.status-changed', jobEvent({ jobId }))
+      await vi.advanceTimersByTimeAsync(2)
+    }
+    await flush()
+
+    expect(jobRequests(stub) + followUps).toBe(eventRequestLimit)
+    expect(followUps).toBeLessThan(jobIds.length)
+    expect(view.calls.refetch).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(listDebounceMilliseconds)
+    await flush()
+    expect(view.calls.refetch).toBe(2)
+  })
+
+  it('keeps a failed follow-up silent and lets a later one clear Refresh failed', async () => {
+    const { realtime, view, socket } = await started({
+      [jobRoute(generatorJobId)]: json(generatorJob()),
+    })
+    view.respondWith(apiFailure(500, 'server.error'))
+    let followUpFails = true
+    realtime.register({
+      refetch: () => Promise.resolve(true),
+      refetchWithJob: () => () =>
+        followUpFails ? Promise.reject(apiFailure(500, 'server.error')) : Promise.resolve(true),
+    })
+    await socket.simulateConnect()
+    await flush()
+    expect(realtime.notice).toBe('refresh-failed')
+
+    socket.emitServerEvent('job.status-changed', jobEvent())
+    await flush()
+    expect(realtime.notice).toBe('refresh-failed')
+
+    followUpFails = false
+    await vi.advanceTimersByTimeAsync(jobFetchIntervalMilliseconds)
+    socket.emitServerEvent('job.status-changed', jobEvent())
+    await flush()
+    expect(realtime.notice).toBeNull()
+  })
+
   it('spaces full refetches above the cap at least a minute apart', async () => {
     const jobIds = Array.from({ length: 70 }, () => crypto.randomUUID())
     const routes = Object.fromEntries(

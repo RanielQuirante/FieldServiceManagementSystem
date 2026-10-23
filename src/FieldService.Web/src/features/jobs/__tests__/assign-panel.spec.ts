@@ -32,6 +32,7 @@ import {
   onDemoDay,
   priya,
   priyaTechnician,
+  readOnlyAffordances,
   samuelTechnician,
   technician,
   tomTechnician,
@@ -989,7 +990,7 @@ describe('the assign panel', () => {
       assignedTechnician: { id: priya.id, displayName: priya.displayName, trade: 'Electrical' },
       assignedAt: onDemoDay(0, 10, 30),
       version: 48105,
-      affordances: { allowedStatusChanges: [], canAssign: false },
+      affordances: readOnlyAffordances(),
     })
     const { wrapper, stub } = await openJob(job, {
       [jobRoute]: [json(job), json(started)],
@@ -1017,7 +1018,7 @@ describe('the assign panel', () => {
       assignedTechnician: { id: priya.id, displayName: priya.displayName, trade: 'Electrical' },
       assignedAt: onDemoDay(0, 10, 30),
       version: 48105,
-      affordances: { allowedStatusChanges: [], canAssign: false },
+      affordances: readOnlyAffordances(),
     })
     const { wrapper, stub } = await openJob(job, {
       [jobRoute]: [json(job), json(started)],

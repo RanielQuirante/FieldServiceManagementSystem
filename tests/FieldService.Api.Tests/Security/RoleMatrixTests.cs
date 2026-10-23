@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using FieldService.Api.Domain;
 using FieldService.Api.Tests.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 
 namespace FieldService.Api.Tests.Security;
 
@@ -21,6 +22,10 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
     private const string AssignmentRoute = "/api/jobs/{jobId:guid}/assignment";
 
     private const string StatusRoute = "/api/jobs/{jobId:guid}/status";
+
+    private const string SubmissionRoute = "/api/jobs/{jobId:guid}/submission";
+
+    private const string InspectionRoute = "/api/jobs/{jobId:guid}/inspection";
 
     private const string TechniciansRoute = "/api/technicians";
 
@@ -82,6 +87,18 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "PUT", StatusRoute, AssignedTechnician, 200, null },
         { "PUT", StatusRoute, OtherTechnician, 404, "job.not-found" },
         { "PUT", StatusRoute, Administrator, 403, "auth.forbidden" },
+        { "POST", SubmissionRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "POST", SubmissionRoute, AssignedTechnician, 200, null },
+        { "POST", SubmissionRoute, OtherTechnician, 404, "job.not-found" },
+        { "POST", SubmissionRoute, Administrator, 403, "auth.forbidden" },
+        { "GET", InspectionRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "GET", InspectionRoute, AssignedTechnician, 200, null },
+        { "GET", InspectionRoute, OtherTechnician, 404, "job.not-found" },
+        { "GET", InspectionRoute, Administrator, 200, null },
+        { "PUT", InspectionRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "PUT", InspectionRoute, AssignedTechnician, 200, null },
+        { "PUT", InspectionRoute, OtherTechnician, 404, "job.not-found" },
+        { "PUT", InspectionRoute, Administrator, 403, "auth.forbidden" },
         { "GET", "/health/live", Anonymous, 200, null },
         { "GET", "/health/live", AssignedTechnician, 200, null },
         { "GET", "/health/live", OtherTechnician, 200, null },
@@ -113,7 +130,7 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         int expectedStatus,
         string? expectedCode)
     {
-        var world = await ArrangeAsync(Fixture);
+        var world = await PrepareAsync(method, route, await ArrangeAsync(Fixture));
         using var liveSession = await LiveSessionForAsync(route, caller, world);
         using var client = Fixture.Factory.CreateApiClient();
         client.AccessToken = liveSession?.Session.AccessToken ?? world.TokenFor(Fixture.Factory, caller);
@@ -226,6 +243,29 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         return new World(administrator, assigned.User, other.User, job.Id, assignedJob.Version, data.Now);
     }
 
+    private async Task<World> PrepareAsync(string method, string route, World world)
+    {
+        if ((method, route) is not (("PUT", InspectionRoute) or ("POST", SubmissionRoute)))
+        {
+            return world;
+        }
+
+        var data = new TestData(Fixture, world.Now);
+        var job = await data.ChangeStatusAsync(await LoadJobAsync(world.JobId), JobStatus.InProgress, CancellationToken);
+        if (route == SubmissionRoute)
+        {
+            await data.SaveInspectionAsync(job, TestData.PassingAnswers(TestData.ChecklistOf(TestData.HvacTemplateId)), CancellationToken);
+        }
+
+        return world with { JobVersion = (await LoadJobAsync(world.JobId)).Version };
+    }
+
+    private async Task<Job> LoadJobAsync(Guid jobId)
+    {
+        await using var db = Fixture.CreateAppDbContext();
+        return await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == jobId, CancellationToken);
+    }
+
     private async Task<TestData.SignedInSession?> LiveSessionForAsync(string route, string caller, World world)
     {
         if (route != SocketTicketsRoute || caller != Administrator)
@@ -253,6 +293,12 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
             ("POST", "/api/jobs") => client.PostJsonAsync(path, CreateJobBody(world.Now, Guid.NewGuid().ToString("N")[..8])),
             ("PUT", AssignmentRoute) => client.PutJsonAsync(path, new { technicianId = world.AssignedTechnician.Id, version = 0u }),
             ("PUT", StatusRoute) => client.PutJsonAsync(path, new { status = "InProgress", note = (string?)null, version = world.JobVersion }),
+            ("POST", SubmissionRoute) => client.PostJsonAsync(path, new { technicianNotes = (string?)null, siteSafetyConfirmed = true, version = world.JobVersion }),
+            ("PUT", InspectionRoute) => client.PutJsonAsync(path, new
+            {
+                answers = new[] { new { checklistItemId = TestData.ChecklistOf(TestData.HvacTemplateId).Items[0].Id, result = "Pass" } },
+                version = world.JobVersion,
+            }),
             ("GET", _) => client.GetAsync(path),
             _ => throw new ArgumentOutOfRangeException(nameof(route), $"{method} {route} has no request in the role matrix."),
         };

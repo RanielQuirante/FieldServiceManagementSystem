@@ -95,6 +95,7 @@ export interface JobDetails extends JobSummary {
   readonly createdAt: string
   readonly assignedAt: string | null
   readonly startedAt: string | null
+  readonly completedAt: string | null
   readonly history: readonly JobHistoryEntry[]
   readonly affordances: {
     readonly allowedStatusChanges: readonly AllowedStatusChange[]
@@ -160,6 +161,79 @@ export interface CreateJobBody {
   readonly scheduledEnd: string
   readonly checklistTemplateId: string
   readonly technicianId?: string
+}
+
+export type InspectionResult = 'Pass' | 'Fail' | 'NotApplicable'
+
+export interface InspectionReadingInput {
+  readonly readingFieldId: string
+  readonly value: number
+}
+
+export interface InspectionAnswerInput {
+  readonly checklistItemId: string
+  readonly result: InspectionResult
+  readonly note?: string | null
+  readonly readings?: readonly InspectionReadingInput[] | null
+}
+
+export interface SaveInspectionBody {
+  readonly answers: readonly InspectionAnswerInput[]
+  readonly version: number
+}
+
+export interface SubmitJobBody {
+  readonly technicianNotes: string | null
+  readonly siteSafetyConfirmed: boolean
+  readonly version: number
+}
+
+export interface InspectionReadingField {
+  readonly readingFieldId: string
+  readonly position: number
+  readonly label: string
+  readonly unit: string
+}
+
+export interface InspectionItem {
+  readonly checklistItemId: string
+  readonly position: number
+  readonly prompt: string
+  readonly readingFields: readonly InspectionReadingField[]
+  readonly answer: {
+    readonly result: InspectionResult
+    readonly note: string | null
+    readonly readings: readonly InspectionReadingInput[]
+  } | null
+}
+
+export interface Inspection {
+  readonly jobId: string
+  readonly jobNumber: number
+  readonly jobStatus: JobStatus
+  readonly items: readonly InspectionItem[]
+  readonly progress: {
+    readonly answered: number
+    readonly total: number
+    readonly passCount: number
+    readonly failCount: number
+    readonly notApplicableCount: number
+  }
+  readonly startedAt: string | null
+  readonly completedAt: string | null
+  readonly updatedAt: string | null
+  readonly submittedAt: string | null
+  readonly technicianNotes: string | null
+  readonly version: number
+  readonly affordances: {
+    readonly canEdit: boolean
+    readonly canSubmit: {
+      readonly allowed: boolean
+      readonly blockingCode: string | null
+      readonly answered: number
+      readonly total: number
+    }
+  }
 }
 
 export interface Problem {
@@ -352,6 +426,10 @@ export class AdminApi {
     return this.read<JobDetails>('GET', `/api/jobs/${id}`)
   }
 
+  getInspection(jobId: string): Promise<Inspection> {
+    return this.read<Inspection>('GET', `/api/jobs/${jobId}/inspection`)
+  }
+
   async findJobByNumber(number: number): Promise<JobSummary> {
     const list = await this.getJobs({ search: `JOB-${number}`, pageSize: 100 })
     const match = list.items.find((job) => job.number === number)
@@ -464,6 +542,24 @@ export class TechnicianApi {
 
   getJob(id: string): Promise<APIResponse> {
     return this.get(`/api/jobs/${id}`)
+  }
+
+  getInspection(jobId: string): Promise<APIResponse> {
+    return this.get(`/api/jobs/${jobId}/inspection`)
+  }
+
+  saveInspection(jobId: string, body: SaveInspectionBody): Promise<APIResponse> {
+    return this.request.put(`/api/jobs/${jobId}/inspection`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+      data: body,
+    })
+  }
+
+  submitJob(jobId: string, body: SubmitJobBody): Promise<APIResponse> {
+    return this.request.post(`/api/jobs/${jobId}/submission`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+      data: body,
+    })
   }
 }
 
