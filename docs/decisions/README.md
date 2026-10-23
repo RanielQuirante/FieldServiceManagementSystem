@@ -13,6 +13,9 @@ Each record states one decision, why it was made and what follows from it. Recor
 | [0005](0005-postgresql-17-with-two-database-roles.md) | PostgreSQL 17 with two database roles | Accepted |
 | [0006](0006-optimistic-concurrency-with-xmin.md) | Optimistic concurrency with xmin | Accepted |
 | [0007](0007-token-authentication-with-rotating-refresh-tokens.md) | Token authentication with rotating refresh tokens | Accepted |
+| [0008](0008-socket-tickets-for-the-notification-service.md) | Socket tickets for the notification service | Accepted |
+| [0009](0009-signed-webhooks-from-api-to-notifications.md) | Signed webhooks from the API to the notification service | Accepted |
+| [0010](0010-refetch-on-event-and-reconnect.md) | Refetch on event and reconnect | Accepted |
 | [0011](0011-openapi-snapshot-as-the-rest-contract.md) | OpenAPI snapshot as the REST contract | Accepted |
 | [0012](0012-log-file-naming-and-retention.md) | Log file naming and retention | Accepted |
 | [0013](0013-native-vue-components-and-design-tokens.md) | Native Vue components and design tokens | Accepted |

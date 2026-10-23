@@ -1,6 +1,6 @@
 # Security
 
-This document describes how FieldService protects its users and data: the security objectives, the trust boundaries, the authentication and session model, the controls at each boundary, the operator procedures and the accepted limitations. It covers what the applications do today and grows with each feature. The decision behind the session model is [ADR 0007](decisions/0007-token-authentication-with-rotating-refresh-tokens.md).
+This document describes how FieldService protects its users and data: the security objectives, the trust boundaries, the authentication and session model, the controls at each boundary, the operator procedures and the accepted limitations. It covers what the applications do today and grows with each feature. The decision behind the session model is [ADR 0007](decisions/0007-token-authentication-with-rotating-refresh-tokens.md); the decisions behind real-time updates are [ADR 0008](decisions/0008-socket-tickets-for-the-notification-service.md) and [ADR 0009](decisions/0009-signed-webhooks-from-api-to-notifications.md).
 
 ## Contents
 
@@ -8,6 +8,7 @@ This document describes how FieldService protects its users and data: the securi
 - [Trust boundaries](#trust-boundaries)
 - [Authentication and sessions](#authentication-and-sessions)
 - [Authorization](#authorization)
+- [Real-time updates](#real-time-updates)
 - [Request controls](#request-controls)
 - [Headers and content security policy](#headers-and-content-security-policy)
 - [Secrets and startup validation](#secrets-and-startup-validation)
@@ -34,6 +35,8 @@ The design assumes a TLS-terminating proxy in front of the applications in produ
 |---|---|---|
 | Browser to API | The dashboard and the API, on one origin | Bearer access tokens, the HttpOnly refresh cookie with a CSRF header, rate limits, input limits, security headers |
 | Mobile app to API | The technician app and the API | Bearer access tokens, refresh tokens in the platform's secure storage, the same server-side controls |
+| Browser to notification service | The dashboard and the notification service's Socket.IO endpoint, on the same origin | An Origin allowlist, a single-use 60-second socket ticket in the handshake, WebSocket only, small frames, no client-to-server events, a session cap |
+| API to notification service | The API posting job events to `/internal/job-events` | Standard Webhooks signatures, a timestamp tolerance, id deduplication, a size limit and a strict schema; the path is never exposed to browsers |
 | API to database | The API and PostgreSQL | A least-privilege application role; schema changes only through a separate migrator role ([database.md](database.md)) |
 | Developer machine | Local services and secrets | Secrets created locally, stored outside the repository, never printed ([development.md](development.md)) |
 
@@ -119,11 +122,34 @@ Refresh and sign-out with the cookie also require the header `X-FieldService-Csr
 - Endpoint parameters and responses use dedicated request and response records, never database entities, and a test enforces it.
 - A request to a route that does not exist gets `404`, and a wrong method gets `405`, for anonymous callers too.
 
+## Real-time updates
+
+The notification service relays job changes from the API to signed-in administrators. It has no database connection and holds no credential the API accepts, so a compromised service can send at most false hints, which dashboards answer by refetching real data from the API at a capped rate. The wire formats are in [contracts/events.md](contracts/events.md).
+
+### Socket tickets
+
+| Property | Value |
+|---|---|
+| Endpoint | `POST /api/auth/socket-tickets`, `Administrator` policy, 30 requests a minute per user |
+| Session check | The access token's session must exist, belong to the caller, be unrevoked and unexpired, and belong to an active user; otherwise `401 auth.session-expired` |
+| Format | JSON Web Token, HS256, signed with `Auth:SocketTicketKey`; issuer `fieldservice-api`, audience `fieldservice-notifications` |
+| Lifetime | 60 seconds; each ticket id is accepted once |
+| Transport | Only the `auth` member of the Socket.IO handshake, never a URL, header or cookie; the response is `no-store` |
+| Accepted by | The notification service only; the API rejects a ticket sent as a bearer token |
+
+The notification service checks the browser's `Origin` against `SOCKET_ALLOWED_ORIGINS` before the handshake, then verifies the ticket: HS256 only, the issuer and audience above, at most 60 seconds old with 5 seconds of clock tolerance, every claim present, and the `Administrator` role. It remembers verified ticket ids for 120 seconds, at most 10,000 of them, and refuses the handshake when none can be evicted. Sockets use the WebSocket transport only, frames are limited to 4 KB, clients cannot send events, and the service disconnects every socket after `SOCKET_SESSION_MAX_SECONDS` (900 by default), so the session check runs again on the reconnect.
+
+### Job events
+
+The API queues an event only after a change commits and posts it to the notification service with a Standard Webhooks signature: HMAC-SHA256 over the event id, the timestamp and the exact body. The service checks, in order, the route and method, the media type, a body of at most 16 KB, a timestamp within the tolerance (300 seconds by default), the signature against each configured secret in constant time, and a strict schema whose id must match the signed id. It remembers accepted ids for twice the tolerance plus 60 seconds, so while it keeps running a replayed request fails either the timestamp or the id check, and it records an id only after the signature and schema pass, so unsigned traffic cannot fill the list. Events carry identifiers and statuses only, never names, addresses or notes, and the `/internal` path is never proxied to browsers.
+
+The dashboard treats every event as a hint: it never copies data from an event, refetches the affected job at most once a second, and makes at most 60 event-driven requests a minute before falling back to one full refetch a minute ([ADR 0010](decisions/0010-refetch-on-event-and-reconnect.md)).
+
 ## Request controls
 
 | Control | Rule |
 |---|---|
-| Rate limits | Fixed 60-second windows: sign-in 10 and refresh 30 per client address; every other `/api` request 300 per user or 60 per anonymous address. Requests with a missing or invalid token count against the address limit. A rejected request gets `429` with `Retry-After`. Health checks and the API document are not limited. |
+| Rate limits | Fixed 60-second windows: sign-in 10 and refresh 30 per client address; socket tickets 30 per user; every `/api` request, these included, 300 per user or 60 per anonymous address. Requests with a missing or invalid token count against the address limit. A rejected request gets `429` with `Retry-After`. Health checks and the API document are not limited. |
 | Body size | 16 KB on sign-in, refresh and sign-out; larger bodies get `413`. |
 | Media type | Request bodies must be JSON; any other `Content-Type` gets `415`, even with an empty body. Refresh and sign-out also accept a request with no body and no `Content-Type`. |
 | JSON | Duplicate members, numbers sent as strings, integer enumeration values and nulls for required members are rejected with `400`. |
@@ -166,15 +192,19 @@ It loads no third-party origin: fonts are self-hosted, styles are static rules i
 | Webhook secret | `Notifications:WebhookSecret` | `whsec_` followed by base64 of at least 32 bytes; different from both keys |
 | Database connection | `ConnectionStrings:FieldService` | Present; detailed database errors stay off |
 | Demo password | `Seed:DemoPassword` | At least 12 characters; demo data is refused in Production |
+| Notification service webhook secrets | `WEBHOOK_SECRETS` | One or two `whsec_` secrets of at least 32 bytes, newest first; none may decode to the same bytes as the ticket key |
+| Notification service ticket key | `SOCKET_TICKET_KEY` | The API's socket-ticket key, standard base64 of at least 32 bytes |
 
 - Locally, every secret is created by `infrastructure/scripts/create-dev-env.mjs` with a cryptographic random generator and stored outside the repository. Outside Development, the applications read secrets from environment variables only.
 - No secret appears in a settings file, a build variable, a container image or a log.
-- The API stops at startup when a key is missing, too short, patterned (all bytes equal, or a constant step), equal to another key, or equal to a published test value. The message names the setting and the rule, never the value. [configuration.md](configuration.md) lists every rule.
+- The API and the notification service stop at startup when a key is missing, too short, patterned (all bytes equal, or a constant step), equal to another key, or equal to a published test value. The message names the setting and the rule, never the value. [configuration.md](configuration.md) lists every rule.
 - The contract test vectors described in [contracts/README.md](contracts/README.md) hold published test values so that every implementation can be checked against the same bytes. **These values must never be configured in any environment**; the applications refuse them at startup.
 
 ## Logging
 
-Logs carry identifiers, never passwords, tokens, cookies, `Authorization` headers, request bodies, query strings, email addresses, names, phone numbers or addresses. Security events (sign-in, refresh, reuse detection, sign-out, refused authorization and rate-limit rejections) are named and listed with their properties in [logging.md](logging.md). A test signs in, refreshes, creates a job and signs out with known sentinel values and fails if any of them reaches a log event or a log file.
+Logs carry identifiers, never passwords, tokens, cookies, `Authorization` headers, request bodies, query strings, email addresses, names, phone numbers or addresses. Security events (sign-in, refresh, reuse detection, sign-out, refused authorization and rate-limit rejections) are named and listed with their properties in [logging.md](logging.md). A test signs in, refreshes, issues a socket ticket, creates and changes jobs, sends their signed events and signs out with known sentinel values, and fails if any of them, a ticket, a key, a webhook signature or an event body reaches a log event or a log file. The API's outgoing HTTP client writes no request logs of its own, and its retry and circuit-breaker events carry no headers or bodies.
+
+The notification service logs event ids, job ids, socket ids, user ids, ticket ids and correlation ids, never tickets, signatures, secrets, request bodies or the refused `Origin` value. An error is logged with its type, message, stack trace and code only, and a failure value that is not an error is logged by its type alone, so data attached to a failure never reaches a log. A test of each service scans its logs for sentinel values.
 
 The technician app writes one entry per API call, with the method, the route template without its query, the status, the duration and the correlation id. The HTTP client's own request logs are turned off, and a test of the production client setup fails if they come back. Data records print only their type and id.
 
@@ -213,6 +243,7 @@ The device's screen lock is the control that protects the jobs already on screen
 |---|---|---|
 | Access-token key | Replace the value and restart the API | Current access tokens fail once; clients refresh silently |
 | Socket-ticket key | Change it in the API and the notification service together | Real-time connections fail for about a minute, then recover |
+| Webhook secret | Add the new secret to the front of the notification service's `WEBHOOK_SECRETS` and restart it, then change the API's `Notifications:WebhookSecret` and restart the API, then remove the old secret from the list | None; events signed with either secret are accepted during the change |
 | Database passwords | `ALTER ROLE … PASSWORD`, update the stored connection string, restart | A brief reconnect |
 | Demo password | Re-create the local secrets, then reset the database, because the seeder never rewrites existing password hashes | Local demo only |
 
@@ -226,10 +257,15 @@ Each feature set is reviewed against these controls before it is merged.
 | 2026-10-21 | Administrator sign-in, sessions, job creation and the job list | No high or medium finding | A refresh or sign-out now clears the refresh cookie only when the request presented it, as defence in depth against forced sign-out; a whitespace-only password is an ordinary failed sign-in. Requiring a configured proxy address in production is scheduled with the container deployment. |
 | 2026-10-22 | Job assignment, the technician list, the technician app's sign-in, session, job list and job details | No high finding; one medium finding fixed before merge | The technician app kept the previous technician's loaded jobs after a session ended by expiry or revocation; every way a session ends now clears all per-user state, the sign-in form included. Also added: the access token is sent only to the configured API address, a refresh that finishes after sign-out writes nothing back, log files are excluded from backup and device transfer, and the assignment check reads only the columns it needs. |
 | 2026-10-22 | Technician status changes: start, hold and resume, the status history in the dashboard, and the technician app's Update status sheet | No high, medium or low finding | Retries stay with the session a request started under, every way a session ends goes through one path, abandoned sessions are signed out on the server, and hold reasons are kept out of logs and printed requests. |
+| 2026-10-23 | Real-time updates: socket tickets, signed job events, the notification service's relay and sockets, and the dashboard's live states | No high or medium finding; one low finding resolved before merge | The event contract now states the reconnect timing the design specifies, and the dashboard pins those values with a test. Also added: the notification service refuses a webhook secret equal to its ticket key, logs an error with its type, message, stack and code only and any other failure value by its type alone, and exits with code 1 when it cannot listen; end-to-end tests fail if a socket handshake URL carries anything but its two protocol keys. The accepted limitations below gained the real-time items. |
 
 ## Accepted limitations
 
 - Revocation takes effect at the next refresh; an access token already issued stays valid for up to 15 minutes.
+- An open real-time connection outlives a revoked session until its session cap, 15 minutes by default, and a socket ticket requested at the same moment as a sign-out can still be issued. The connection receives only job identifiers and statuses.
+- One administrator can hold many real-time connections at once; their number is bounded by the ticket rate limit and the session cap.
+- Job events are delivered at most once and are lost if the API stops with events still queued. A dashboard that misses an event shows the previous data until its next event, navigation or reconnect.
+- The notification service keeps the ids of accepted events in memory, so a restart clears them. A signed event captured on the internal network and sent again within the timestamp tolerance after a restart is broadcast once more. Dashboards answer it by refetching real data under the usual limits.
 - Rate limits are per process and per window. They slow guessing but do not lock an account, and a distributed attempt from many addresses is outside their scope.
 - There is no self-registration, password reset or multi-factor authentication; accounts come from the seeded data set in local environments.
 - Administrators are not separated from each other: every administrator can see and change every job.

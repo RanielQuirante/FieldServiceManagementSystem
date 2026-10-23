@@ -15,6 +15,7 @@ Run every command from the repository root unless a step says otherwise.
 | PostgreSQL 17 | `infrastructure/` | The local server, or the Compose `db` service | 127.0.0.1:5432, or 127.0.0.1:5433 for Compose |
 
 - The Vite dev server proxies `/api` to the API and `/socket.io` to the notification service, so the browser talks to one origin.
+- After each committed create, assignment or status change, the API posts a signed job event to the notification service at http://127.0.0.1:5090/internal/job-events, the `Notifications:BaseUrl` of `appsettings.Development.json`. The notification service broadcasts it to the signed-in administrators' dashboards, which then refetch the job. The two services share the socket-ticket key and the webhook secret, which `create-dev-env.mjs` writes into the API's user-secrets store and the notification service's `.env` file alike ([configuration.md](configuration.md#values-shared-with-the-api)).
 - `vite preview` serves the production build on the same address with the same proxies and the production security headers, including the Content Security Policy. The dev server sends none of them, because hot reload injects inline code.
 - Each service uses the same host port wherever it runs. Run a service either on the host or in Compose, never both at once.
 
@@ -221,7 +222,7 @@ curl -s http://localhost:5080/health/ready
 curl -s http://127.0.0.1:5090/health/ready
 ```
 
-Both print `Healthy`. Then open http://localhost:5173, which leads to the sign-in page.
+Both print `Healthy`. Then open http://localhost:5173, which leads to the sign-in page. After you sign in, the live indicator in the dashboard's top bar reads "Live" once the dashboard's socket to the notification service is open ([Checking the running stack](#checking-the-running-stack)).
 
 **Signing in.** Sign in as the demo administrator, `dana.whitfield@fieldservice.example`, with the demo password. Every demo account shares that password, and the dashboard admits administrators only: a technician account gets the message that technicians sign in from the FieldService Tech app. No setup step prints the password, and no tracked file holds it. To see it, run this yourself, in your own terminal:
 
@@ -260,15 +261,19 @@ On ARM64 hardware, add `-p:RuntimeIdentifierOverride=win-arm64`.
 
 ### VS Code: "Full stack"
 
-The compound launch configuration "Full stack" first runs the task `env: check` (`start-dev.mjs --check`). When the check finds a problem, it lists each one with its fix and exits 1, and VS Code reports the failed task before any application starts. Otherwise the compound starts three configurations together, and stopping one stops all of them:
+The compound launch configuration "Full stack" first runs the task `env: check` (`start-dev.mjs --check`). When the check finds a problem, it lists each one with its fix and exits 1, and VS Code reports the failed task before any application starts. Otherwise the compound starts three configurations together:
 
-| Configuration | What it runs |
-|---|---|
-| `API` | Builds the API with the task `build: api`, then debugs `src/FieldService.Api/bin/Debug/net10.0/FieldService.Api.dll` with the launch profile `http` (http://localhost:5080, environment `Development`). Its working directory is the project folder, so `Logs:Directory` (`../../logs/api`) resolves to the repository's `logs/api` |
-| `Notifications` | Debugs `src/FieldService.Notifications/src/main.ts` with Node's `--env-file-if-exists=.env`. Node runs the TypeScript directly; type stripping keeps line and column positions, so breakpoints work without source maps |
-| `Web dev server` | `npm run dev` in `src/FieldService.Web`, in a terminal |
+| Configuration | What it runs | Ready when |
+|---|---|---|
+| `API` | Builds the API with the task `build: api`, then debugs `src/FieldService.Api/bin/Debug/net10.0/FieldService.Api.dll` with the launch profile `http` (http://localhost:5080, environment `Development`). Its working directory is the project folder, so `Logs:Directory` (`../../logs/api`) resolves to the repository's `logs/api`. It reads its keys from the user-secrets store `fieldservice-api` | The Debug Console shows `Now listening on: http://localhost:5080` |
+| `Notifications` | Debugs `src/FieldService.Notifications/src/main.ts` with Node's `--env-file-if-exists=.env`, in the package folder, so it reads the thirteen development variables of `src/FieldService.Notifications/.env`, the same flag that `npm run dev` uses. Node runs the TypeScript directly; type stripping keeps line and column positions, so breakpoints work without source maps | Its terminal shows `server.listening` with `host: "127.0.0.1"` and `port: 5090` |
+| `Web dev server` | `npm run dev` in `src/FieldService.Web`, in a terminal: it writes the API client types from `docs/contracts/openapi.v1.json`, then starts Vite | The terminal shows Vite's `ready in` line and `http://127.0.0.1:5173/` |
+
+**Stopping.** The compound sets `stopAll`, so stopping any one of the three sessions, or the compound itself with Shift+F5, stops all three. The API first spends up to 5 seconds delivering the job events still queued, and the notification service closes its sockets before it exits. Afterwards nothing listens on 5080, 5090 or 5173; check with `lsof -nP -iTCP:5080 -sTCP:LISTEN`, and the same for 5090 and 5173, on macOS.
 
 Two more configurations attach a browser debugger to the dashboard once the dev server runs: `Web in Chrome` and `Web in Edge`, both on http://localhost:5173.
+
+**Without debuggers.** The task `dev: full stack` starts the three `dev:` tasks in parallel, with file watching and hot reload: `dotnet watch` for the API, and `npm run dev` for the notification service and the web dashboard. Each runs in its own terminal and counts as ready at the line in the table above. Stop them with "Tasks: Terminate Task" and "All Running Tasks", or with the trash icon of each terminal.
 
 The technician app needs no launch configuration: pick the target in the .NET MAUI extension's device picker in the status bar, then use Run and Debug.
 
@@ -305,6 +310,34 @@ npm run dev
 ```
 cd src/FieldService.Web
 npm run dev
+```
+
+### Checking the running stack
+
+| Check | Expected |
+|---|---|
+| `curl -s http://localhost:5080/health/ready` | `Healthy`: the API is up and reaches its database |
+| `curl -s http://127.0.0.1:5090/health/ready` | `Healthy`: the notification service accepts connections |
+| http://localhost:5173 in a browser | The sign-in page |
+| Jobs, signed in as the demo administrator | The live indicator in the top bar reads "Live" |
+| A status change from the technician app while Jobs is open | Within a few seconds, without a reload, the dashboard shows a notice for the job and highlights its row |
+
+**Without the notification service.** The API and the dashboard keep working. Each change is saved, and after at most its 10-second delivery budget the API logs `job-event.dispatch-failed` for the change, with the reason `unreachable`, or `circuit-open` while its circuit breaker is open. The dashboard shows that it is reconnecting, after 30 seconds that live updates are paused, and refreshes the jobs it shows when the connection returns.
+
+### Logs of the running stack
+
+| Application | Console | Files |
+|---|---|---|
+| API | The Debug Console of the `API` configuration, or the terminal of `dotnet watch`: text lines at Debug and above, including the executed SQL without parameter values | `logs/api/api-YYYYMMDD.log`, one JSON event per line |
+| Notification service | Its terminal: readable lines through pino-pretty | `logs/notifications/notifications.YYYYMMDD.N.log`, one JSON object per line |
+| Web dashboard | The dev server's terminal, and the browser's developer tools | None |
+
+- `YYYYMMDD` is the local date; the time stamps inside the files are UTC.
+- `start-dev.mjs` shows all three consoles in one terminal, with the prefixes `[api]`, `[notifications]` and `[web]`.
+- [logging.md](logging.md) lists every event both services write. To follow one job change from the technician's request to the broadcast, search both folders for its correlation id ([Following one job change across the services](logging.md#following-one-job-change-across-the-services)):
+
+```
+grep -h "<correlation id>" logs/api/*.log logs/notifications/*.log
 ```
 
 ## Databases
@@ -481,7 +514,7 @@ It fails when a tracked path must never be committed, and when a tracked file ho
 
 ## Dependencies
 
-- **.NET.** Package versions live in `Directory.Packages.props`; project files reference packages without versions. The API and both test projects commit a `packages.lock.json`. When `CI` is `true`, `Directory.Build.props` turns on locked restores, and NuGet audit warnings for high and critical advisories (`NU1903`, `NU1904`) are errors. `nuget.config` makes nuget.org the only package source.
+- **.NET.** Package versions live in `Directory.Packages.props`; project files reference packages without versions. Transitive pinning is on, so a `PackageVersion` entry that no project references directly sets the version of a dependency that another package brings: Polly.Core, Polly.Extensions and Polly.RateLimiting, which `Microsoft.Extensions.Http.Resilience` brings, are pinned to 8.8.0 this way. The API and both test projects commit a `packages.lock.json`. When `CI` is `true`, `Directory.Build.props` turns on locked restores, and NuGet audit warnings for high and critical advisories (`NU1903`, `NU1904`) are errors. `nuget.config` makes nuget.org the only package source.
 - **npm.** Each package has its own `package-lock.json`; install with `npm ci`. A package added or updated must have been published at least 7 days before the install, so install with `--before` set to a time at least 7 days in the past, for example `npm install --before=<UTC time 7 days ago> <package>@<version>`, and commit the changed lock file.
 
 ## Troubleshooting
@@ -498,6 +531,11 @@ It fails when a tracked path must never be committed, and when a tracked file ho
 | `28P01 password authentication failed` (Windows or Compose) | The role passwords differ from the user-secrets store | Run `create-dev-env.mjs --bootstrap` again. For Compose, run `down -v`, then `up -d --wait db` |
 | `3D000 database "fieldservice" does not exist` | The bootstrap has not run | `create-dev-env.mjs --bootstrap` |
 | `42501 permission denied` during a migration | The migration ran with the app connection | `dotnet ef` must use `ConnectionStrings:Migrations`, the migrator role |
+| The notification service exits at start with `config.invalid: <variable> <rule>` | Its `.env` file lacks a value, or holds a value copied from documentation or a test vector, or typed by hand | Run `node infrastructure/scripts/create-dev-env.mjs` without flags: it writes missing and drifted values back from `infrastructure/.env`. If the rule is `must not be a published test key` or `must not be a patterned key` and the run reports `unchanged`, replace every secret with `--force` and follow the steps it prints. The rules are in [configuration.md](configuration.md#notification-service-srcfieldservicenotifications) |
+| The dashboard stays on "Reconnecting…" or shows that live updates are paused | The notification service is not running, or refuses the socket | Start it, or look in `logs/notifications/` for `socket.rejected` and its reason ([logging.md](logging.md#socket-events)) |
+| `socket.rejected` with the reason `origin-not-allowed` | The dashboard was opened at an address that `SOCKET_ALLOWED_ORIGINS` does not list, such as a LAN host name | Open http://localhost:5173 or http://127.0.0.1:5173 |
+| `socket.rejected` with the reason `signature` for every connection, or `job-event.rejected` with the reason `signature-mismatch` for every event | The API and the notification service hold different socket-ticket keys or webhook secrets, for example after one store was edited by hand | Run `create-dev-env.mjs` without flags, which writes one value into both, then restart both services |
+| The API logs `job-event.dispatch-failed` with the reason `unreachable` or `circuit-open` | The notification service is not running on 5090 | Start it. The changes are saved, and open dashboards refresh their jobs when they reconnect |
 | `EADDRINUSE` or "address already in use" on 5080, 5090 or 5173 | Another process holds the port | `lsof -nP -iTCP:5080 -sTCP:LISTEN` (macOS) or `Get-NetTCPConnection -LocalPort 5080` (Windows), then stop the duplicate |
 | Windows: "An attempt was made to access a socket in a way forbidden by its access permissions" | A Hyper-V excluded port range | See the Windows note under [Ports](#ports) |
 | Vite: "Port 5173 is already in use" | The dev server and `vite preview` share the port | Stop the other one, or free the port; moving it would break the allowed origin lists |

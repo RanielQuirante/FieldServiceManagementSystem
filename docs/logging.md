@@ -1,6 +1,6 @@
 # Logging
 
-This document describes where each FieldService application writes its logs, how files are named, rolled and kept, which levels apply per environment, how one request is traced through its correlation id, which named events the API and the notification service write, and what is never logged. The settings named here are listed with their defaults in [configuration.md](configuration.md); the file naming decision is recorded in [ADR 0012](decisions/0012-log-file-naming-and-retention.md).
+This document describes where each FieldService application writes its logs, how files are named, rolled and kept, which levels apply per environment, how one request, and one job change across the services, is traced through its correlation id, which named events the API and the notification service write, and what is never logged. The settings named here are listed with their defaults in [configuration.md](configuration.md); the file naming decision is recorded in [ADR 0012](decisions/0012-log-file-naming-and-retention.md).
 
 ## Destinations
 
@@ -49,7 +49,7 @@ This document describes where each FieldService application writes its logs, how
 ## Formats
 
 - **API.** The file sink writes compact log event format (CLEF): one JSON object per line, with `@t` (time), `@mt` (message template), `@l` (level, omitted for Information) and the event's properties. The console writes text in Development and Testing, and CLEF when `Logs:ConsoleFormat` is `Json`.
-- **Notification service.** pino writes one JSON object per line, with `level`, `time` and `msg`. The console output is readable text through pino-pretty only when `LOG_PRETTY` is `true` and `NODE_ENV` is `development`; otherwise it is the same JSON.
+- **Notification service.** pino writes one JSON object per line, with `level` as a number (20 debug, 30 info, 40 warn, 50 error, 60 fatal), `time`, the event's properties, and `msg`, which holds the event name. The console output is readable text through pino-pretty only when `LOG_PRETTY` is `true` and `NODE_ENV` is `development`; otherwise it is the same JSON.
 - **Technician app.** CLEF, as the API.
 
 Every format is plain JSON lines, so `grep`, `jq` or any log viewer that reads JSON lines can search the files.
@@ -92,6 +92,8 @@ The API writes one event per request when the response completes, with these pro
 - The API reads `X-Correlation-ID` from each request and accepts it only when it is 1 to 64 characters of letters, digits, `.`, `_` and `-`. Otherwise it uses the W3C trace id of the request, 32 hexadecimal characters.
 - The id is attached to every event logged while the request runs, returned in the `X-Correlation-ID` response header, and included as `correlationId` in every Problem Details error body, next to `traceId`. An error response therefore carries the id that finds its log lines.
 - Serilog also stamps the trace and span ids on each event.
+- The technician app and the web dashboard send a new UUID in `X-Correlation-ID` with each request, so the API keeps the id the client chose. The technician app also writes it in its own `http.response` and `http.failure` lines.
+- When a request changes a job, the job event that the API sends to the notification service carries the request's id, and the notification service logs it on every line of that event ([Following one job change across the services](#following-one-job-change-across-the-services)).
 
 To follow one request, search both log folders for its id:
 
@@ -107,7 +109,7 @@ Besides the request log, the API writes named events. Each one carries the prope
 grep -h '"Name":"auth.sign-in.failed"' logs/api/*.log
 ```
 
-- Events written while a request runs also carry the request's `CorrelationId` and the trace and span ids. Startup events carry no request properties.
+- Events written while a request runs also carry the request's `CorrelationId` and the trace and span ids. Startup events carry no request properties. The [real-time events](#real-time-events) are written outside requests and carry the `CorrelationId` of the request that made the change.
 - `config.invalid` is logged at Critical, which Serilog writes as Fatal (`"@l":"Fatal"`).
 
 ### Startup and request events
@@ -131,19 +133,21 @@ Entity Framework's own Error and Fatal events are dropped, so a database excepti
 | `auth.refresh.reuse-detected` | 4004 | Warning | A refresh token that was already used is presented again outside that grace, and the API revokes the session | `UserId`, `SessionId`, `Client`, `SecondsSinceConsumed`, `ClientIp` |
 | `auth.refresh.rejected` | 4005 | Information | A refresh is refused for one of the reasons below. A refresh without any credential writes no event | `Reason`; `SessionId`, only when the token matched a session |
 | `auth.sign-out` | 4006 | Information | A sign-out revokes a session. A missing or unknown credential, a credential of the other client and an already revoked session write no event | `UserId`, `SessionId` |
+| `auth.socket-ticket.issued` | 4009 | Information | `POST /api/auth/socket-tickets` issues a socket ticket to an administrator whose session is still live. A refusal writes no event of this name: a 401 appears only in the request line, a 403 as `authz.forbidden` and a 429 as `rate-limit.rejected` | `UserId`, `TicketId` |
 | `authz.forbidden` | 4007 | Information | An authorization policy refuses a signed-in user, and the response is 403. A request without a valid access token gets 401 and writes no event | `Policy`, `UserId`, `Role`, `RoutePattern` |
 | `rate-limit.rejected` | 4008 | Warning | A rate limit refuses a request, and the response is 429. Written at the first refusal of a partition, then not again for that partition until its window ends | `Policy`, `PartitionKind`, `UserId` or `ClientIp`, `RoutePattern` |
 
 | Property | Content |
 |---|---|
 | `UserId`, `SessionId` | The ids of the user and of the session |
+| `TicketId` | The socket ticket's `jti`, a UUID. The notification service logs the same value as `ticketId` when it refuses that ticket |
 | `Role` | `Administrator` or `Technician` |
 | `Client` | `Web` for the web dashboard, `Mobile` for the technician app |
 | `Reason` | A reason code from the table below |
 | `SecondsSinceConsumed` | Whole seconds between the token's first use and its reuse |
 | `ClientIp` | The client's IP address as the API sees it, after the forwarded headers of a trusted proxy apply; `unknown` when the connection has none |
-| `Policy` | On `authz.forbidden`, the endpoint's authorization policies, separated by commas, or `fallback` when the endpoint names none. On `rate-limit.rejected`, `sign-in`, `refresh` or `global` |
-| `PartitionKind` | `user` when the `global` limit counts a signed-in user's requests, logged with `UserId`; `ip` when a limit counts the requests of one address, logged with `ClientIp`. The other of the two properties is null |
+| `Policy` | On `authz.forbidden`, the endpoint's authorization policies, separated by commas, or `fallback` when the endpoint names none. On `rate-limit.rejected`, `sign-in`, `refresh`, `socket-tickets` or `global` |
+| `PartitionKind` | `user` when the `global` or `socket-tickets` limit counts a signed-in user's requests, logged with `UserId`; `ip` when a limit counts the requests of one address, logged with `ClientIp`. The other of the two properties is null |
 | `RoutePattern` | The route template of the endpoint that matched, never the request path with its values or the query string. On `rate-limit.rejected` it is null when the request matched no endpoint |
 
 | Event | Reason | Meaning |
@@ -161,11 +165,52 @@ Entity Framework's own Error and Fatal events are dropped, so a database excepti
 
 For each event the checks run in the order listed, and the first one that applies is logged.
 
-**What the events carry.** The security, configuration and seeding events follow the rules of [Redaction](#redaction) and carry identifiers only: user and session ids, role and client names, reason codes, counts, policy names, route templates and setting names. None of them carries a password, a token or its hash, a cookie, a header, a body, a query string, an email address, a name, a phone number or a postal address. `ClientIp` appears only on `auth.sign-in.failed`, `auth.refresh.reuse-detected` and `rate-limit.rejected`, and `config.invalid` names the key and the rule, never the value.
+**What the events carry.** The security, configuration and seeding events follow the rules of [Redaction](#redaction) and carry identifiers only: user, session and ticket ids, role and client names, reason codes, counts, policy names, route templates and setting names. None of them carries a password, a token, a ticket or its hash, a cookie, a header, a body, a query string, an email address, a name, a phone number or a postal address. `ClientIp` appears only on `auth.sign-in.failed`, `auth.refresh.reuse-detected` and `rate-limit.rejected`, and `config.invalid` names the key and the rule, never the value.
+
+### Real-time events
+
+After a create, an assignment or a status change is committed, the API queues a job event, and a background dispatcher posts it to the notification service ([events.md](contracts/events.md)). The dispatcher writes these events. They appear only when `Notifications:BaseUrl` is set; without it, the API queues no events and writes none of them.
+
+| Event | Id | Level | Written when | Properties |
+|---|---|---|---|---|
+| `job-event.dispatched` | 5001 | Information | The notification service accepted the event with a 2xx status | `JobEventId`, `Type`, `JobId`, `CorrelationId`, `StatusCode` |
+| `job-event.dispatch-failed` | 5002 | Warning | The event was not delivered, for one of the reasons below. The job change itself stays saved | `JobEventId`, `Type`, `JobId`, `CorrelationId`, `Reason`; `StatusCode`, null unless the service answered |
+| `job-event.dropped` | 5003 | Warning | The event left the queue without a delivery attempt | `JobEventId`, `Type`, `JobId`, `CorrelationId`, `Reason` |
+| `job-event.drain-incomplete` | 5004 | Warning | At shutdown, the 5-second drain ended with events still queued | `Remaining`, the number of events not delivered |
+
+| Property | Content |
+|---|---|
+| `JobEventId` | The event's id, also sent as the `webhook-id` header; the notification service logs it as `eventId`. The API names it `JobEventId` because every API event already carries an `EventId` |
+| `Type` | `job.created`, `job.assigned` or `job.status-changed` |
+| `JobId` | The id of the job that changed |
+| `CorrelationId` | The id of the request that made the change |
+| `StatusCode` | The HTTP status of the notification service's last answer |
+
+| Event | Reason | Meaning |
+|---|---|---|
+| `job-event.dispatch-failed` | `rejected` | The service answered with a status that a retry cannot change, such as 400, 401, 404, 413 or 415, so the event was not retried |
+| `job-event.dispatch-failed` | `unavailable` | The service still answered 408, 429 or a 5xx status after the retries |
+| `job-event.dispatch-failed` | `timeout` | The attempts timed out, or the 10-second budget ran out |
+| `job-event.dispatch-failed` | `circuit-open` | The circuit breaker was open after earlier failures, so no attempt was made |
+| `job-event.dispatch-failed` | `unreachable` | No connection could be made, for example because the service is not running |
+| `job-event.dispatch-failed` | `shutdown` | The API stopped before the delivery finished |
+| `job-event.dispatch-failed` | `failed` | Any other error |
+| `job-event.dropped` | `queue-full` | The queue already held 1,000 events, so its oldest event was dropped to make room |
+| `job-event.dropped` | `queue-stopped` | A change was committed after the API began to shut down |
+
+- Each event is signed once and every retry sends the same bytes, so a retried delivery is logged once, as `job-event.dispatched` or `job-event.dispatch-failed`.
+- The resilience pipeline behind the retries writes its own entries, with a `SourceContext` that starts with `Polly`, for retried attempts, timeouts and circuit-breaker changes. They carry the event's `CorrelationId`, and no header or body.
+- The API's client for the notification service writes no HTTP client log entries, so the signature header never reaches a log, whatever the level.
 
 ## Notification service events
 
-The notification service logs named events as the `msg` of each line:
+The notification service writes each named event as the `msg` of a line, with its properties as members of the same line ([Formats](#formats)). To find every occurrence of one event:
+
+```
+grep -h '"msg":"job-event.rejected"' logs/notifications/*.log
+```
+
+### Service events
 
 | Event | Level | When |
 |---|---|---|
@@ -173,10 +218,98 @@ The notification service logs named events as the `msg` of each line:
 | `server.stopping` | info | A stop signal arrived; with `signal` |
 | `server.stopped` | info | The server closed |
 | `server.stop-timeout` | error | The server did not close within 10 seconds |
-| `server.listen-failed` | fatal | The service could not listen |
-| `process.uncaught-exception`, `process.unhandled-rejection` | fatal | A process failure, with its stack trace |
+| `server.listen-failed` | fatal | The service could not listen; with `err`, the error's type, message, stack trace and code only, or `errType` when the failure value is not an Error. The process exits with code 1 |
+| `request.failed` | error | A request failed with an unexpected error, and the response is 500; with `err`, the error's type, message, stack trace and code only, or, when the failure value is not an Error, only `errType` |
+| `process.uncaught-exception`, `process.unhandled-rejection` | fatal | A process failure; with `err`, the error's type, message, stack trace and code only, or, when the failure value is not an Error, only `errType`. The process exits with code 1 |
 
-An invalid configuration is reported before the logger exists, as one line on stderr: `config.invalid: <variable> <rule>`.
+An Error is logged as `err` with four fields only: `type`, `message`, `stack` and, when it is a string or a number, `code`. Any further property of the error is never written. A chain of causes appears only inside `message` and `stack`, as `: <cause message>` and `caused by: <cause stack>`. A failure value that is not an Error is never logged as given: the line carries only `errType`, its type, which is `string`, `number`, `bigint`, `boolean`, `symbol`, `undefined`, `function`, `object`, `null` or `array`.
+
+An invalid configuration is reported before the logger exists, as one line on stderr: `config.invalid: <variable> <rule>` ([configuration.md](configuration.md#notification-service-srcfieldservicenotifications)).
+
+### Job events
+
+The service writes these for each `POST /internal/job-events` from the API. The checks run in the order of the reason table below, and the first that fails answers the request.
+
+| Event | Level | When | Properties |
+|---|---|---|---|
+| `job-event.received` | info | The event passed the content type, size, timestamp, signature and schema checks, and its `id` equals its `webhook-id` | `eventId`; `correlationId`, from the envelope; `type`; `version`; `jobId`, absent for an unknown type |
+| `job-event.duplicate` | info | The same `webhook-id` was accepted before, within the retention window. The response is 202 with the outcome `duplicate`, and nothing is broadcast | As `job-event.received` |
+| `job-event.ignored` | warn | The type or the version is unknown. The response is 202 with the outcome `ignored` | As `job-event.received` |
+| `job-event.broadcast` | info | The event was sent to the `administrators` room. The response is 202 with the outcome `broadcast` | As `job-event.received`, plus `room`, which is `administrators`, and `recipients`, the number of administrator sockets connected at that moment |
+| `job-event.rejected` | error | A check failed. The response is the status below, as Problem Details | `reason`; `status`; `eventId`, the claimed `webhook-id`, only when it is a lower-case UUID; `correlationId`, from the `X-Correlation-ID` header, only when that is valid |
+
+| Reason | Status | Meaning |
+|---|---|---|
+| `unsupported-media-type` | 415 | The content type is not `application/json` |
+| `too-large` | 413 | The body is larger than 16 KB |
+| `missing-headers` | 401 | `webhook-id`, `webhook-timestamp` or `webhook-signature` is absent or empty |
+| `timestamp-out-of-range` | 401 | `webhook-timestamp` is not 1 to 12 digits, or is further from the service's clock than `WEBHOOK_TOLERANCE_SECONDS` |
+| `signature-mismatch` | 401 | No `v1` signature matches under any entry of `WEBHOOK_SECRETS`, or the signature header is longer than 1,024 characters |
+| `invalid-json` | 400 | The body is not valid UTF-8 JSON, or it starts with a byte order mark |
+| `schema` | 400 | The envelope or its data does not match the event contract |
+| `id-mismatch` | 400 | The envelope's `id` differs from `webhook-id` |
+
+- A request to another path, or with another method, gets 404 or 405 and writes no `job-event` line.
+- When the request carries a valid `X-Correlation-ID`, the service returns it in the `X-Correlation-ID` response header of every 202 and every problem response, and in the problem body as `correlationId`.
+- The body, the signature header and the secrets are never logged.
+
+### Socket events
+
+| Event | Level | When | Properties |
+|---|---|---|---|
+| `socket.connected` | info | An administrator's socket passed the ticket check and joined the `administrators` room | `socketId`, `userId` |
+| `socket.disconnected` | info | A connected socket closed | `socketId`, `userId`, `reason`, and `durationMs`, the time since it connected |
+| `socket.rejected` | warn | A connection was refused, for one of the reasons below | `reason`; `code`, the code the client receives; `socketId`; `userId` and `ticketId`, the ticket's `jti`, once the ticket has been read far enough to know them |
+| `socket.rejected` | error | The ticket check failed with an unexpected error; the client receives `ticket_invalid` | `reason`, which is `verification-error`; `code`; `socketId`; `err`, the error's type, message, stack trace and code only, or `errType` when the failure value is not an Error |
+
+| Reason | Code the client receives | Meaning |
+|---|---|---|
+| `origin-not-allowed` | None: the WebSocket upgrade is refused before a socket exists | The browser's `Origin` is not listed in `SOCKET_ALLOWED_ORIGINS`. The line has no `code` and no `socketId`, and the refused origin is not logged |
+| `missing` | `ticket_missing` | The handshake carries no ticket |
+| `signature` | `ticket_invalid` | The signature does not verify under `SOCKET_TICKET_KEY` |
+| `expired` | `ticket_invalid` | The ticket has expired, or was issued more than 60 seconds ago; 5 seconds of clock difference are allowed |
+| `claims` | `ticket_invalid` | The issuer or the audience differs, a required claim is missing, or the ticket is not valid yet |
+| `algorithm` | `ticket_invalid` | The ticket is not signed with HS256 |
+| `malformed` | `ticket_invalid` | The ticket is not a well-formed signed token |
+| `subject` | `ticket_invalid` | The `sub` claim is not a UUID |
+| `ticket-id` | `ticket_invalid` | The `jti` claim is missing, empty or longer than 128 characters |
+| `role` | `forbidden` | The ticket's role is not `Administrator` |
+| `reused` | `ticket_invalid` | The ticket was used before; each ticket opens one connection |
+| `ticket-cache-full` | `ticket_invalid` | The record of used ticket ids is full of ids that are still needed |
+
+Common `reason` values of `socket.disconnected`, as Socket.IO reports them:
+
+| Reason | Meaning |
+|---|---|
+| `client namespace disconnect` | The dashboard closed the connection, for example at sign-out |
+| `transport close` | The tab closed, or the network connection was lost |
+| `ping timeout` | The client stopped answering the heartbeat |
+| `server namespace disconnect` | The service ended the connection after `SOCKET_SESSION_MAX_SECONDS`, 900 seconds by default; the dashboard reconnects with a new ticket |
+| `server shutting down` | The service stopped |
+
+## Following one job change across the services
+
+One correlation id follows a job change from the request that made it to the broadcast that tells the dashboards:
+
+1. The technician app sends the request, for example `PUT /api/jobs/{jobId}/status`, with a new UUID in `X-Correlation-ID`, and writes the id in its own `http.response` line.
+2. The API takes the id as the request's `CorrelationId`. Its request line, and every event written during the request, carry it.
+3. After the change is committed, the API queues a job event whose `correlationId` is that id. The dispatcher posts the event with the id in `X-Correlation-ID`, and writes `job-event.dispatched`, or `job-event.dispatch-failed`, with the same `CorrelationId` and the event's `JobEventId`.
+4. The notification service writes `job-event.received` and `job-event.broadcast` with the same `correlationId`, and with `eventId` equal to the API's `JobEventId`. A repeated delivery of the same event writes `job-event.duplicate` instead of a second broadcast.
+5. The dashboards receive the event without the correlation id, because the socket payload carries ids only, and refetch the job. Those requests carry ids of their own.
+
+To check one change, find its id in the API's delivery lines, which also name the job:
+
+```
+grep -h '"Name":"job-event.dispatched"' logs/api/*.log
+```
+
+Then search both folders for that id:
+
+```
+grep -h "<correlation id>" logs/api/*.log logs/notifications/*.log
+```
+
+The result holds the API's request line and the events of that request, `job-event.dispatched`, and the notification service's `job-event.received` and `job-event.broadcast`, each with the same id. Both services write UTC time stamps, `@t` in the API's lines and `time` in the notification service's, so the lines can be put in order across the two files.
 
 ## Redaction
 
@@ -192,7 +325,10 @@ How the applications keep to them:
 - Entity Framework sensitive-data logging is off everywhere, and the API refuses to start when its connection string enables Npgsql's `Include Error Detail`.
 - The API's request log leaves out the query string, and the framework's own request lines, which contain it, stay below the configured level.
 - The API never logs the message of a request-binding failure, because that message quotes the submitted value.
-- The notification service's logger replaces the `authorization`, `cookie` and `webhook-signature` headers, the socket handshake's credentials and any `ticket`, `token`, `password`, `secret` or `signature` field with `[redacted]`.
+- The API's client for the notification service writes no HTTP client log entries, so the `webhook-signature` header is never logged, whatever the level. The `job-event.*` events carry ids only, and `auth.socket-ticket.issued` carries the ticket's id, never the ticket.
+- The notification service's logger replaces the `authorization`, `cookie` and `webhook-signature` headers, the socket handshake's `auth` object, and any `auth`, `ticket`, `token`, `password`, `secret`, `signature`, `webhookSecrets` or `socketTicketKey` member, at the top level of a line or one level down, with `[redacted]`.
+- The notification service writes an Error with `type`, `message`, `stack` and a string or number `code` only, so properties attached to an error never reach a log, and writes a failure value that is not an Error as `errType` only ([Service events](#service-events)).
+- The notification service's job-event and socket lines carry ids and reason codes only. The event body, the signature, the ticket and a refused origin are never logged, and a ticket verification error, whose details can quote the ticket's claims, becomes a reason code instead of a logged error.
 
 ## Finding and reading logs
 
@@ -202,6 +338,9 @@ How the applications keep to them:
 | Follow today's API log on Windows | `Get-Content logs\api\api-$(Get-Date -Format yyyyMMdd).log -Wait` |
 | Follow the notification service's newest file | `ls -t logs/notifications/ \| head -1`, then `tail -f` on that file |
 | One request across the services | `grep -r "<correlation id>" logs/` |
+| One job change across the services | `grep -h '"Name":"job-event.dispatched"' logs/api/*.log` for the ids, then `grep -h "<correlation id>" logs/api/*.log logs/notifications/*.log` ([Following one job change across the services](#following-one-job-change-across-the-services)) |
+| Job events the API could not deliver | `grep -h '"Name":"job-event.dispatch-failed"' logs/api/*.log` |
+| Events and sockets the notification service refused | `grep -h -E '"msg":"(job-event\|socket)\.rejected"' logs/notifications/*.log` |
 | Change the API level without editing files | `Serilog__MinimumLevel__Default=Debug` in the process or Compose environment |
 | Change the notification service's level | `LOG_LEVEL=debug` in its `.env` file or the Compose environment |
 | Container console | `docker compose -f infrastructure/docker-compose.yml --profile full logs -f api` |

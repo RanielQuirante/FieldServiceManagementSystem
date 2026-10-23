@@ -2,7 +2,7 @@
 
 This document describes the FieldService REST API: its conventions, its error model and every endpoint it serves today. The machine-readable contract is the OpenAPI 3.1 document `docs/contracts/openapi.v1.json`; how it is produced, tested and changed is described in [contracts/README.md](contracts/README.md). When this document and the snapshot disagree, the snapshot wins and this document is corrected.
 
-The examples use the demo data that the API seeds in Development (see [database.md](database.md)): Monday 19 October 2026, 10:42 AM in UTC−4, which is 14:42 UTC. Job, user and history ids are illustrative. Access tokens are shortened to `eyJhbGciOiJIUzI1NiIs…`; passwords and refresh tokens appear as placeholders such as `<password>`.
+The examples use the demo data that the API seeds in Development (see [database.md](database.md)): Monday 19 October 2026, 10:42 AM in UTC−4, which is 14:42 UTC. Job, user and history ids are illustrative. Access tokens and socket tickets are shortened to `eyJhbGciOiJIUzI1NiIs…`; passwords and refresh tokens appear as placeholders such as `<password>`.
 
 ## Contents
 
@@ -158,17 +158,18 @@ Every limit uses a fixed 60-second window and queues nothing; a rejected request
 |---|---|---|---|
 | `sign-in` | SignIn | Client IP address | 10 |
 | `refresh` | RefreshSession | Client IP address | 30 |
+| `socket-tickets` | IssueSocketTicket | The user | 30 |
 | Global | Every `/api` request, including those under a named policy and those that end in 401 or 403 | The user when authenticated, otherwise the client IP address | 300 per user, 60 per anonymous address |
 | None | `/health/*` and `/openapi/v1.json` | | Not limited |
 
-The limiter runs after authentication and before authorization, so requests with no token or an invalid one count against the per-address limit.
+The limiter runs after authentication and before authorization, so requests with no token or an invalid one count against the per-address limit. A named policy adds its limit on top of the global one; `socket-tickets` applies only to authenticated callers, and a request without a valid token meets the global per-address limit before it gets 401.
 
 ### Request size limits
 
 | Scope | Limit |
 |---|---|
 | Every endpoint | 1 MB |
-| SignIn, RefreshSession, SignOut | 16 KB |
+| SignIn, RefreshSession, SignOut, IssueSocketTicket | 16 KB |
 
 A larger body returns 413 `request.too-large`.
 
@@ -180,6 +181,7 @@ Browsers reach the API from the same origin, through the development proxy or th
 
 - **Access token.** A JWT signed with HS256, valid for 15 minutes. Claims: `iss` and `aud` (both `fieldservice-api`), `sub` (the user id), `role`, `sid` (the session id), `jti`, `iat`, `nbf` and `exp`. Clients do not parse it; they use `accessTokenExpiresAt`.
 - **Policies.** `Administrator`, `Technician` and `AdministratorOrTechnician`. Every endpoint not listed as anonymous requires an authenticated user.
+- **Socket tickets.** The dashboard connects to the notification service with a short-lived ticket from IssueSocketTicket, never with its access token. The ticket is signed with a separate key that the API never accepts as a bearer token.
 - **Anonymous endpoints.** SignIn, RefreshSession, SignOut, `/health/live`, `/health/ready`, and `/openapi/v1.json` where it is served.
 - **Ownership.** A technician reads only the jobs assigned to them. Any other job returns 404 `job.not-found`, the same response as a job that does not exist. GetAssignedJobs always lists the caller's own jobs and accepts no technician id. Administrators read every job.
 
@@ -204,6 +206,15 @@ Every job command carries the `version` the client last read. The API checks a c
 - Every 409 means: refetch, explain, and let the user act again. When a stale version and a broken rule coincide, the rule's code wins, because rules are checked against the current state first. A missing hold note is also reported before a stale version.
 - Mutations are never retried automatically. An explicit Retry resends the same body, and the same-state check makes that safe after a lost response.
 - Two commands that race with the same `version` never both write. One succeeds; the other gets 409 `concurrency.conflict`, or 200 with no write when it reads the job after the winner has already moved it to the requested status (two Start requests). Only the success writes history and queues an event.
+
+### Job events
+
+After a command commits, the API queues one event for it: `job.created` from CreateJob, `job.assigned` from AssignJob and `job.status-changed` from UpdateJobStatus. A same-state 200, any error response and a rolled-back save queue nothing. The event carries identifiers and statuses only, never personal data.
+
+- **Delivery.** When `Notifications:BaseUrl` is set (see [configuration.md](configuration.md)), one background dispatcher sends each event, in order, as a signed `POST {Notifications:BaseUrl}/internal/job-events` to the notification service, which relays it to the open dashboards. The request, the envelope and the signature follow [contracts/events.md](contracts/events.md). Without a base URL the API runs standalone and discards events.
+- **Correlation.** The request carries the `X-Correlation-ID` of the command that made the change, so one id links the command's request log, the dispatch and the notification service's entries.
+- **Failures never reach the client.** The command has already returned when the event is sent. Each attempt has 2 seconds, with at most 3 jittered retries for a timeout, a connection error, 408, 429 or a 5xx, inside a 10-second budget and behind a circuit breaker. A 400, 401, 404, 405, 413 or 415 is not retried. A failed delivery is logged as a Warning and never rolls back the change; dashboards refetch when they reconnect.
+- **Queue.** The queue holds 1,000 events and drops the oldest when full. On shutdown the dispatcher keeps sending for at most 5 seconds. Events are invalidation hints: delivery is at most once across a restart, and the dashboard always refetches the data.
 
 ## Errors
 
@@ -243,7 +254,7 @@ No exception type, message or stack trace is returned outside Development.
 | `request.validation-failed` | 400 | One or more fields are invalid. | Field or query values break a rule, a referenced id does not exist, or the JSON is malformed. `errors` lists them. | Show each message on its input and unknown keys as a form message. Do not resend unchanged. |
 | `auth.unauthenticated` | 401 | Authentication is required. | No bearer token, or one that is malformed, expired or signed with another key | One single-flight refresh, then retry the request once. If the refresh fails, go to sign-in. |
 | `auth.invalid-credentials` | 401 | The email or password is incorrect. | Unknown email, wrong password or inactive account; the cases cannot be told apart | Show the title on the sign-in form. |
-| `auth.session-expired` | 401 | The session has expired. | The refresh credential is missing, unknown, revoked, expired, reused outside the grace rule or sent through the wrong channel, or the user is inactive | Clear the session and go to sign-in. |
+| `auth.session-expired` | 401 | The session has expired. | The refresh credential is missing, unknown, revoked, expired, reused outside the grace rule or sent through the wrong channel, or the user is inactive. IssueSocketTicket also returns it when the access token's session is revoked or past its idle or absolute expiry, or its user is inactive. | Clear the session and go to sign-in. |
 | `auth.forbidden` | 403 | This action is not allowed for your role. | Authenticated, but the endpoint's policy rejects the role | Show a not-allowed message. A correct client never triggers it. |
 | `auth.wrong-application` | 403 | This account uses the other FieldService app. | Correct password, wrong application for the role | Web: "Technicians sign in from the FieldService Tech app." Technician app: "Dispatchers sign in from FieldService Admin." |
 | `auth.csrf-required` | 403 | The request is missing the anti-forgery header. | A cookie-based refresh or sign-out without `X-FieldService-Csrf: 1` | A client defect: report it. |
@@ -424,6 +435,7 @@ One row of GetJobs.
 | Auth | SignIn | `POST /api/auth/sign-in` | Anonymous | `sign-in` | 16 KB | 200 `SessionResponse` |
 | Auth | RefreshSession | `POST /api/auth/refresh` | Anonymous; refresh credential | `refresh` | 16 KB | 200 `SessionResponse` |
 | Auth | SignOut | `POST /api/auth/sign-out` | Anonymous; refresh credential | Global | 16 KB | 204 |
+| Auth | IssueSocketTicket | `POST /api/auth/socket-tickets` | Administrator, with a live session | `socket-tickets` | 16 KB | 200 `SocketTicketResponse` |
 | Technicians | GetTechnicians | `GET /api/technicians` | Administrator | Global | | 200 `GetTechniciansResponse` |
 | Technicians | GetAssignedJobs | `GET /api/technicians/me/jobs?view` | Technician, own jobs only | Global | | 200 `GetAssignedJobsResponse` |
 | Jobs | CreateJob | `POST /api/jobs` | Administrator | Global | 1 MB | 201 `JobDetailsResponse`, `Location` |
@@ -616,6 +628,65 @@ X-Correlation-ID: 5b0f7c51-7f6e-4e43-9d0a-2c1e8b7d4a90
 Set-Cookie: fs_refresh=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0; path=/api/auth; samesite=strict; httponly
 ```
 
+### IssueSocketTicket: `POST /api/auth/socket-tickets`
+
+Issues a ticket for one connection attempt to the notification service's Socket.IO endpoint. The dashboard calls it on every connect and reconnect and sends the ticket only in the handshake, as [contracts/events.md](contracts/events.md) describes.
+
+| Item | Value |
+|---|---|
+| Access | Administrator |
+| Rate limit | `socket-tickets`: 30 per user per minute |
+| Body limit | 16 KB |
+| Request | No body |
+| Session check | Before issuing, the API reads the access token's session (`sid`) with its user in one indexed query. A revoked session, a session past its idle or absolute expiry, or an inactive user gets 401 `auth.session-expired`, so an access token that outlives sign-out, a reuse revocation or a deactivation cannot obtain tickets. |
+| Success | 200 `SocketTicketResponse` |
+| Idempotency | None: every call issues a new ticket with a new `jti`. |
+| Side effects | `auth.socket-ticket.issued` is logged with the user id and the ticket id; the ticket itself is never logged. |
+
+Response `SocketTicketResponse`:
+
+| Member | Type | Null | Content |
+|---|---|---|---|
+| `ticket` | string | no | A compact JWS, valid for 60 seconds and accepted once by the notification service |
+| `expiresAt` | date-time | no | The ticket's `exp`, 60 seconds after issue |
+
+The ticket has the header `{"alg":"HS256","typ":"JWT"}` and the claims, in this order, `iss` `fieldservice-api`, `aud` `fieldservice-notifications`, `sub` (the administrator's id), `role` `Administrator`, `jti` (a new UUIDv7), `iat`, `nbf` equal to `iat`, and `exp` 60 seconds later. It is signed with `Auth:SocketTicketKey` (see [configuration.md](configuration.md)), a key separate from the access-token key, so the notification service never holds a credential the API accepts. The API's issuer reproduces the published test vector `docs/contracts/events/socket-ticket-test-vector.json`, whose key must never be configured.
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| 401 | `auth.unauthenticated` | No access token, or one that is malformed, expired or signed with another key. Refresh once, then retry. |
+| 401 | `auth.session-expired` | The session check failed. Clear the session and go to sign-in. |
+| 403 | `auth.forbidden` | A technician |
+| 429 | `rate-limit.exceeded` | More than 30 tickets in a minute for the user |
+
+Example:
+
+```http
+POST /api/auth/socket-tickets HTTP/1.1
+Host: localhost:5173
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs…
+X-Correlation-ID: 2acf6b82-ab57-48e1-882a-436523221b25
+Content-Length: 0
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: 2acf6b82-ab57-48e1-882a-436523221b25
+```
+
+```json
+{
+  "ticket": "eyJhbGciOiJIUzI1NiIs…",
+  "expiresAt": "2026-10-19T14:41:05.000Z"
+}
+```
+
+The shortened ticket's claims are `sub` `01a0f6b1-2680-7152-92a5-bb4d3a6df7ca` (Dana Whitfield), `role` `Administrator`, `jti` `01a1549a-f988-7eaa-9ac7-728ebe591925`, `iat` and `nbf` `1792420805` (14:40:05 UTC) and `exp` `1792420865`.
+
 ## Technicians
 
 Route group `/api/technicians`. Each operation sets its own policy. Technician accounts and shifts are seeded; there is no endpoint that changes them.
@@ -757,7 +828,7 @@ The administrator creates a job, optionally assigned to a technician at once.
 | Access | Administrator |
 | Rate limit | Global |
 | Success | 201 Created, `Location: /api/jobs/{id}`, body `JobDetailsResponse` with status `Unassigned`, or `Assigned` when `technicianId` was given |
-| Side effects | The next job number; a `Created` history entry with the same instant as `createdAt`, plus an `Assigned` entry naming the technician, at the same instant and in the same transaction, when `technicianId` was given; after the database commit, one `job.created` event with status `Unassigned` or `Assigned` and no separate `job.assigned` event, for live updates once they are enabled |
+| Side effects | The next job number; a `Created` history entry with the same instant as `createdAt`, plus an `Assigned` entry naming the technician, at the same instant and in the same transaction, when `technicianId` was given; after the database commit, one `job.created` event with status `Unassigned` or `Assigned` and no separate `job.assigned` event (see [Job events](#job-events)) |
 | Idempotency | None: repeating the request creates a second job. |
 
 Request body `CreateJobRequest`:
@@ -1025,7 +1096,7 @@ Assigns an `Unassigned` job, or reassigns an `Assigned` one, to an available tec
 | Access | Administrator |
 | Rate limit | Global |
 | Success | 200 `JobDetailsResponse` with the new `version` |
-| Side effects | `assignedTechnician` and `assignedAt` set, `updatedAt` moved to the same instant; an `Assigned` history entry naming the assignee, with `fromStatus` `Unassigned` or, on a reassignment, `Assigned`; after the database commit, one `job.assigned` event with status `Assigned` and the previous status |
+| Side effects | `assignedTechnician` and `assignedAt` set, `updatedAt` moved to the same instant; an `Assigned` history entry naming the assignee, with `fromStatus` `Unassigned` or, on a reassignment, `Assigned`; after the database commit, one `job.assigned` event with status `Assigned` and the previous status (see [Job events](#job-events)) |
 | Same state | Already `Assigned` to the same technician: 200 with the current job, no write, no history entry and no event, whatever `version` was sent |
 | Idempotency | Through the same-state rule, so an explicit retry after a lost response is safe |
 
@@ -1117,7 +1188,7 @@ The assigned technician starts, puts on hold or resumes a job. Completing a job 
 | Access | Technician, only for the jobs assigned to them |
 | Rate limit | Global |
 | Success | 200 `JobDetailsResponse` with the new `status` and `version` |
-| Side effects | `status` and `updatedAt` set at one instant; `startedAt` on the first start only, so a resume keeps it; a `Started`, `PutOnHold` (with the note) or `Resumed` history entry by the technician; after the database commit, one `job.status-changed` event with the new status and the previous status, for live updates once they are enabled |
+| Side effects | `status` and `updatedAt` set at one instant; `startedAt` on the first start only, so a resume keeps it; a `Started`, `PutOnHold` (with the note) or `Resumed` history entry by the technician; after the database commit, one `job.status-changed` event with the new status and the previous status (see [Job events](#job-events)) |
 | Same state | Already in the requested status: 200 with the current job, no write, no history entry and no event, whatever `version` or `note` was sent |
 | Idempotency | Through the same-state rule, so an explicit retry after a lost response is safe |
 

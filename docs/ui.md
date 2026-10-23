@@ -10,6 +10,7 @@ This document describes the dashboard's user interface: its design tokens, fonts
 - [Icons](#icons)
 - [Shared components](#shared-components)
 - [Pages and routes](#pages-and-routes)
+- [Live updates](#live-updates)
 - [Accessibility](#accessibility)
 - [Supported browsers](#supported-browsers)
 - [Technician app](#technician-app)
@@ -77,7 +78,9 @@ The components live in `src/FieldService.Web/src/shared/ui`.
 | AppIcon | One icon from the icon set |
 | Banner | Error and information messages inside a page |
 | LoadingState, EmptyState, ErrorState | The three page states, with skeleton blocks, a message and a retry action |
-| Toast, ToastHost | Short notices; an error toast shows the request's reference so support can find it in the logs |
+| Toast, ToastHost | Short notices at the bottom of the window; an error toast shows the request's reference so support can find it in the logs, and an event toast tells what changed on a job |
+| LivePill | The live-update connection state in the top bar |
+| ConnectionBanner | The Reconnecting, Paused, Back online and Refresh failed messages of live updates |
 
 ## Pages and routes
 
@@ -90,6 +93,43 @@ The components live in `src/FieldService.Web/src/shared/ui`.
 | Any other path | Not found | Administrators |
 
 `/` opens the job list. Page titles read "<page> · FieldService Admin". Every page has loading, empty, error and not-found states as they apply, and focus moves to the page heading after each navigation.
+
+## Live updates
+
+While an administrator is signed in, the dashboard keeps a live connection to the notification service and refreshes what it shows when a job changes elsewhere. Every change is fetched from the API; the dashboard never copies data from the notification itself ([ADR 0010](decisions/0010-refetch-on-event-and-reconnect.md)).
+
+**Where each part shows**
+
+| Page | Live pill | Connection banner | Event toasts | Row flash |
+|---|---|---|---|---|
+| Jobs | Yes | Yes | Yes | Yes |
+| Job details | Yes | Yes | Yes | No; the page refreshes in place |
+| New job, Not found | Yes | No | No | No |
+
+**Connection states**
+
+| State | Live pill | Banner | When |
+|---|---|---|---|
+| Connecting | "Connecting…" | None | After sign-in or a page load, until the first connection |
+| Live | "Live · updated" with the time of the last refresh | None, or Back online for 8 seconds after a reconnect that had shown a banner | Connected, and the page's data refreshed |
+| Reconnecting | "Reconnecting…" at once | "Reconnecting" after 3 seconds without a connection | The connection dropped or an attempt failed |
+| Paused | "Live updates paused" | "Live updates are paused. Showing data from {time}." with Refresh now | 30 seconds without a connection |
+
+- The 3-second delay keeps routine reconnects quiet: the notification service ends each connection after 15 minutes, and a reconnect usually takes well under a second, so only the pill changes.
+- One banner shows at a time, in a slot at the top of the page that announces each new banner politely. Refresh failed appears when a refresh of the whole page fails and leaves when a later one succeeds; everything already shown stays.
+- Refresh now and Try again refresh everything the page shows and reconnect when the page is not connected. Focus moves only when the banner that holds it is replaced.
+
+**Background refreshes** replace rows in place, keyed by job, with no skeleton, busy state or loading announcement, so focus, hover and the scroll position stay. A failed background refresh keeps what is shown.
+
+**Event toasts**
+
+- After the changed job is fetched, its newest history entry gives one toast, for example "Priya Natarajan started work" with "Standby generator load test is now In progress." and the meta line "JOB-1049 · just now". A hold or cancellation reason follows in quotation marks, cut at 80 characters.
+- No toast shows for the signed-in administrator's own changes, for an entry already shown, after a failed or `404` fetch, or above the limit of 60 event requests a minute.
+- Toasts appear at the bottom of the window. From 600 pixels wide, up to three stack, oldest first. Below 600 pixels, one event toast shows at a time and a new one replaces it, with at most two toasts in all. Each stays 8 seconds of visible time, pauses while hovered or focused, and can be dismissed. Each is announced once, politely, as sentences; event toasts carry no alert role.
+
+**Row flash.** On the job list, the changed job's row flashes for 12 seconds of visible time, 4 seconds longer than its toast, so the whole row with its new status is visible once the toast has gone. On a job's own page, the header, details, status history and assign panel refresh in place instead.
+
+**Preferences.** With reduced motion, toasts and the flash appear and leave without animation. In forced colours, a toast is a solid surface with a border and no blur.
 
 ## Accessibility
 
