@@ -717,7 +717,12 @@ public sealed class UpdateJobStatusTests(DatabaseFixture fixture) : DatabaseTest
     public async Task WithTheNotificationServiceDownTheStatusChangeSucceedsStaysCommittedAndOneWarningFollowsTheBudget()
     {
         NotificationsStub? stub = null;
-        await using var factory = Fixture.CreateFactory(factory => stub = NotificationsStub.AttachTo(factory));
+        TimerDriver? driver = null;
+        await using var factory = Fixture.CreateFactory(factory =>
+        {
+            stub = NotificationsStub.AttachTo(factory);
+            driver = TimerDriver.AttachTo(factory, stub);
+        });
         stub!.Respond = (_, _) => Task.FromResult(HttpStatusCode.ServiceUnavailable);
         var (_, technician, job) = await ArrangeAsync(JobStatus.Assigned);
         using var client = factory.CreateApiClient();
@@ -725,16 +730,15 @@ public sealed class UpdateJobStatusTests(DatabaseFixture fixture) : DatabaseTest
 
         using var response = await client.PutJsonAsync(PathOf(job.Id), Body(JobStatus.InProgress, null, job.Version));
         var updated = await ReadJobAsync(response);
-        await DispatcherHarness.AdvanceUntilAsync(
-            factory.Clock,
+        await driver!.RunUntilAsync(
             () => factory.LogSink.Named(RealtimeLog.DispatchFailedEvent).Count == 1,
             TimeSpan.FromSeconds(15));
 
         Assert.Equal(JobStatus.InProgress, updated.Status);
-        Assert.InRange(stub.Requests.Count, 2, 4);
+        Assert.Equal(4, stub.Requests.Count);
         var failure = Assert.Single(factory.LogSink.Named(RealtimeLog.DispatchFailedEvent));
         Assert.Equal(Serilog.Events.LogEventLevel.Warning, failure.Level);
-        Assert.Contains(CapturingLogSink.Scalar(failure, "Reason"), new[] { RealtimeLog.Unavailable, RealtimeLog.TimedOut });
+        Assert.Equal(RealtimeLog.Unavailable, CapturingLogSink.Scalar(failure, "Reason"));
         Assert.Equal(client.LastCorrelationId, CapturingLogSink.Scalar(failure, "CorrelationId"));
         Assert.Equal(job.Id.ToString(), CapturingLogSink.Scalar(failure, "JobId"));
         await using var db = Fixture.CreateAppDbContext();

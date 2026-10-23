@@ -89,7 +89,7 @@ public sealed class JobEventDispatcherTests
         var jobEvent = JobEventFixtures.EventOf("job.status-changed.v1.json");
 
         harness.Queue.Enqueue(jobEvent);
-        await harness.AdvanceUntilAsync(() => harness.Logs.Named(RealtimeLog.DispatchedEvent).Count == 1, TimeSpan.FromSeconds(10));
+        await harness.Driver.RunUntilAsync(() => harness.Logs.Named(RealtimeLog.DispatchedEvent).Count == 1, TimeSpan.FromSeconds(10));
 
         Assert.Equal(3, harness.Stub.Requests.Count);
         var first = harness.Stub.Requests[0];
@@ -121,7 +121,7 @@ public sealed class JobEventDispatcherTests
         var start = harness.Clock.GetUtcNow();
 
         harness.Queue.Enqueue(jobEvent);
-        await service.RunTimersUntilAsync(
+        await harness.Driver.RunUntilAsync(
             () => harness.Logs.Named(RealtimeLog.DispatchFailedEvent).Count > 0,
             TimeSpan.FromSeconds(15));
 
@@ -189,16 +189,15 @@ public sealed class JobEventDispatcherTests
             harness.Queue.Enqueue(jobEvent);
         }
 
-        await harness.AdvanceUntilAsync(() => harness.Logs.Named(RealtimeLog.DispatchFailedEvent).Count == 4, TimeSpan.FromSeconds(25));
+        await harness.Driver.RunUntilAsync(() => harness.Logs.Named(RealtimeLog.DispatchFailedEvent).Count == 4, TimeSpan.FromSeconds(25));
 
         var failures = harness.Logs.Named(RealtimeLog.DispatchFailedEvent);
         Assert.Equal(events.Select(jobEvent => jobEvent.Id.ToString()), failures.Select(entry => CapturingLogSink.Scalar(entry, "JobEventId")));
-        Assert.Contains(CapturingLogSink.Scalar(failures[0], "Reason"), new[] { RealtimeLog.Unavailable, RealtimeLog.TimedOut });
-        Assert.All(failures.Skip(2), entry => Assert.Equal(RealtimeLog.CircuitOpen, CapturingLogSink.Scalar(entry, "Reason")));
-        var attempted = harness.Stub.Requests.Select(webhook => webhook.Header("webhook-id")).ToHashSet(StringComparer.Ordinal);
-        Assert.DoesNotContain(events[2].Id.ToString(), attempted);
-        Assert.DoesNotContain(events[3].Id.ToString(), attempted);
-        Assert.InRange(harness.Stub.Requests.Count, 4, 5);
+        Assert.Equal(RealtimeLog.Unavailable, CapturingLogSink.Scalar(failures[0], "Reason"));
+        Assert.All(failures.Skip(1), entry => Assert.Equal(RealtimeLog.CircuitOpen, CapturingLogSink.Scalar(entry, "Reason")));
+        Assert.Equal(
+            Enumerable.Repeat(events[0].Id.ToString(), 4),
+            harness.Stub.Requests.Select(webhook => webhook.Header("webhook-id")));
 
         Volatile.Write(ref available, true);
         harness.Clock.Advance(RealtimeRegistration.CircuitBreakDuration);
@@ -257,10 +256,10 @@ public sealed class JobEventDispatcherTests
         await harness.Stub.WaitForRequestsAsync(1);
         var stoppedAt = harness.Clock.GetUtcNow();
         var stopping = harness.Dispatcher.StopAsync(CancellationToken.None);
-        await harness.AdvanceUntilAsync(() => stopping.IsCompleted, TimeSpan.FromSeconds(6));
+        await harness.Driver.RunUntilAsync(() => stopping.IsCompleted, TimeSpan.FromSeconds(6));
         await stopping;
 
-        Assert.InRange(harness.Clock.GetUtcNow() - stoppedAt, JobEventDispatcher.DrainTimeout, JobEventDispatcher.DrainTimeout + TimeSpan.FromSeconds(0.2));
+        Assert.Equal(JobEventDispatcher.DrainTimeout, harness.Clock.GetUtcNow() - stoppedAt);
         Assert.All(harness.Stub.Requests, webhook => Assert.Equal(events[0].Id.ToString(), webhook.Header("webhook-id")));
         var failure = Assert.Single(harness.Logs.Named(RealtimeLog.DispatchFailedEvent));
         Assert.Equal(RealtimeLog.ShuttingDown, CapturingLogSink.Scalar(failure, "Reason"));
@@ -284,12 +283,16 @@ public sealed class JobEventDispatcherTests
         await harness.Stub.WaitForRequestsAsync(1);
         var stoppedAt = harness.Clock.GetUtcNow();
         var firstStop = harness.Dispatcher.StopAsync(CancellationToken.None);
-        await harness.AdvanceUntilAsync(() => harness.Clock.GetUtcNow() - stoppedAt >= TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(4));
+        await harness.Driver.RunToAsync(stoppedAt + TimeSpan.FromSeconds(3));
+        var drainingAtSecondStop = !firstStop.IsCompleted;
+        var secondStopAt = harness.Clock.GetUtcNow();
         var secondStop = harness.Dispatcher.StopAsync(CancellationToken.None);
-        await harness.AdvanceUntilAsync(() => firstStop.IsCompleted && secondStop.IsCompleted, TimeSpan.FromSeconds(6));
+        await harness.Driver.RunUntilAsync(() => firstStop.IsCompleted && secondStop.IsCompleted, TimeSpan.FromSeconds(6));
         await Task.WhenAll(firstStop, secondStop);
 
-        Assert.InRange(harness.Clock.GetUtcNow() - stoppedAt, JobEventDispatcher.DrainTimeout, JobEventDispatcher.DrainTimeout + TimeSpan.FromSeconds(0.2));
+        Assert.True(drainingAtSecondStop);
+        Assert.Equal(TimeSpan.FromSeconds(3), secondStopAt - stoppedAt);
+        Assert.Equal(JobEventDispatcher.DrainTimeout, harness.Clock.GetUtcNow() - stoppedAt);
         Assert.All(harness.Stub.Requests, webhook => Assert.Equal(events[0].Id.ToString(), webhook.Header("webhook-id")));
         var failure = Assert.Single(harness.Logs.Named(RealtimeLog.DispatchFailedEvent));
         Assert.Equal(RealtimeLog.ShuttingDown, CapturingLogSink.Scalar(failure, "Reason"));
@@ -404,9 +407,23 @@ internal sealed class NotificationsStub : HttpMessageHandler
 
     private readonly ConcurrentQueue<RecordedWebhook> _requests = new();
 
+    private readonly ConcurrentQueue<StubExit> _exits = new();
+
+    private int _entered;
+
+    private int _holding;
+
     public Func<RecordedWebhook, CancellationToken, Task<HttpStatusCode>> Respond { get; set; } = Accept;
 
+    public Func<long> TimerSequence { get; set; } = () => 0;
+
     public IReadOnlyList<RecordedWebhook> Requests => [.. _requests];
+
+    public int Entered => Volatile.Read(ref _entered);
+
+    public int Holding => Volatile.Read(ref _holding);
+
+    public IReadOnlyList<StubExit> Exits => [.. _exits];
 
     public static NotificationsStub AttachTo(ApiFactory factory)
     {
@@ -492,16 +509,38 @@ internal sealed class NotificationsStub : HttpMessageHandler
             request.Content?.Headers.ContentType?.ToString(),
             body);
         _requests.Enqueue(webhook);
-        var status = await Respond(webhook, cancellationToken);
-        return new HttpResponseMessage(status)
+        Interlocked.Increment(ref _entered);
+        var responding = Respond(webhook, cancellationToken);
+        var holds = !responding.IsCompleted;
+        if (holds)
         {
-            Content = new StringContent("{\"outcome\":\"broadcast\"}", Encoding.UTF8, "application/json"),
-            RequestMessage = request,
-        };
+            Interlocked.Increment(ref _holding);
+        }
+
+        try
+        {
+            var status = await responding;
+            return new HttpResponseMessage(status)
+            {
+                Content = new StringContent("{\"outcome\":\"broadcast\"}", Encoding.UTF8, "application/json"),
+                RequestMessage = request,
+            };
+        }
+        finally
+        {
+            if (holds)
+            {
+                Interlocked.Decrement(ref _holding);
+            }
+
+            _exits.Enqueue(new StubExit(webhook.Header("webhook-id"), TimerSequence()));
+        }
     }
 }
 
-internal sealed record HangingAttempt(DateTimeOffset Started, DateTimeOffset Cancelled, long TimerSequence);
+internal sealed record StubExit(string? JobEventId, long TimerSequence);
+
+internal sealed record HangingAttempt(DateTimeOffset Started, DateTimeOffset Cancelled);
 
 internal sealed class HangingService(DispatcherHarness harness)
 {
@@ -524,45 +563,95 @@ internal sealed class HangingService(DispatcherHarness harness)
         }
         catch (OperationCanceledException)
         {
-            _attempts.Enqueue(new HangingAttempt(started, harness.Clock.GetUtcNow(), harness.Timers.Sequence));
+            _attempts.Enqueue(new HangingAttempt(started, harness.Clock.GetUtcNow()));
             throw;
         }
     }
+}
 
-    public async Task RunTimersUntilAsync(Func<bool> done, TimeSpan limit)
+internal sealed class TimerDriver(FakeTimeProvider clock, TrackedClock timers, NotificationsStub stub, CapturingLogSink logs)
+{
+    private static readonly TimeSpan _patience = TimeSpan.FromSeconds(10);
+
+    private static readonly TimeSpan _poll = TimeSpan.FromMilliseconds(5);
+
+    private static readonly string[] _endEvents = [RealtimeLog.DispatchedEvent, RealtimeLog.DispatchFailedEvent, RealtimeLog.DrainIncompleteEvent];
+
+    public static TimerDriver AttachTo(ApiFactory factory, NotificationsStub stub)
     {
-        var end = harness.Clock.GetUtcNow() + limit;
+        var timers = new TrackedClock(factory.Clock);
+        var previous = factory.TestServices;
+        factory.TestServices = services =>
+        {
+            previous?.Invoke(services);
+            services.AddSingleton<TimeProvider>(timers);
+        };
+        stub.TimerSequence = () => timers.Sequence;
+        return new TimerDriver(factory.Clock, timers, stub, factory.LogSink);
+    }
+
+    public Task RunUntilAsync(Func<bool> done, TimeSpan limit) => RunAsync(done, clock.GetUtcNow() + limit, stopAtEnd: false);
+
+    public Task RunToAsync(DateTimeOffset instant) => RunAsync(static () => false, instant, stopAtEnd: true);
+
+    private async Task RunAsync(Func<bool> done, DateTimeOffset end, bool stopAtEnd)
+    {
         while (true)
         {
-            await DispatcherHarness.WaitUntilAsync(() => done() || IsWaitingOnATimer(), State);
+            await WaitUntilAsync(() => done() || IsBlocked());
             if (done())
             {
                 return;
             }
 
-            var next = harness.Timers.NextDue;
-            Assert.True(next <= end, $"No timer is due within {limit} of fake time and the condition is not met: {State()}");
+            var next = timers.NextDue;
+            if (next is not { } due || due > end)
+            {
+                Assert.True(stopAtEnd, $"No timer is due by {end:O} and the condition is not met: {State()}");
+                clock.Advance(end - clock.GetUtcNow());
+                return;
+            }
+
             var before = Progress();
-            harness.Clock.Advance(next!.Value - harness.Clock.GetUtcNow());
-            await DispatcherHarness.WaitUntilAsync(() => done() || Progress() != before, State);
+            clock.Advance(due - clock.GetUtcNow());
+            await WaitUntilAsync(() => done() || Progress() != before);
         }
     }
 
-    private bool IsWaitingOnATimer()
+    private bool IsBlocked()
     {
-        var attempts = Attempts;
-        if (Started > attempts.Count)
+        if (stub.Holding > 0)
         {
             return true;
         }
 
-        return attempts.Count > 0 && harness.Timers.HasPendingAfter(attempts[^1].TimerSequence);
+        var exits = stub.Exits;
+        return exits.Count > 0
+            && stub.Entered == exits.Count
+            && !HasEnded(exits[^1].JobEventId)
+            && timers.HasPendingAfter(exits[^1].TimerSequence);
     }
 
-    private (int Started, int Ended) Progress() => (Started, _attempts.Count);
+    private bool HasEnded(string? jobEventId) =>
+        logs.Named(RealtimeLog.DispatchedEvent)
+            .Concat(logs.Named(RealtimeLog.DispatchFailedEvent))
+            .Any(entry => CapturingLogSink.Scalar(entry, "JobEventId") == jobEventId);
+
+    private (int Entered, int Exited, int Ended) Progress() =>
+        (stub.Entered, stub.Exits.Count, _endEvents.Sum(name => logs.Named(name).Count));
+
+    private async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + _patience;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"Nothing happened within {_patience} of real time: {State()}");
+            await Task.Delay(_poll, TestContext.Current.CancellationToken);
+        }
+    }
 
     private string State() =>
-        $"now {harness.Clock.GetUtcNow():O}, {Started} attempts started, {_attempts.Count} ended, next timer {harness.Timers.NextDue:O}";
+        $"now {clock.GetUtcNow():O}, {stub.Entered} requests entered, {stub.Exits.Count} exited, {stub.Holding} holding, {Progress().Ended} dispatch ends logged, next timer {timers.NextDue:O}";
 }
 
 internal sealed class TrackedClock(FakeTimeProvider clock) : TimeProvider
@@ -762,8 +851,6 @@ internal sealed class DispatcherHarness : IAsyncDisposable
 
     private static readonly TimeSpan _settle = TimeSpan.FromMilliseconds(10);
 
-    private static readonly TimeSpan _patience = TimeSpan.FromSeconds(10);
-
     private readonly ServiceProvider _services;
 
     private DispatcherHarness(
@@ -783,11 +870,15 @@ internal sealed class DispatcherHarness : IAsyncDisposable
         SecretKey = Convert.FromBase64String(secret[SecretKeyRules.WebhookSecretPrefix.Length..]);
         Queue = services.GetRequiredService<JobEventQueue>();
         Dispatcher = services.GetServices<IHostedService>().OfType<JobEventDispatcher>().Single();
+        stub.TimerSequence = () => timers.Sequence;
+        Driver = new TimerDriver(clock, timers, stub, logs);
     }
 
     public FakeTimeProvider Clock { get; }
 
     public TrackedClock Timers { get; }
+
+    public TimerDriver Driver { get; }
 
     public CapturingLogSink Logs { get; }
 
@@ -836,16 +927,6 @@ internal sealed class DispatcherHarness : IAsyncDisposable
 
     public Task AdvanceUntilAsync(Func<bool> done, TimeSpan limit, bool failWhenUnreached = true) =>
         AdvanceUntilAsync(Clock, done, limit, failWhenUnreached);
-
-    public static async Task WaitUntilAsync(Func<bool> condition, Func<string> state)
-    {
-        var deadline = DateTime.UtcNow + _patience;
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < deadline, $"Nothing happened within {_patience} of real time: {state()}");
-            await Task.Delay(_settle, TestContext.Current.CancellationToken);
-        }
-    }
 
     public Task WaitForLogsAsync(string eventName, int count) => WaitForLogsAsync(Logs, eventName, count);
 

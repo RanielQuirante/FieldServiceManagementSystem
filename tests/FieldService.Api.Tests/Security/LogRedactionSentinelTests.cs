@@ -224,6 +224,9 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
             secrets.Add(("the socket ticket", ticket));
             secrets.Add(("the socket ticket signature", ticket[(ticket.LastIndexOf('.') + 1)..]));
 
+            await notifications.WaitForAsync(1);
+            await WaitForLogsAsync(factory.LogSink, RealtimeLog.DispatchedEvent, 1);
+            Assert.Empty(factory.LogSink.Named(RealtimeLog.DispatchFailedEvent));
             factory.Clock.Advance(TimeSpan.FromSeconds(31));
             using var reuse = await web.RefreshWithCookieAsync(firstCookie);
             Assert.Equal(HttpStatusCode.Unauthorized, reuse.StatusCode);
@@ -258,6 +261,7 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
 
             await notifications.WaitForAsync(4);
             await WaitForLogsAsync(factory.LogSink, RealtimeLog.DispatchedEvent, 4);
+            Assert.Empty(factory.LogSink.Named(RealtimeLog.DispatchFailedEvent));
             foreach (var webhook in notifications.Requests)
             {
                 secrets.Add(("a webhook signature", webhook.Signature));
