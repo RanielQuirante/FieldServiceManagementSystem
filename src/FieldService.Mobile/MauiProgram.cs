@@ -1,4 +1,5 @@
-﻿using FieldService.Mobile.Features.Jobs;
+﻿using FieldService.Mobile.Features.Inspection;
+using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Features.SignIn;
 using FieldService.Mobile.Shared;
 using FieldService.Mobile.Shared.Http;
@@ -41,7 +42,8 @@ public static class MauiProgram
         builder.Services
             .AddSharedServices(ApiBaseUrl.FromAssembly(typeof(MauiProgram).Assembly))
             .AddSessionFeature()
-            .AddJobsFeature();
+            .AddJobsFeature()
+            .AddInspectionFeature();
         builder.Services.AddSingleton<AppShell>();
 
         configurePlatform?.Invoke(builder);

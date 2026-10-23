@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             xmlns:inspection="clr-namespace:FieldService.Mobile.Features.Inspection"
+             x:Class="FieldService.Mobile.Shared.Controls.AnswerControl"
+             x:Name="Root"
+             x:DataType="controls:AnswerControl">
+    <Grid x:Name="Options"
+          BindingContext="{x:Reference Root}"
+          ColumnDefinitions="*,*,*"
+          RowDefinitions="Auto"
+          ColumnSpacing="{StaticResource FsSpace8}"
+          RowSpacing="{StaticResource FsSpace8}"
+          SemanticProperties.Description="{Binding GroupDescription}">
+        <Grid x:Name="PassOption"
+              Grid.Column="0"
+              HeightRequest="{StaticResource FsHeightAnswer}">
+            <Border x:Name="PassSurface"
+                    StrokeShape="RoundRectangle 14"
+                    StrokeThickness="1.5"
+                    Padding="{StaticResource FsPaddingAnswerOption}"
+                    InputTransparent="True"
+                    AutomationProperties.IsInAccessibleTree="False"
+                    AutomationProperties.ExcludedWithChildren="True">
+                <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center">
+                    <controls:Icon x:Name="PassIcon"
+                                   PathData="{StaticResource FsIconCheck}"
+                                   Size="18"
+                                   VerticalOptions="Center" />
+                    <Label x:Name="PassLabel"
+                           Text="Pass"
+                           Style="{StaticResource FsTextAnswerOption}" />
+                </HorizontalStackLayout>
+            </Border>
+            <BoxView x:Name="PassGloss"
+                     CornerRadius="14"
+                     Background="{StaticResource FsGlossBrush}"
+                     InputTransparent="True"
+                     AutomationProperties.IsInAccessibleTree="False" />
+            <Button Style="{StaticResource FsOverlayButton}"
+                    CornerRadius="14"
+                    Command="{Binding Command}"
+                    CommandParameter="{x:Static inspection:InspectionResult.Pass}"
+                    SemanticProperties.Description="{Binding PassDescription}" />
+        </Grid>
+        <Grid x:Name="FailOption"
+              Grid.Column="1"
+              HeightRequest="{StaticResource FsHeightAnswer}">
+            <Border x:Name="FailSurface"
+                    StrokeShape="RoundRectangle 14"
+                    StrokeThickness="1.5"
+                    Padding="{StaticResource FsPaddingAnswerOption}"
+                    InputTransparent="True"
+                    AutomationProperties.IsInAccessibleTree="False"
+                    AutomationProperties.ExcludedWithChildren="True">
+                <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center">
+                    <controls:Icon x:Name="FailIcon"
+                                   PathData="{StaticResource FsIconX}"
+                                   Size="18"
+                                   VerticalOptions="Center" />
+                    <Label x:Name="FailLabel"
+                           Text="Fail"
+                           Style="{StaticResource FsTextAnswerOption}" />
+                </HorizontalStackLayout>
+            </Border>
+            <Button Style="{StaticResource FsOverlayButton}"
+                    CornerRadius="14"
+                    Command="{Binding Command}"
+                    CommandParameter="{x:Static inspection:InspectionResult.Fail}"
+                    SemanticProperties.Description="{Binding FailDescription}" />
+        </Grid>
+        <Grid x:Name="NotApplicableOption"
+              Grid.Column="2"
+              HeightRequest="{StaticResource FsHeightAnswer}">
+            <Border x:Name="NotApplicableSurface"
+                    StrokeShape="RoundRectangle 14"
+                    StrokeThickness="1.5"
+                    Padding="{StaticResource FsPaddingAnswerOption}"
+                    InputTransparent="True"
+                    AutomationProperties.IsInAccessibleTree="False"
+                    AutomationProperties.ExcludedWithChildren="True">
+                <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center">
+                    <controls:Icon x:Name="NotApplicableIcon"
+                                   PathData="{StaticResource FsIconMinus}"
+                                   Size="18"
+                                   VerticalOptions="Center" />
+                    <Label x:Name="NotApplicableLabel"
+                           Text="N/A"
+                           Style="{StaticResource FsTextAnswerOption}" />
+                </HorizontalStackLayout>
+            </Border>
+            <Button Style="{StaticResource FsOverlayButton}"
+                    CornerRadius="14"
+                    Command="{Binding Command}"
+                    CommandParameter="{x:Static inspection:InspectionResult.NotApplicable}"
+                    SemanticProperties.Description="{Binding NotApplicableDescription}" />
+        </Grid>
+    </Grid>
+</ContentView>

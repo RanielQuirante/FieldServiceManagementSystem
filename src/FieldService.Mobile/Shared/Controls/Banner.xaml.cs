@@ -9,6 +9,8 @@ public enum BannerVariant
     Offline,
     Error,
     Conflict,
+    Locked,
+    Success,
 }
 
 public partial class Banner : ContentView
@@ -59,6 +61,8 @@ public partial class Banner : ContentView
     public static readonly BindableProperty MessageSeparatorProperty = BindableProperty.Create(nameof(MessageSeparator), typeof(string), typeof(Banner), string.Empty);
 
     public static readonly BindableProperty SpokenTextProperty = BindableProperty.Create(nameof(SpokenText), typeof(string), typeof(Banner), string.Empty);
+
+    public static readonly BindableProperty AnnouncesProperty = BindableProperty.Create(nameof(Announces), typeof(bool), typeof(Banner), true);
 
     private string? _announced;
 
@@ -135,11 +139,19 @@ public partial class Banner : ContentView
         private set => SetValue(SpokenTextProperty, value);
     }
 
+    public bool Announces
+    {
+        get => (bool)GetValue(AnnouncesProperty);
+        set => SetValue(AnnouncesProperty, value);
+    }
+
     public static string DefaultIconKey(BannerVariant variant) => variant switch
     {
         BannerVariant.Error => "FsIconAlertTriangle",
         BannerVariant.Offline => "FsIconWifiOff",
         BannerVariant.Conflict => "FsIconRefresh",
+        BannerVariant.Locked => "FsIconLock",
+        BannerVariant.Success => "FsIconCheckCircle",
         _ => "FsIconClock",
     };
 
@@ -147,6 +159,7 @@ public partial class Banner : ContentView
     {
         BannerVariant.Error => new BannerLook("FsBannerErrorBrush", "FsDangerBannerStrokeBrush", "FsPaddingBanner", "FsShadowDanger", "FsDangerBrush", "FsTransparentBrush", "FsOnDark"),
         BannerVariant.Conflict => new BannerLook("FsBannerWarningBrush", "FsWarningBannerStrokeBrush", "FsPaddingBanner", "FsShadowWarning", "FsAccentBrush", "FsTransparentBrush", "FsInk"),
+        BannerVariant.Success => new BannerLook("FsBannerSuccessBrush", "FsSuccessBannerStrokeBrush", "FsPaddingBannerSurface", "FsShadowSuccess", "FsPassBrush", "FsTransparentBrush", "FsOnDark"),
         _ => new BannerLook("FsGlassBrush", "FsGlassStrokeBrush", "FsPaddingBannerSurface", "FsShadowGlass", "FsBannerPausedTileBrush", "FsRingMobileBrush", "FsInk2"),
     };
 
@@ -207,7 +220,7 @@ public partial class Banner : ContentView
 
     private void Announce()
     {
-        if (!IsVisible || Handler is null || string.IsNullOrWhiteSpace(SpokenText) || SpokenText == _announced)
+        if (!Announces || !IsVisible || Handler is null || string.IsNullOrWhiteSpace(SpokenText) || SpokenText == _announced)
         {
             return;
         }

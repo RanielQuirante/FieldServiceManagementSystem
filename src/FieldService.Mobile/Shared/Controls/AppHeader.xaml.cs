@@ -59,6 +59,14 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         typeof(AppHeader),
         propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ApplyAccessory());
 
+    public static readonly BindableProperty PushedBodyProperty = BindableProperty.Create(
+        nameof(PushedBody),
+        typeof(View),
+        typeof(AppHeader),
+        propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ApplyAccessory());
+
+    public static readonly BindableProperty HasPushedBodyProperty = BindableProperty.Create(nameof(HasPushedBody), typeof(bool), typeof(AppHeader), false);
+
     public static readonly BindableProperty BackCommandProperty = BindableProperty.Create(nameof(BackCommand), typeof(ICommand), typeof(AppHeader));
 
     public static readonly BindableProperty BackDescriptionProperty = BindableProperty.Create(nameof(BackDescription), typeof(string), typeof(AppHeader), "Back to my jobs");
@@ -226,6 +234,18 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
     {
         get => (View?)GetValue(AccessoryProperty);
         set => SetValue(AccessoryProperty, value);
+    }
+
+    public View? PushedBody
+    {
+        get => (View?)GetValue(PushedBodyProperty);
+        set => SetValue(PushedBodyProperty, value);
+    }
+
+    public bool HasPushedBody
+    {
+        get => (bool)GetValue(HasPushedBodyProperty);
+        private set => SetValue(HasPushedBodyProperty, value);
     }
 
     public ICommand? BackCommand
@@ -463,6 +483,7 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
     private void ApplyAccessory()
     {
         HasAccessory = Accessory is not null;
+        HasPushedBody = PushedBody is not null;
         if (ListAccessory is null)
         {
             return;
@@ -473,6 +494,12 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
             accessory.BindingContext = BindingContext;
         }
 
+        if (PushedBody is { } body)
+        {
+            body.BindingContext = BindingContext;
+        }
+
         ListAccessory.Content = Accessory;
+        PushedAccessory.Content = PushedBody;
     }
 }

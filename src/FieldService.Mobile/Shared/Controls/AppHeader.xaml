@@ -84,11 +84,21 @@
                         <Grid ColumnDefinitions="Auto,*"
                               ColumnSpacing="{StaticResource FsSpace8}"
                               VerticalOptions="Center">
-                            <controls:Icon x:Name="SyncIcon"
-                                           Size="16"
-                                           Color="{StaticResource FsOnDark2}"
-                                           IsVisible="{Binding HasSyncText}"
-                                           VerticalOptions="Center" />
+                            <Grid WidthRequest="16"
+                                  VerticalOptions="Start">
+                                <Label Style="{StaticResource FsTextSyncOnDark}"
+                                       Text="A"
+                                       MaxLines="1"
+                                       LineBreakMode="NoWrap"
+                                       Opacity="0"
+                                       InputTransparent="True"
+                                       AutomationProperties.IsInAccessibleTree="False" />
+                                <controls:Icon x:Name="SyncIcon"
+                                               Size="16"
+                                               Color="{StaticResource FsOnDark2}"
+                                               IsVisible="{Binding HasSyncText}"
+                                               VerticalOptions="Center" />
+                            </Grid>
                             <Label Grid.Column="1"
                                    Text="{Binding SyncText}"
                                    IsVisible="{Binding HasSyncText}"
@@ -150,10 +160,20 @@
                                              Spacing="{StaticResource FsSpace4}">
                             <Grid ColumnDefinitions="Auto,*"
                                   ColumnSpacing="{StaticResource FsSpace8}">
-                                <controls:Icon PathData="{StaticResource FsIconClock}"
-                                               Size="16"
-                                               Color="{StaticResource FsOnDark}"
-                                               VerticalOptions="Center" />
+                                <Grid WidthRequest="16"
+                                      VerticalOptions="Start">
+                                    <Label Style="{StaticResource FsTextScheduleOnDark}"
+                                           Text="A"
+                                           MaxLines="1"
+                                           LineBreakMode="NoWrap"
+                                           Opacity="0"
+                                           InputTransparent="True"
+                                           AutomationProperties.IsInAccessibleTree="False" />
+                                    <controls:Icon PathData="{StaticResource FsIconClock}"
+                                                   Size="16"
+                                                   Color="{StaticResource FsOnDark}"
+                                                   VerticalOptions="Center" />
+                                </Grid>
                                 <Label Grid.Column="1"
                                        Text="{Binding ScheduleText}"
                                        Style="{StaticResource FsTextScheduleOnDark}" />
@@ -169,10 +189,20 @@
                                              Spacing="{StaticResource FsSpace4}">
                             <Grid ColumnDefinitions="Auto,*"
                                   ColumnSpacing="{StaticResource FsSpace8}">
-                                <controls:Icon x:Name="StatusLineIcon"
-                                               Size="16"
-                                               Color="{StaticResource FsOnDark2}"
-                                               VerticalOptions="Center" />
+                                <Grid WidthRequest="16"
+                                      VerticalOptions="Start">
+                                    <Label Style="{StaticResource FsTextMetaOnDark}"
+                                           Text="A"
+                                           MaxLines="1"
+                                           LineBreakMode="NoWrap"
+                                           Opacity="0"
+                                           InputTransparent="True"
+                                           AutomationProperties.IsInAccessibleTree="False" />
+                                    <controls:Icon x:Name="StatusLineIcon"
+                                                   Size="16"
+                                                   Color="{StaticResource FsOnDark2}"
+                                                   VerticalOptions="Center" />
+                                </Grid>
                                 <Label Grid.Column="1"
                                        Text="{Binding StatusLineText}"
                                        Style="{StaticResource FsTextMetaOnDark}" />
@@ -185,6 +215,8 @@
                                    LineBreakMode="TailTruncation" />
                         </VerticalStackLayout>
                     </VerticalStackLayout>
+                    <ContentView x:Name="PushedAccessory"
+                                 IsVisible="{Binding HasPushedBody}" />
                 </VerticalStackLayout>
 
                 <Grid IsVisible="{Binding IsDesktopTopBar}"

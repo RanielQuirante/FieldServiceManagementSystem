@@ -44,7 +44,8 @@
                                VerticalOptions="Center" />
                 <Label x:Name="GlyphLabel"
                        Text="{Binding Label}"
-                       Style="{StaticResource FsTextPriority}" />
+                       Style="{StaticResource FsTextPriority}"
+                       Padding="0,0,1,0" />
             </HorizontalStackLayout>
         </Border>
     </Grid>

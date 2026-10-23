@@ -7,10 +7,19 @@ public enum StatusAction
     Start,
     PutOnHold,
     Resume,
+    Complete,
 }
 
 public sealed partial class StatusOption : ObservableObject
 {
+    public const string CompleteTitle = "Complete job";
+    public const string CompleteAllowedHelper = "Review the checklist and submit the job";
+    public const string CompleteIncompleteHelper = "Finish the inspection checklist first";
+    public const string CompleteResumeHelper = "Resume the job first";
+    public const string CompleteUnsavedHelper = "Some checklist answers are not saved yet";
+    public const string CompleteUnknownHelper = "Not available right now";
+    public const string CompleteConfirmText = "Review and submit";
+
     private StatusOption(
         StatusAction action,
         JobStatus status,
@@ -21,7 +30,8 @@ public sealed partial class StatusOption : ObservableObject
         string iconColorKey,
         string confirmText,
         string busyText,
-        string pastTense)
+        string pastTense,
+        bool isAvailable = true)
     {
         Action = action;
         Status = status;
@@ -33,6 +43,7 @@ public sealed partial class StatusOption : ObservableObject
         ConfirmText = confirmText;
         BusyText = busyText;
         PastTense = pastTense;
+        IsAvailable = isAvailable;
     }
 
     public StatusAction Action { get; }
@@ -55,7 +66,11 @@ public sealed partial class StatusOption : ObservableObject
 
     public string PastTense { get; }
 
-    public bool IsAvailable => true;
+    public bool IsAvailable { get; }
+
+    public bool IsComplete => Action == StatusAction.Complete;
+
+    public string ConfirmIconKey => IsComplete ? "FsIconClipboardCheck" : IconKey;
 
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
@@ -111,6 +126,35 @@ public sealed partial class StatusOption : ObservableObject
         "Start job",
         "Starting…",
         "started");
+
+    public static StatusOption Complete(SubmitAffordance canSubmit, bool hasUnsavedAnswers)
+    {
+        ArgumentNullException.ThrowIfNull(canSubmit);
+
+        var available = canSubmit.Allowed && !hasUnsavedAnswers;
+        var helper = hasUnsavedAnswers
+            ? CompleteUnsavedHelper
+            : canSubmit.Allowed
+                ? CompleteAllowedHelper
+                : canSubmit.BlockingCode switch
+                {
+                    SubmitAffordance.IncompleteCode => CompleteIncompleteHelper,
+                    SubmitAffordance.InvalidTransitionCode => CompleteResumeHelper,
+                    _ => CompleteUnknownHelper,
+                };
+        return new StatusOption(
+            StatusAction.Complete,
+            JobStatus.Completed,
+            false,
+            CompleteTitle,
+            helper,
+            "FsIconCheckCircle",
+            "FsStatusCompleted",
+            CompleteConfirmText,
+            string.Empty,
+            "submitted",
+            available);
+    }
 
     public string Announcement(string jobNumber) => jobNumber + " " + PastTense + ".";
 

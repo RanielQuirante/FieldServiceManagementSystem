@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             xmlns:inspection="clr-namespace:FieldService.Mobile.Features.Inspection"
+             x:Class="FieldService.Mobile.Features.Inspection.ReviewAndSubmitPage"
+             x:DataType="inspection:ReviewAndSubmitViewModel"
+             Title="{x:Static inspection:ReviewAndSubmitViewModel.PageTitle}"
+             Shell.NavBarIsVisible="False"
+             SafeAreaEdges="None">
+    <Grid SafeAreaEdges="None">
+        <Grid x:Name="Column"
+              RowDefinitions="*,Auto"
+              SafeAreaEdges="None"
+              MaximumWidthRequest="{Binding ColumnMaxWidth}"
+              HorizontalOptions="{Binding ColumnOptions}">
+            <ScrollView x:Name="ReviewScroll"
+                        Grid.Row="0"
+                        SafeAreaEdges="None"
+                        controls:ScrollRequests.ToTop="{Binding ScrollToTopRequest}">
+                <VerticalStackLayout SafeAreaEdges="None">
+                    <controls:AppHeader x:Name="ReviewHeader"
+                                        Variant="Pushed"
+                                        Title="{x:Static inspection:ReviewAndSubmitViewModel.PageTitle}"
+                                        Subtitle="{Binding JobNumber}"
+                                        BackCommand="{Binding BackCommand}"
+                                        BackDescription="{Binding BackDescription}">
+                        <controls:AppHeader.PushedBody>
+                            <Label Text="{Binding JobTitle}"
+                                   Style="{StaticResource FsTextBodyOnDark}"
+                                   x:DataType="inspection:ReviewAndSubmitViewModel" />
+                        </controls:AppHeader.PushedBody>
+                    </controls:AppHeader>
+                    <VerticalStackLayout Padding="{StaticResource FsPaddingDetailContent}"
+                                         Spacing="{StaticResource FsSpace16}">
+                        <controls:Banner Variant="Offline"
+                                         IsVisible="{Binding ShowsOfflineBanner}"
+                                         Title="{x:Static inspection:ReviewAndSubmitViewModel.OfflineTitle}"
+                                         Message="{x:Static inspection:ReviewAndSubmitViewModel.OfflineMessage}" />
+                        <controls:Banner Variant="{Binding SlotBanner.Variant}"
+                                         IsVisible="{Binding HasSlotBanner}"
+                                         Title="{Binding SlotBanner.Title}"
+                                         Message="{Binding SlotBanner.Message}"
+                                         Reference="{Binding SlotBanner.Reference}" />
+                        <controls:Banner Variant="Error"
+                                         IsVisible="{Binding HasRefreshError}"
+                                         Title="{Binding RefreshError.Title}"
+                                         Message="{Binding RefreshError.Message}"
+                                         Reference="{Binding RefreshError.Reference}"
+                                         ActionText="Try again"
+                                         ActionCommand="{Binding RetryCommand}" />
+                        <controls:Banner Variant="Error"
+                                         IsVisible="{Binding IsError}"
+                                         Title="{Binding Error.Title}"
+                                         Message="{Binding Error.Message}"
+                                         Reference="{Binding Error.Reference}"
+                                         ActionText="Try again"
+                                         ActionCommand="{Binding RetryCommand}" />
+                        <Border Style="{StaticResource FsGlassCard}"
+                                IsVisible="{Binding IsLoading}"
+                                SemanticProperties.Description="{x:Static inspection:ReviewAndSubmitViewModel.LoadingText}">
+                            <VerticalStackLayout Spacing="{StaticResource FsSpace12}"
+                                                 InputTransparent="True"
+                                                 AutomationProperties.ExcludedWithChildren="True">
+                                <BoxView HeightRequest="18" CornerRadius="9" Margin="0,0,180,0" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                <BoxView HeightRequest="14" CornerRadius="7" Margin="0,0,120,0" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                <BoxView HeightRequest="14" CornerRadius="7" Margin="0,0,72,0" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                            </VerticalStackLayout>
+                        </Border>
+                        <VerticalStackLayout Spacing="{StaticResource FsSpace16}"
+                                             IsVisible="{Binding ShowsContent}">
+                            <Border Style="{StaticResource FsGlassCard}">
+                                <VerticalStackLayout Spacing="{StaticResource FsSpace14}">
+                                    <Label Text="{x:Static inspection:ReviewAndSubmitViewModel.SummaryTitle}"
+                                           Style="{StaticResource FsTextSection}"
+                                           SemanticProperties.HeadingLevel="Level2" />
+                                    <VerticalStackLayout Spacing="{StaticResource FsSpace4}">
+                                        <Label Text="{x:Static inspection:ReviewAndSubmitViewModel.TimeOnSiteLabel}"
+                                               Style="{StaticResource FsTextInfoLabel}" />
+                                        <Label Text="{Binding TimeOnSiteText}"
+                                               Style="{StaticResource FsTextMonoValue}" />
+                                    </VerticalStackLayout>
+                                    <BoxView HeightRequest="1"
+                                             Color="{StaticResource FsHairlineSoft}"
+                                             AutomationProperties.IsInAccessibleTree="False" />
+                                    <VerticalStackLayout Spacing="{StaticResource FsSpace8}">
+                                        <Label Text="{x:Static inspection:ReviewAndSubmitViewModel.ChecklistLabel}"
+                                               Style="{StaticResource FsTextInfoLabel}" />
+                                        <FlexLayout Wrap="Wrap"
+                                                    Direction="Row"
+                                                    AlignItems="Center">
+                                            <controls:StatusChip Result="Pass"
+                                                                 Count="{Binding PassCount}"
+                                                                 Margin="0,0,8,8" />
+                                            <controls:StatusChip Result="Fail"
+                                                                 Count="{Binding FailCount}"
+                                                                 Margin="0,0,8,8" />
+                                            <controls:StatusChip Result="NotApplicable"
+                                                                 Count="{Binding NotApplicableCount}"
+                                                                 Margin="0,0,8,8" />
+                                        </FlexLayout>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+                            </Border>
+                            <VerticalStackLayout Spacing="{StaticResource FsSpace16}"
+                                                 IsVisible="{Binding HasFailedItems}"
+                                                 BindableLayout.ItemsSource="{Binding FailedItems}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="inspection:FailedItem">
+                                        <Border Style="{StaticResource FsCalloutFail}"
+                                                SemanticProperties.Description="{Binding Description}">
+                                            <VerticalStackLayout Spacing="{StaticResource FsSpace8}"
+                                                                 AutomationProperties.ExcludedWithChildren="True">
+                                                <Grid ColumnDefinitions="Auto,Auto,*"
+                                                      ColumnSpacing="{StaticResource FsSpace8}">
+                                                    <controls:Icon PathData="{StaticResource FsIconXCircle}"
+                                                                   Size="20"
+                                                                   Color="{StaticResource FsDanger}"
+                                                                   VerticalOptions="Center" />
+                                                    <Label Grid.Column="1"
+                                                           Text="{Binding NumberText}"
+                                                           Style="{StaticResource FsTextCalloutNumber}" />
+                                                    <controls:StatusChip Grid.Column="2"
+                                                                         Result="Fail"
+                                                                         HorizontalOptions="End" />
+                                                </Grid>
+                                                <Label Text="{Binding Prompt}"
+                                                       Style="{StaticResource FsTextOptionTitle}" />
+                                                <Label Text="{Binding Note}"
+                                                       IsVisible="{Binding HasNote}"
+                                                       Style="{StaticResource FsTextMeta}" />
+                                                <VerticalStackLayout Spacing="{StaticResource FsSpace2}"
+                                                                     BindableLayout.ItemsSource="{Binding Readings}">
+                                                    <BindableLayout.ItemTemplate>
+                                                        <DataTemplate x:DataType="x:String">
+                                                            <Label Text="{Binding .}"
+                                                                   Style="{StaticResource FsTextCalloutReading}" />
+                                                        </DataTemplate>
+                                                    </BindableLayout.ItemTemplate>
+                                                </VerticalStackLayout>
+                                            </VerticalStackLayout>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                            <Border Style="{StaticResource FsGlassCard}"
+                                    controls:ScrollRequests.IntoView="{Binding NotesFocusRequest}">
+                                <controls:FormField IsMultiline="True"
+                                                    IsOptional="True"
+                                                    Label="{x:Static inspection:ReviewAndSubmitViewModel.NotesLabel}"
+                                                    HelpText="{x:Static inspection:ReviewAndSubmitViewModel.NotesHelp}"
+                                                    Text="{Binding TechnicianNotes}"
+                                                    ErrorText="{Binding NotesError}"
+                                                    FocusRequest="{Binding NotesFocusRequest}"
+                                                    IsReadOnly="{Binding IsInputBlocked}"
+                                                    MaxLength="{x:Static inspection:ReviewAndSubmitViewModel.NotesMaxLength}"
+                                                    CountFrom="{x:Static inspection:ReviewAndSubmitViewModel.NotesCountFrom}"
+                                                    Keyboard="Text" />
+                            </Border>
+                            <controls:CheckboxRow Text="{x:Static inspection:ReviewAndSubmitViewModel.ConfirmationText}"
+                                                  IsChecked="{Binding IsConfirmed}"
+                                                  ErrorText="{Binding ConfirmationError}"
+                                                  FocusRequest="{Binding ConfirmationFocusRequest}"
+                                                  IsInputBlocked="{Binding IsInputBlocked}"
+                                                  controls:ScrollRequests.IntoView="{Binding ConfirmationFocusRequest}" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
+            <controls:StatusBarProtection Grid.Row="0"
+                                          IsActive="True"
+                                          ScrollSource="{x:Reference ReviewScroll}" />
+            <controls:SystemBarSpacer Grid.Row="1" />
+            <controls:ActionDock Grid.Row="1"
+                                 IsVisible="{Binding ShowsDock}"
+                                 HelperText="{Binding HelperText}">
+                <controls:PrimaryButton Text="{x:Static inspection:ReviewAndSubmitViewModel.SubmitText}"
+                                        BusyText="{x:Static inspection:ReviewAndSubmitViewModel.SubmittingText}"
+                                        IconData="{StaticResource FsIconSend}"
+                                        IsBusy="{Binding IsSubmitting}"
+                                        Command="{Binding SubmitCommand}"
+                                        SemanticFocusRequest="{Binding SubmitFocusRequest}" />
+            </controls:ActionDock>
+        </Grid>
+    </Grid>
+</ContentPage>

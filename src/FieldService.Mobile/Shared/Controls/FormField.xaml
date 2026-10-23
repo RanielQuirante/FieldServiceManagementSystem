@@ -5,11 +5,20 @@
              x:Class="FieldService.Mobile.Shared.Controls.FormField"
              x:Name="Root"
              x:DataType="controls:FormField">
-    <VerticalStackLayout BindingContext="{x:Reference Root}"
+    <VerticalStackLayout x:Name="Stack"
+                         BindingContext="{x:Reference Root}"
                          Spacing="{StaticResource FsSpace8}">
-        <Label Text="{Binding Label}"
-               Style="{StaticResource FsTextFieldLabel}"
-               AutomationProperties.IsInAccessibleTree="False" />
+        <Label x:Name="FieldLabel"
+               AutomationProperties.IsInAccessibleTree="False">
+            <Label.FormattedText>
+                <FormattedString>
+                    <Span Text="{Binding Label}" />
+                    <Span Text="{Binding OptionalText}"
+                          FontFamily="GeistMedium"
+                          TextColor="{StaticResource FsMuted}" />
+                </FormattedString>
+            </Label.FormattedText>
+        </Label>
         <Grid>
             <Border Margin="-4"
                     StrokeThickness="0"
@@ -85,6 +94,13 @@
                             MaximumHeightRequest="{StaticResource FsHeightEditorMaximum}"
                             Margin="{StaticResource FsMarginEditor}"
                             SemanticProperties.Description="{Binding InputDescription}" />
+                    <Label Grid.Column="2"
+                           Text="{Binding Unit}"
+                           IsVisible="{Binding IsReading}"
+                           Style="{StaticResource FsTextReadingUnit}"
+                           Margin="{StaticResource FsMarginReadingUnit}"
+                           VerticalOptions="Center"
+                           AutomationProperties.IsInAccessibleTree="False" />
                     <Grid Grid.Column="2"
                           IsVisible="{Binding IsPassword}"
                           WidthRequest="{StaticResource FsHeightIconButton}"
@@ -113,12 +129,21 @@
         <Grid ColumnDefinitions="Auto,*"
               ColumnSpacing="{StaticResource FsSpace6}"
               IsVisible="{Binding HasError}">
-            <controls:Icon Grid.Column="0"
-                           PathData="{StaticResource FsIconAlertTriangle}"
-                           Size="16"
-                           Color="{StaticResource FsDanger}"
-                           VerticalOptions="Start"
-                           Margin="0,2,0,0" />
+            <Grid Grid.Column="0"
+                  WidthRequest="16"
+                  VerticalOptions="Start">
+                <Label Style="{StaticResource FsTextFieldError}"
+                       Text="A"
+                       MaxLines="1"
+                       LineBreakMode="NoWrap"
+                       Opacity="0"
+                       InputTransparent="True"
+                       AutomationProperties.IsInAccessibleTree="False" />
+                <controls:Icon PathData="{StaticResource FsIconAlertTriangle}"
+                               Size="16"
+                               Color="{StaticResource FsDanger}"
+                               VerticalOptions="Center" />
+            </Grid>
             <Label Grid.Column="1"
                    Text="{Binding ErrorText}"
                    Style="{StaticResource FsTextFieldError}" />

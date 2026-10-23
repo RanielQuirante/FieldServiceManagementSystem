@@ -7,6 +7,7 @@ public static class DisplayFormats
 {
     public const string EnDash = "–";
     public const string Separator = " · ";
+    public const string ZeroWidthSpace = "​";
     public const char NoBreakSpace = ' ';
 
     private static readonly CultureInfo _culture = CultureInfo.InvariantCulture;
@@ -62,6 +63,8 @@ public static class DisplayFormats
             ? from.ToString("h:mm", _culture) + EnDash + Time(end, zone)
             : Time(start, zone) + EnDash + Time(end, zone);
     }
+
+    public static string? BreakAfterEnDash(string? text) => text?.Replace(EnDash, EnDash + ZeroWidthSpace, StringComparison.Ordinal);
 
     public static string SpokenTimeWindow(DateTimeOffset start, DateTimeOffset end, TimeZoneInfo zone, DateOnly today) =>
         TimeWindow(start, end, zone, today).Replace(EnDash, " to ", StringComparison.Ordinal);

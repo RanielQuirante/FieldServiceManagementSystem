@@ -1,4 +1,5 @@
-﻿using FieldService.Mobile.Features.Jobs;
+﻿using FieldService.Mobile.Features.Inspection;
+using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Shared.Navigation;
 
 namespace FieldService.Mobile;
@@ -22,6 +23,8 @@ public partial class AppShell : Shell
     public static IReadOnlyDictionary<string, Type> PushedRoutes { get; } = new Dictionary<string, Type>(StringComparer.Ordinal)
     {
         [Routes.JobDetailsRoute] = typeof(JobDetailsPage),
+        [Routes.InspectionRoute] = typeof(InspectionPage),
+        [Routes.ReviewRoute] = typeof(ReviewAndSubmitPage),
     };
 
     private async void OnLoaded(object? sender, EventArgs e) => await _startup.RunAsync(CancellationToken.None);

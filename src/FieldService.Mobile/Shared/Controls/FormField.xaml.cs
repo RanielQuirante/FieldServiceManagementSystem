@@ -12,6 +12,8 @@ public partial class FormField : ContentView, IReleasesInput
     private IKeepInViewHost? _viewHost;
 
     public const string NoCharactersLeft = "No characters left";
+    public const string OptionalMarker = " Optional";
+    public const string ReadingFontFamily = "GeistMonoMedium";
 
     public static readonly BindableProperty LabelProperty = BindableProperty.Create(
         nameof(Label),
@@ -127,6 +129,25 @@ public partial class FormField : ContentView, IReleasesInput
         0,
         propertyChanged: (bindable, oldValue, newValue) => ((FormField)bindable).OnFocusRequested((int)oldValue, (int)newValue));
 
+    public static readonly BindableProperty IsOptionalProperty = BindableProperty.Create(
+        nameof(IsOptional),
+        typeof(bool),
+        typeof(FormField),
+        false,
+        propertyChanged: (bindable, _, _) => ((FormField)bindable).UpdateDescription());
+
+    public static readonly BindableProperty OptionalTextProperty = BindableProperty.Create(nameof(OptionalText), typeof(string), typeof(FormField), string.Empty);
+
+    public static readonly BindableProperty UnitProperty = BindableProperty.Create(
+        nameof(Unit),
+        typeof(string),
+        typeof(FormField),
+        propertyChanged: (bindable, _, _) => ((FormField)bindable).UpdateLayoutState());
+
+    public static readonly BindableProperty IsReadingProperty = BindableProperty.Create(nameof(IsReading), typeof(bool), typeof(FormField), false);
+
+    public static readonly BindableProperty UnfocusedCommandProperty = BindableProperty.Create(nameof(UnfocusedCommand), typeof(ICommand), typeof(FormField));
+
     public static readonly BindableProperty HidePasswordRequestProperty = BindableProperty.Create(
         nameof(HidePasswordRequest),
         typeof(int),
@@ -139,7 +160,11 @@ public partial class FormField : ContentView, IReleasesInput
         TogglePasswordCommand = new Command(() => SetPasswordHidden(!IsTextHidden));
         InitializeComponent();
         Input.Focused += (_, _) => UpdateLook();
-        Input.Unfocused += (_, _) => UpdateLook();
+        Input.Unfocused += (_, _) =>
+        {
+            UpdateLook();
+            RunUnfocused();
+        };
         Area.Focused += (_, _) =>
         {
             UpdateLook();
@@ -149,6 +174,7 @@ public partial class FormField : ContentView, IReleasesInput
         {
             UpdateLook();
             BringIntoView(keep: false);
+            RunUnfocused();
         };
         UpdateLayoutState();
         UpdateDescription();
@@ -364,6 +390,55 @@ public partial class FormField : ContentView, IReleasesInput
         set => SetValue(HidePasswordRequestProperty, value);
     }
 
+    public bool IsOptional
+    {
+        get => (bool)GetValue(IsOptionalProperty);
+        set => SetValue(IsOptionalProperty, value);
+    }
+
+    public string OptionalText
+    {
+        get => (string)GetValue(OptionalTextProperty);
+        private set => SetValue(OptionalTextProperty, value);
+    }
+
+    public string? Unit
+    {
+        get => (string?)GetValue(UnitProperty);
+        set => SetValue(UnitProperty, value);
+    }
+
+    public bool IsReading
+    {
+        get => (bool)GetValue(IsReadingProperty);
+        private set => SetValue(IsReadingProperty, value);
+    }
+
+    public ICommand? UnfocusedCommand
+    {
+        get => (ICommand?)GetValue(UnfocusedCommandProperty);
+        set => SetValue(UnfocusedCommandProperty, value);
+    }
+
+    private void RunUnfocused()
+    {
+        if (UnfocusedCommand is { } command && command.CanExecute(null))
+        {
+            command.Execute(null);
+        }
+    }
+
+    public static string? FieldName(string? label, string? unit, bool isOptional)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return label;
+        }
+
+        var name = string.IsNullOrWhiteSpace(unit) ? label.Trim() : label.Trim() + " in " + unit.Trim();
+        return isOptional ? name + ", optional" : name;
+    }
+
     public bool HoldsInput => (Input?.IsFocused ?? false) || (Area?.IsFocused ?? false);
 
     public void ReleaseInput()
@@ -414,7 +489,11 @@ public partial class FormField : ContentView, IReleasesInput
         }
     }
 
-    private void UpdateDescription() => InputDescription = Describe(Label, HelpText, CountText);
+    private void UpdateDescription()
+    {
+        OptionalText = IsOptional ? OptionalMarker : string.Empty;
+        InputDescription = Describe(FieldName(Label, Unit, IsOptional), HelpText, CountText);
+    }
 
     private void BringIntoView(bool keep)
     {
@@ -457,7 +536,24 @@ public partial class FormField : ContentView, IReleasesInput
     private void UpdateLayoutState()
     {
         HasIcon = !string.IsNullOrWhiteSpace(IconData);
-        EntryMargin = new Thickness(HasIcon ? 0 : _leadingInset.Left, 0, IsPassword ? 0 : _leadingInset.Left, 0);
+        IsReading = !string.IsNullOrWhiteSpace(Unit);
+        EntryMargin = new Thickness(HasIcon ? 0 : _leadingInset.Left, 0, IsPassword || IsReading ? 0 : _leadingInset.Left, 0);
+        UpdateDescription();
+        if (Stack is null)
+        {
+            return;
+        }
+
+        Stack.Spacing = IsReading ? 6 : 8;
+        FieldLabel.SetDynamicResource(StyleProperty, IsReading ? "FsTextReadingLabel" : "FsTextFieldLabel");
+        if (IsReading)
+        {
+            Input.FontFamily = ReadingFontFamily;
+        }
+        else
+        {
+            Input.ClearValue(Entry.FontFamilyProperty);
+        }
     }
 
     private void UpdateLook()

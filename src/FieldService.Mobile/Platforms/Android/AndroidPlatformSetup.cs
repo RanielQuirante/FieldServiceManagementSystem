@@ -51,6 +51,7 @@ public static class AndroidPlatformSetup
         {
             handlers.AddHandler<JobCard, TappableCardHandler>();
             handlers.AddHandler<OptionRow, OptionRowHandler>();
+            handlers.AddHandler<CheckboxRow, CheckboxRowHandler>();
             handlers.AddHandler<Label, WrapSafeLabelHandler>();
         });
         ContentViewHandler.Mapper.AppendToMapping(SystemBarInsetsMappingKey, (handler, view) =>

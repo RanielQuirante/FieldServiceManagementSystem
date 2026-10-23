@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FieldService.Mobile.Features.Inspection;
 using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Features.SignIn;
 
@@ -15,6 +16,7 @@ namespace FieldService.Mobile.Shared.Http;
         typeof(TolerantEnumConverter<JobPriority>),
         typeof(TolerantEnumConverter<JobHistoryAction>),
         typeof(TolerantEnumConverter<Trade>),
+        typeof(TolerantEnumConverter<InspectionResult>),
     ])]
 [JsonSerializable(typeof(SignInRequest))]
 [JsonSerializable(typeof(RefreshSessionRequest))]
@@ -23,5 +25,8 @@ namespace FieldService.Mobile.Shared.Http;
 [JsonSerializable(typeof(GetAssignedJobsResponse))]
 [JsonSerializable(typeof(JobDetailsResponse))]
 [JsonSerializable(typeof(UpdateJobStatusRequest))]
+[JsonSerializable(typeof(InspectionResponse))]
+[JsonSerializable(typeof(SaveInspectionRequest))]
+[JsonSerializable(typeof(SubmitJobRequest))]
 [JsonSerializable(typeof(ApiProblem))]
 public sealed partial class MobileJsonContext : JsonSerializerContext;

@@ -114,5 +114,16 @@
     <Thickness x:Key="FsPaddingPaneHero">28,24</Thickness>
     <Thickness x:Key="FsPaddingPane">24</Thickness>
     <Thickness x:Key="FsPaddingPill">10,0,12,0</Thickness>
+    <Thickness x:Key="FsPaddingWellTwoRow">14,10,12,10</Thickness>
+    <Thickness x:Key="FsMarginReadingUnit">8,0,16,0</Thickness>
+    <Thickness x:Key="FsPaddingItemCard">16</Thickness>
+    <Thickness x:Key="FsPaddingAnswerOption">6,0</Thickness>
+    <Thickness x:Key="FsPaddingNoteBox">14,12</Thickness>
+    <Thickness x:Key="FsPaddingCallout">16</Thickness>
+    <Thickness x:Key="FsPaddingCountPill">8,0,10,0</Thickness>
+    <x:Double x:Key="FsHeightAnswer">52</x:Double>
+    <x:Double x:Key="FsHeightCountPill">32</x:Double>
+    <x:Double x:Key="FsHeightCheckboxRow">56</x:Double>
+    <x:Double x:Key="FsWidthDesktopColumn">720</x:Double>
 
 </ResourceDictionary>

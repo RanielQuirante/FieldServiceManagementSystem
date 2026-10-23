@@ -18,8 +18,15 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     public const string OfflineTitle = "You're offline.";
     public const string LoadingText = "Loading your jobs";
     public const string NoLongerAssignedText = "This job is no longer assigned to you.";
+    public const string SubmittedMessage = "It is now under Completed.";
+
+    public static readonly TimeSpan SuccessDuration = TimeSpan.FromSeconds(8);
 
     private readonly JobsApiClient _jobs;
+    private readonly ISemanticScreenReader _screenReader;
+    private ITimer? _successTimer;
+    private TimeSpan _successRemaining;
+    private DateTimeOffset _successShownAt;
     private readonly ISessionService _session;
     private readonly INavigator _navigator;
     private readonly AppStartup _startup;
@@ -40,12 +47,14 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         AppStartup startup,
         IWindowLayout layout,
         Func<JobDetailsViewModel> createDetails,
+        ISemanticScreenReader screenReader,
         NetworkStatus network,
         TimeProvider clock,
         ILogger<MyJobsViewModel> logger)
         : base(network)
     {
         _jobs = jobs;
+        _screenReader = screenReader;
         _session = session;
         _navigator = navigator;
         _startup = startup;
@@ -88,6 +97,12 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNotice))]
     public partial string? Notice { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSuccess))]
+    public partial string? SuccessTitle { get; private set; }
+
+    public bool HasSuccess => SuccessTitle is not null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowsSinglePane))]
@@ -167,9 +182,18 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        if (query.TryGetValue(Routes.NoticeParameter, out var notice) && notice as string == Routes.JobUnassignedNotice)
+        var notice = query.TryGetValue(Routes.NoticeParameter, out var raw) ? raw as string : null;
+        if (notice == Routes.JobUnassignedNotice)
         {
             Notice = NoLongerAssignedText;
+        }
+        else if (notice == Routes.JobSubmittedNotice && query.TryGetValue(Routes.JobNumberParameter, out var number) && number is string jobNumber)
+        {
+            ShowSubmitted(jobNumber);
+        }
+        else if (notice == Routes.SubmissionInvalidTransitionNotice && IsTwoPane)
+        {
+            Details.ApplyQueryAttributes(query);
         }
     }
 
@@ -205,10 +229,12 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         OnPropertyChanged(nameof(Email));
         OnPropertyChanged(nameof(HasEmail));
         OnPropertyChanged(nameof(Initials));
+        StartSuccessTimer();
     }
 
     protected override void OnDeactivated()
     {
+        StopSuccessTimer();
         _layout.Changed -= OnLayoutChanged;
         _details?.Deactivate();
         IsAccountSheetOpen = false;
@@ -235,6 +261,69 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
             base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(SyncIndicator)));
             base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(SyncText)));
         }
+    }
+
+    private void ShowSubmitted(string jobNumber)
+    {
+        StopSuccessTimer();
+        Notice = null;
+        SuccessTitle = jobNumber + " submitted.";
+        _successRemaining = SuccessDuration;
+        _screenReader.Announce(SuccessTitle);
+        if (SelectedView != AssignedJobsView.Active)
+        {
+            _ = SelectViewAsync(AssignedJobsView.Active);
+        }
+
+        if (IsActive)
+        {
+            StartSuccessTimer();
+        }
+    }
+
+    private void StartSuccessTimer()
+    {
+        if (SuccessTitle is null || _successTimer is not null)
+        {
+            return;
+        }
+
+        _successShownAt = _clock.GetUtcNow();
+        _successTimer = _clock.CreateTimer(_ => OnSuccessElapsed(), null, _successRemaining, Timeout.InfiniteTimeSpan);
+    }
+
+    private void StopSuccessTimer()
+    {
+        if (_successTimer is null)
+        {
+            return;
+        }
+
+        _successTimer.Dispose();
+        _successTimer = null;
+        _successRemaining -= _clock.GetUtcNow() - _successShownAt;
+        if (_successRemaining < TimeSpan.Zero)
+        {
+            _successRemaining = TimeSpan.Zero;
+        }
+    }
+
+    private void OnSuccessElapsed()
+    {
+        void Clear()
+        {
+            _successTimer?.Dispose();
+            _successTimer = null;
+            SuccessTitle = null;
+        }
+
+        if (_context is { } context && !ReferenceEquals(SynchronizationContext.Current, context))
+        {
+            context.Post(_ => Clear(), null);
+            return;
+        }
+
+        Clear();
     }
 
     private static string Segment(string label, string count, bool selected)
@@ -526,6 +615,9 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         LastUpdated = null;
         OfflineMessage = null;
         Notice = null;
+        _successTimer?.Dispose();
+        _successTimer = null;
+        SuccessTitle = null;
         Error = null;
         RefreshError = null;
         IsBusy = false;

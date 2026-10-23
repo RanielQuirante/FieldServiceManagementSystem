@@ -53,6 +53,11 @@
                                                  IconKey="FsIconList"
                                                  IsVisible="{Binding HasNotice}"
                                                  Title="{Binding Notice}" />
+                                <controls:Banner Variant="Success"
+                                                 IsVisible="{Binding HasSuccess}"
+                                                 Announces="False"
+                                                 Title="{Binding SuccessTitle}"
+                                                 Message="{x:Static jobs:MyJobsViewModel.SubmittedMessage}" />
                                 <controls:Banner Variant="Offline"
                                                  IsVisible="{Binding IsOffline}"
                                                  Title="{x:Static jobs:MyJobsViewModel.OfflineTitle}"
@@ -196,6 +201,11 @@
                                                      IconKey="FsIconList"
                                                      IsVisible="{Binding HasNotice}"
                                                      Title="{Binding Notice}" />
+                                    <controls:Banner Variant="Success"
+                                                     IsVisible="{Binding HasSuccess}"
+                                                     Announces="False"
+                                                     Title="{Binding SuccessTitle}"
+                                                     Message="{x:Static jobs:MyJobsViewModel.SubmittedMessage}" />
                                     <controls:Banner Variant="Offline"
                                                      IsVisible="{Binding IsOffline}"
                                                      Title="{x:Static jobs:MyJobsViewModel.OfflineTitle}"

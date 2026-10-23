@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
+             xmlns:inspection="clr-namespace:FieldService.Mobile.Features.Inspection"
+             x:Class="FieldService.Mobile.Features.Inspection.InspectionPage"
+             x:DataType="inspection:InspectionViewModel"
+             Title="{x:Static inspection:InspectionViewModel.PageTitle}"
+             Shell.NavBarIsVisible="False"
+             SafeAreaEdges="None">
+    <Grid SafeAreaEdges="None">
+        <Grid x:Name="Column"
+              RowDefinitions="*,Auto"
+              SafeAreaEdges="None"
+              MaximumWidthRequest="{Binding ColumnMaxWidth}"
+              HorizontalOptions="{Binding ColumnOptions}">
+            <ScrollView x:Name="ChecklistScroll"
+                        Grid.Row="0"
+                        SafeAreaEdges="None"
+                        controls:ScrollRequests.ToTop="{Binding ScrollToTopRequest}">
+                <VerticalStackLayout SafeAreaEdges="None">
+                    <controls:AppHeader x:Name="InspectionHeader"
+                                        Variant="Pushed"
+                                        Title="{x:Static inspection:InspectionViewModel.PageTitle}"
+                                        Subtitle="{Binding JobNumber}"
+                                        BackCommand="{Binding BackCommand}"
+                                        BackDescription="{x:Static inspection:InspectionViewModel.BackDescription}">
+                        <controls:AppHeader.PushedBody>
+                            <VerticalStackLayout Spacing="{StaticResource FsSpace10}"
+                                                 x:DataType="inspection:InspectionViewModel">
+                                <Label Text="{Binding TemplateName}"
+                                       Style="{StaticResource FsTextHeroTemplateOnDark}" />
+                                <Grid ColumnDefinitions="Auto,*"
+                                      ColumnSpacing="{StaticResource FsSpace8}"
+                                      IsVisible="{Binding ShowsLoadingLine}"
+                                      SemanticProperties.Description="{x:Static inspection:InspectionViewModel.LoadingText}">
+                                    <Grid WidthRequest="16"
+                                          VerticalOptions="Start">
+                                        <Label Style="{StaticResource FsTextSyncOnDark}"
+                                               Text="A"
+                                               MaxLines="1"
+                                               LineBreakMode="NoWrap"
+                                               Opacity="0"
+                                               InputTransparent="True"
+                                               AutomationProperties.IsInAccessibleTree="False" />
+                                        <controls:Icon PathData="{StaticResource FsIconRefresh}"
+                                                       Size="16"
+                                                       Color="{StaticResource FsOnDark2}"
+                                                       VerticalOptions="Center" />
+                                    </Grid>
+                                    <Label Grid.Column="1"
+                                           Text="{x:Static inspection:InspectionViewModel.LoadingText}"
+                                           Style="{StaticResource FsTextSyncOnDark}"
+                                           AutomationProperties.IsInAccessibleTree="False" />
+                                </Grid>
+                                <VerticalStackLayout Spacing="{StaticResource FsSpace10}"
+                                                     IsVisible="{Binding ShowsHeroCounts}"
+                                                     SemanticProperties.Description="{Binding HeroDescription}">
+                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                                           AutomationProperties.ExcludedWithChildren="True">
+                                        <Label Text="{Binding AnsweredText}"
+                                               Style="{StaticResource FsTextNumeralOnDark}"
+                                               VerticalOptions="End" />
+                                        <Label Text="{Binding OfAnsweredText}"
+                                               Style="{StaticResource FsTextAnsweredOnDark}"
+                                               Margin="0,0,0,4"
+                                               VerticalOptions="End" />
+                                    </HorizontalStackLayout>
+                                    <FlexLayout Wrap="Wrap"
+                                                Direction="Row"
+                                                AlignItems="Center"
+                                                AutomationProperties.ExcludedWithChildren="True">
+                                        <Border Style="{StaticResource FsCountPillOnDark}"
+                                                Margin="0,0,8,8">
+                                            <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                                                                   VerticalOptions="Center">
+                                                <controls:Icon PathData="{StaticResource FsIconCheck}"
+                                                               Size="14"
+                                                               Color="{StaticResource FsOnDark}"
+                                                               VerticalOptions="Center" />
+                                                <Label Text="{Binding PassText}"
+                                                       Style="{StaticResource FsTextPillOnDark}" />
+                                            </HorizontalStackLayout>
+                                        </Border>
+                                        <Border Style="{StaticResource FsCountPillOnDark}"
+                                                Margin="0,0,8,8">
+                                            <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                                                                   VerticalOptions="Center">
+                                                <controls:Icon PathData="{StaticResource FsIconX}"
+                                                               Size="14"
+                                                               Color="{StaticResource FsOnDark}"
+                                                               VerticalOptions="Center" />
+                                                <Label Text="{Binding FailText}"
+                                                       Style="{StaticResource FsTextPillOnDark}" />
+                                            </HorizontalStackLayout>
+                                        </Border>
+                                        <Border Style="{StaticResource FsCountPillOnDark}"
+                                                Margin="0,0,8,8">
+                                            <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
+                                                                   VerticalOptions="Center">
+                                                <controls:Icon PathData="{StaticResource FsIconMinus}"
+                                                               Size="14"
+                                                               Color="{StaticResource FsOnDark}"
+                                                               VerticalOptions="Center" />
+                                                <Label Text="{Binding NotApplicableText}"
+                                                       Style="{StaticResource FsTextPillOnDark}" />
+                                            </HorizontalStackLayout>
+                                        </Border>
+                                    </FlexLayout>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </controls:AppHeader.PushedBody>
+                    </controls:AppHeader>
+                    <VerticalStackLayout Padding="{StaticResource FsPaddingDetailContent}"
+                                         Spacing="{StaticResource FsSpace12}">
+                        <controls:Banner Variant="Offline"
+                                         IsVisible="{Binding ShowsOfflineBanner}"
+                                         Title="{x:Static inspection:InspectionViewModel.OfflineTitle}"
+                                         Message="{x:Static inspection:InspectionViewModel.OfflineMessage}" />
+                        <controls:Banner Variant="{Binding SlotBanner.Variant}"
+                                         IsVisible="{Binding HasSlotBanner}"
+                                         Title="{Binding SlotBanner.Title}"
+                                         Message="{Binding SlotBanner.Message}"
+                                         Reference="{Binding SlotBanner.Reference}" />
+                        <controls:Banner Variant="Error"
+                                         IsVisible="{Binding HasRefreshError}"
+                                         Title="{Binding RefreshError.Title}"
+                                         Message="{Binding RefreshError.Message}"
+                                         Reference="{Binding RefreshError.Reference}"
+                                         ActionText="Try again"
+                                         ActionCommand="{Binding RetryCommand}" />
+                        <controls:Banner Variant="Error"
+                                         IsVisible="{Binding IsError}"
+                                         Title="{Binding Error.Title}"
+                                         Message="{Binding Error.Message}"
+                                         Reference="{Binding Error.Reference}"
+                                         ActionText="Try again"
+                                         ActionCommand="{Binding RetryCommand}" />
+                        <VerticalStackLayout Spacing="{StaticResource FsSpace12}"
+                                             IsVisible="{Binding IsLoading}"
+                                             InputTransparent="True"
+                                             AutomationProperties.ExcludedWithChildren="True">
+                            <Border Style="{StaticResource FsItemCard}">
+                                <VerticalStackLayout Spacing="{StaticResource FsSpace14}">
+                                    <BoxView WidthRequest="56" HeightRequest="13" CornerRadius="6.5" HorizontalOptions="Start" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    <BoxView HeightRequest="17" CornerRadius="8.5" Margin="0,0,64,0" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{StaticResource FsSpace8}">
+                                        <BoxView Grid.Column="0" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                        <BoxView Grid.Column="1" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                        <BoxView Grid.Column="2" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                            <Border Style="{StaticResource FsItemCard}">
+                                <VerticalStackLayout Spacing="{StaticResource FsSpace14}">
+                                    <BoxView WidthRequest="56" HeightRequest="13" CornerRadius="6.5" HorizontalOptions="Start" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    <BoxView HeightRequest="17" CornerRadius="8.5" Margin="0,0,64,0" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{StaticResource FsSpace8}">
+                                        <BoxView Grid.Column="0" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                        <BoxView Grid.Column="1" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                        <BoxView Grid.Column="2" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                            <Border Style="{StaticResource FsItemCard}">
+                                <VerticalStackLayout Spacing="{StaticResource FsSpace14}">
+                                    <BoxView WidthRequest="56" HeightRequest="13" CornerRadius="6.5" HorizontalOptions="Start" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    <BoxView HeightRequest="17" CornerRadius="8.5" Margin="0,0,64,0" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{StaticResource FsSpace8}">
+                                        <BoxView Grid.Column="0" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                        <BoxView Grid.Column="1" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                        <BoxView Grid.Column="2" HeightRequest="52" CornerRadius="14" Background="{StaticResource FsSkeletonBrush}" AutomationProperties.IsInAccessibleTree="False" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Spacing="{StaticResource FsSpace12}"
+                                             IsVisible="{Binding ShowsHeroCounts}"
+                                             BindableLayout.ItemsSource="{Binding Items}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="inspection:InspectionItemViewModel">
+                                    <Border Style="{StaticResource FsItemCard}"
+                                            controls:ScrollRequests.IntoView="{Binding ScrollRequest}"
+                                            SemanticProperties.Description="{Binding CardDescription}"
+                                            AutomationProperties.ExcludedWithChildren="{Binding IsReadOnly}">
+                                        <VerticalStackLayout Spacing="{StaticResource FsSpace14}">
+                                            <Grid ColumnDefinitions="*,Auto"
+                                                  ColumnSpacing="{StaticResource FsSpace12}">
+                                                <VerticalStackLayout Spacing="{StaticResource FsSpace6}">
+                                                    <Label Text="{Binding NumberText}"
+                                                           Style="{StaticResource FsTextMonoSmall}"
+                                                           AutomationProperties.IsInAccessibleTree="False" />
+                                                    <Label Text="{Binding Prompt}"
+                                                           Style="{StaticResource FsTextPrompt}"
+                                                           SemanticProperties.Description="{Binding GroupDescription}"
+                                                           controls:ScrollRequests.SemanticFocus="{Binding PromptFocusRequest}" />
+                                                </VerticalStackLayout>
+                                                <Grid Grid.Column="1"
+                                                      IsVisible="{Binding CanAddNote}"
+                                                      WidthRequest="{StaticResource FsHeightIconButton}"
+                                                      HeightRequest="{StaticResource FsHeightIconButton}"
+                                                      VerticalOptions="Start">
+                                                    <Button Style="{StaticResource FsIconButton}"
+                                                            Command="{Binding BeginNoteCommand}"
+                                                            SemanticProperties.Description="{Binding NoteButtonDescription}" />
+                                                    <controls:Icon PathData="{StaticResource FsIconMessage}"
+                                                                   Size="20"
+                                                                   Color="{StaticResource FsTeal700}"
+                                                                   HorizontalOptions="Center"
+                                                                   VerticalOptions="Center" />
+                                                </Grid>
+                                                <controls:StatusChip Grid.Column="1"
+                                                                     IsVisible="{Binding ShowsResultChip}"
+                                                                     Result="{Binding SavedResult}"
+                                                                     VerticalOptions="Start" />
+                                                <Label Grid.Column="1"
+                                                       IsVisible="{Binding ShowsNotAnswered}"
+                                                       Text="{x:Static inspection:InspectionItemViewModel.NotAnsweredText}"
+                                                       Style="{StaticResource FsTextNotAnswered}"
+                                                       VerticalOptions="Start" />
+                                            </Grid>
+                                            <Border Style="{StaticResource FsNoteBox}"
+                                                    IsVisible="{Binding ShowsNoteBox}">
+                                                <Grid ColumnDefinitions="Auto,*"
+                                                      ColumnSpacing="{StaticResource FsSpace8}">
+                                                    <Grid WidthRequest="16"
+                                                          VerticalOptions="Start">
+                                                        <Label Style="{StaticResource FsTextMeta}"
+                                                               Text="A"
+                                                               MaxLines="1"
+                                                               LineBreakMode="NoWrap"
+                                                               Opacity="0"
+                                                               InputTransparent="True"
+                                                               AutomationProperties.IsInAccessibleTree="False" />
+                                                        <controls:Icon PathData="{StaticResource FsIconMessage}"
+                                                                       Size="16"
+                                                                       Color="{StaticResource FsMuted}"
+                                                                       VerticalOptions="Center" />
+                                                    </Grid>
+                                                    <Label Grid.Column="1"
+                                                           Text="{Binding Note}"
+                                                           Style="{StaticResource FsTextMeta}" />
+                                                </Grid>
+                                            </Border>
+                                            <controls:FormField IsVisible="{Binding ShowsNoteField}"
+                                                                IsMultiline="True"
+                                                                IsOptional="True"
+                                                                Label="{x:Static inspection:InspectionItemViewModel.NoteLabel}"
+                                                                Text="{Binding Note}"
+                                                                ErrorText="{Binding NoteError}"
+                                                                FocusRequest="{Binding NoteFocusRequest}"
+                                                                UnfocusedCommand="{Binding EndNoteCommand}"
+                                                                MaxLength="{x:Static inspection:InspectionItemViewModel.NoteMaxLength}"
+                                                                CountFrom="{x:Static inspection:InspectionItemViewModel.NoteCountFrom}"
+                                                                Keyboard="Text" />
+                                            <controls:ReadingsLayout IsVisible="{Binding ShowsEditableReadings}"
+                                                                     BindableLayout.ItemsSource="{Binding Readings}">
+                                                <BindableLayout.ItemTemplate>
+                                                    <DataTemplate x:DataType="inspection:ReadingFieldViewModel">
+                                                        <controls:FormField Label="{Binding Label}"
+                                                                            Unit="{Binding Unit}"
+                                                                            Text="{Binding Text}"
+                                                                            Placeholder="{Binding Placeholder}"
+                                                                            ErrorText="{Binding Error}"
+                                                                            FocusRequest="{Binding FocusRequest}"
+                                                                            MaxLength="{Binding MaxLength}"
+                                                                            Keyboard="Numeric"
+                                                                            IsSpellCheckEnabled="False"
+                                                                            IsTextPredictionEnabled="False" />
+                                                    </DataTemplate>
+                                                </BindableLayout.ItemTemplate>
+                                            </controls:ReadingsLayout>
+                                            <VerticalStackLayout Spacing="{StaticResource FsSpace8}"
+                                                                 IsVisible="{Binding ShowsSavedReadings}"
+                                                                 BindableLayout.ItemsSource="{Binding SavedReadings}">
+                                                <BindableLayout.ItemTemplate>
+                                                    <DataTemplate x:DataType="inspection:SavedReading">
+                                                        <Border Style="{StaticResource FsNoteBox}">
+                                                            <Grid ColumnDefinitions="*,Auto"
+                                                                  ColumnSpacing="{StaticResource FsSpace12}">
+                                                                <Label Text="{Binding Label}"
+                                                                       Style="{StaticResource FsTextReadOnlyReadingLabel}"
+                                                                       VerticalOptions="Center" />
+                                                                <Label Grid.Column="1"
+                                                                       Text="{Binding Value}"
+                                                                       Style="{StaticResource FsTextWell}"
+                                                                       VerticalOptions="Center" />
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </BindableLayout.ItemTemplate>
+                                            </VerticalStackLayout>
+                                            <controls:AnswerControl IsVisible="{Binding IsEditable}"
+                                                                    Result="{Binding Result}"
+                                                                    Command="{Binding SelectCommand}"
+                                                                    GroupDescription="{Binding GroupDescription}" />
+                                            <controls:FormField IsVisible="{Binding ShowsFaultField}"
+                                                                IsMultiline="True"
+                                                                Label="{x:Static inspection:InspectionItemViewModel.FaultLabel}"
+                                                                Text="{Binding Note}"
+                                                                ErrorText="{Binding FaultError}"
+                                                                FocusRequest="{Binding FaultFocusRequest}"
+                                                                MaxLength="{x:Static inspection:InspectionItemViewModel.NoteMaxLength}"
+                                                                CountFrom="{x:Static inspection:InspectionItemViewModel.NoteCountFrom}"
+                                                                Keyboard="Text" />
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
+            <controls:StatusBarProtection Grid.Row="0"
+                                          IsActive="True"
+                                          ScrollSource="{x:Reference ChecklistScroll}" />
+            <controls:SystemBarSpacer Grid.Row="1" />
+            <controls:ActionDock Grid.Row="1"
+                                 IsVisible="{Binding ShowsDock}"
+                                 HelperText="{Binding HelperText}">
+                <controls:PrimaryButton Text="{x:Static inspection:InspectionViewModel.ReviewText}"
+                                        BusyText="{x:Static inspection:InspectionViewModel.SavingText}"
+                                        IconData="{StaticResource FsIconClipboardCheck}"
+                                        IsBusy="{Binding IsSaving}"
+                                        Command="{Binding ReviewCommand}" />
+            </controls:ActionDock>
+        </Grid>
+    </Grid>
+</ContentPage>

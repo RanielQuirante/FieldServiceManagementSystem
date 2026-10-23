@@ -15,6 +15,10 @@
     <Shadow x:Key="FsShadowSegmentOnDark" Brush="{StaticResource FsNavy950Brush}" Offset="0,6" Radius="16" Opacity="0.45" />
     <Shadow x:Key="FsShadowDanger" Brush="{StaticResource FsDangerBrush}" Offset="0,8" Radius="24" Opacity="0.30" />
     <Shadow x:Key="FsShadowWarning" Brush="{StaticResource FsOrange500Brush}" Offset="0,8" Radius="24" Opacity="0.35" />
+    <Shadow x:Key="FsShadowSuccess" Brush="{StaticResource FsTeal700Brush}" Offset="0,8" Radius="24" Opacity="0.30" />
+    <Shadow x:Key="FsShadowAnswerIdle" Brush="{StaticResource FsShadowBrush}" Offset="0,1" Radius="2" Opacity="0.06" />
+    <Shadow x:Key="FsShadowAnswerPass" Brush="{StaticResource FsTeal700Brush}" Offset="0,8" Radius="18" Opacity="0.70" />
+    <Shadow x:Key="FsShadowAnswerFail" Brush="{StaticResource FsDangerBrush}" Offset="0,6" Radius="14" Opacity="0.45" />
     <Shadow x:Key="FsShadowTopBar" Brush="{StaticResource FsNavy950Brush}" Offset="0,8" Radius="24" Opacity="0.50" />
     <Shadow x:Key="FsShadowAvatar" Brush="{StaticResource FsShadowBrush}" Offset="0,1" Radius="2" Opacity="0.10" />
     <Shadow x:Key="FsShadowNone" Brush="{StaticResource FsTransparentBrush}" Offset="0,0" Radius="0" Opacity="0" />
@@ -511,6 +515,31 @@
         <Setter Property="StrokeShape" Value="RoundRectangle 24" />
         <Setter Property="Padding" Value="{StaticResource FsPaddingPaneHero}" />
         <Setter Property="Shadow" Value="{StaticResource FsShadowHero}" />
+    </Style>
+
+    <Style x:Key="FsItemCard" TargetType="Border" BasedOn="{StaticResource FsGlassCard}">
+        <Setter Property="Padding" Value="{StaticResource FsPaddingItemCard}" />
+    </Style>
+
+    <Style x:Key="FsNoteBox" TargetType="Border" BasedOn="{StaticResource FsWell}">
+        <Setter Property="Padding" Value="{StaticResource FsPaddingNoteBox}" />
+    </Style>
+
+    <Style x:Key="FsCalloutFail" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsChipFailBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsDangerBannerStrokeBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingCallout}" />
+    </Style>
+
+    <Style x:Key="FsCountPillOnDark" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FsGlassOnDarkControlBrush}" />
+        <Setter Property="Stroke" Value="{StaticResource FsPillOnDarkStrokeBrush}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+        <Setter Property="HeightRequest" Value="{StaticResource FsHeightCountPill}" />
+        <Setter Property="Padding" Value="{StaticResource FsPaddingCountPill}" />
     </Style>
 
 </ResourceDictionary>

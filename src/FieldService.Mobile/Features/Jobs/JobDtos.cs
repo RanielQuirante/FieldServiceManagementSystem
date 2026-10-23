@@ -121,6 +121,16 @@ public sealed record JobHistoryEntryResponse(
 public sealed record JobAffordances(IReadOnlyList<AllowedStatusChange> AllowedStatusChanges, bool CanAssign)
 {
     public IReadOnlyList<AllowedStatusChange> AllowedStatusChanges { get; init; } = AllowedStatusChanges ?? [];
+
+    public SubmitAffordance CanSubmit { get; init => field = value ?? SubmitAffordance.None; } = SubmitAffordance.None;
+}
+
+public sealed record SubmitAffordance(bool Allowed, string? BlockingCode, int Answered, int Total)
+{
+    public const string IncompleteCode = "inspection.incomplete";
+    public const string InvalidTransitionCode = "job.invalid-transition";
+
+    public static SubmitAffordance None { get; } = new(false, null, 0, 0);
 }
 
 public sealed record AllowedStatusChange(JobStatus Status, bool RequiresNote);

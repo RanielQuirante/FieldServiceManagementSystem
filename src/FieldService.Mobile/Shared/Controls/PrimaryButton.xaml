@@ -19,6 +19,7 @@
                 CharacterSpacing="{StaticResource FsTrackingButton}"
                 CornerRadius="16"
                 BorderWidth="0"
+                LineBreakMode="WordWrap"
                 Padding="{StaticResource FsPaddingPrimaryButton}"
                 MinimumHeightRequest="{StaticResource FsHeightPrimary}"
                 Shadow="{StaticResource FsShadowPrimary}">
@@ -63,30 +64,41 @@
                 </DataTrigger>
             </BoxView.Triggers>
         </BoxView>
-        <HorizontalStackLayout IsVisible="{Binding HasIcon}"
-                               Spacing="{StaticResource FsSpace10}"
-                               HorizontalOptions="Center"
-                               InputTransparent="True"
-                               AutomationProperties.ExcludedWithChildren="True">
-            <controls:Icon PathData="{Binding IconData}"
-                           Size="20"
-                           Color="{StaticResource FsOnDark}"
-                           VerticalOptions="Center">
-                <controls:Icon.Triggers>
-                    <DataTrigger TargetType="controls:Icon" Binding="{Binding ShowsDisabledLook}" Value="True">
-                        <Setter Property="Color" Value="{StaticResource FsDisabledText}" />
-                    </DataTrigger>
-                </controls:Icon.Triggers>
-            </controls:Icon>
+        <controls:IconLabelLayout IsVisible="{Binding HasIcon}"
+                                  Padding="{StaticResource FsPaddingPrimaryButton}"
+                                  InputTransparent="True"
+                                  AutomationProperties.ExcludedWithChildren="True">
+            <Grid WidthRequest="20"
+                  Margin="0,0,10,0">
+                <Label Style="{StaticResource FsTextButtonLabel}"
+                       Text="A"
+                       MaxLines="1"
+                       LineBreakMode="NoWrap"
+                       Opacity="0"
+                       InputTransparent="True"
+                       AutomationProperties.IsInAccessibleTree="False" />
+                <controls:Icon PathData="{Binding IconData}"
+                               Size="20"
+                               Color="{StaticResource FsOnDark}"
+                               VerticalOptions="Center">
+                    <controls:Icon.Triggers>
+                        <DataTrigger TargetType="controls:Icon" Binding="{Binding ShowsDisabledLook}" Value="True">
+                            <Setter Property="Color" Value="{StaticResource FsDisabledText}" />
+                        </DataTrigger>
+                    </controls:Icon.Triggers>
+                </controls:Icon>
+            </Grid>
             <Label Text="{Binding DisplayText}"
                    Style="{StaticResource FsTextButtonLabel}"
-                   TextColor="{StaticResource FsOnDark}">
+                   TextColor="{StaticResource FsOnDark}"
+                   LineBreakMode="WordWrap"
+                   HorizontalTextAlignment="Center">
                 <Label.Triggers>
                     <DataTrigger TargetType="Label" Binding="{Binding ShowsDisabledLook}" Value="True">
                         <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
                     </DataTrigger>
                 </Label.Triggers>
             </Label>
-        </HorizontalStackLayout>
+        </controls:IconLabelLayout>
     </Grid>
 </ContentView>

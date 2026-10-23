@@ -318,4 +318,84 @@
         <Setter Property="VerticalOptions" Value="Center" />
     </Style>
 
+    <Style x:Key="FsTextReadingLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeInfoLabel}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk2}" />
+    </Style>
+
+    <Style x:Key="FsTextReadingUnit" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMonoMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMonoWell}" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextAnswerOption" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="LineBreakMode" Value="NoWrap" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextNotAnswered" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeFieldLabel}" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
+    <Style x:Key="FsTextHeroTemplateOnDark" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMeta}" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+    </Style>
+
+    <Style x:Key="FsTextNumeralOnDark" TargetType="Label" BasedOn="{StaticResource FsTextNumeral}">
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+    </Style>
+
+    <Style x:Key="FsTextAnsweredOnDark" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizePrompt}" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark2}" />
+    </Style>
+
+    <Style x:Key="FsTextPillOnDark" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistSemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeChip}" />
+        <Setter Property="TextColor" Value="{StaticResource FsOnDark}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextMonoValue" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMonoMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextCheckboxLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeBody}" />
+        <Setter Property="LineHeight" Value="1.1" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk}" />
+    </Style>
+
+    <Style x:Key="FsTextCalloutNumber" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMonoMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMonoSmall}" />
+        <Setter Property="TextColor" Value="{StaticResource FsStatusFail}" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="FsTextCalloutReading" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistMonoMedium" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeMono}" />
+        <Setter Property="TextColor" Value="{StaticResource FsInk2}" />
+    </Style>
+
+    <Style x:Key="FsTextReadOnlyReadingLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="GeistRegular" />
+        <Setter Property="FontSize" Value="{StaticResource FsFontSizeFieldLabel}" />
+        <Setter Property="TextColor" Value="{StaticResource FsMuted}" />
+    </Style>
+
 </ResourceDictionary>

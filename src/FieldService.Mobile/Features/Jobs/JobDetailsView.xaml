@@ -52,10 +52,20 @@
                                                  Spacing="{StaticResource FsSpace4}">
                                 <Grid ColumnDefinitions="Auto,*"
                                       ColumnSpacing="{StaticResource FsSpace8}">
-                                    <controls:Icon PathData="{StaticResource FsIconClock}"
-                                                   Size="16"
-                                                   Color="{StaticResource FsOnDark}"
-                                                   VerticalOptions="Center" />
+                                    <Grid WidthRequest="16"
+                                          VerticalOptions="Start">
+                                        <Label Style="{StaticResource FsTextScheduleOnDark}"
+                                               Text="A"
+                                               MaxLines="1"
+                                               LineBreakMode="NoWrap"
+                                               Opacity="0"
+                                               InputTransparent="True"
+                                               AutomationProperties.IsInAccessibleTree="False" />
+                                        <controls:Icon PathData="{StaticResource FsIconClock}"
+                                                       Size="16"
+                                                       Color="{StaticResource FsOnDark}"
+                                                       VerticalOptions="Center" />
+                                    </Grid>
                                     <Label Grid.Column="1"
                                            Text="{Binding ScheduleLine}"
                                            Style="{StaticResource FsTextScheduleOnDark}" />
@@ -95,7 +105,43 @@
                                                TextColor="{StaticResource FsInk}" />
                                     </HorizontalStackLayout>
                                 </Grid>
-                                <Grid IsVisible="{Binding ShowsUpdateStatus}">
+                                <Grid IsVisible="{Binding ShowsInspectionAction}">
+                                    <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
+                                            Command="{Binding OpenChecklistCommand}"
+                                            SemanticProperties.Description="{Binding InspectionActionText}" />
+                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                                           Padding="{StaticResource FsPaddingDesktopButton}"
+                                                           HorizontalOptions="Center"
+                                                           InputTransparent="True"
+                                                           AutomationProperties.ExcludedWithChildren="True">
+                                        <controls:Icon PathData="{StaticResource FsIconClipboardCheck}"
+                                                       Size="18"
+                                                       Color="{StaticResource FsInk}"
+                                                       VerticalOptions="Center" />
+                                        <Label Text="{Binding InspectionActionText}"
+                                               Style="{StaticResource FsTextButtonLabelDesktop}"
+                                               TextColor="{StaticResource FsInk}" />
+                                    </HorizontalStackLayout>
+                                </Grid>
+                                <Grid IsVisible="{Binding ShowsUpdateStatusSecondary}">
+                                    <Button Style="{StaticResource FsSecondaryOnDarkDesktopButton}"
+                                            Command="{Binding OpenStatusSheetCommand}"
+                                            SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}" />
+                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
+                                                           Padding="{StaticResource FsPaddingDesktopButton}"
+                                                           HorizontalOptions="Center"
+                                                           InputTransparent="True"
+                                                           AutomationProperties.ExcludedWithChildren="True">
+                                        <controls:Icon PathData="{StaticResource FsIconActivity}"
+                                                       Size="18"
+                                                       Color="{StaticResource FsOnDark}"
+                                                       VerticalOptions="Center" />
+                                        <Label Text="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
+                                               Style="{StaticResource FsTextButtonLabelDesktop}"
+                                               TextColor="{StaticResource FsOnDark}" />
+                                    </HorizontalStackLayout>
+                                </Grid>
+                                <Grid IsVisible="{Binding ShowsUpdateStatusPrimary}">
                                     <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
                                             Command="{Binding OpenStatusSheetCommand}"
                                             SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}" />
@@ -224,7 +270,8 @@
                                                   IsVisible="{Binding HasEquipment}" />
                                 <controls:InfoRow IconData="{StaticResource FsIconClipboardCheck}"
                                                   Label="Checklist"
-                                                  Value="{Binding ChecklistName}" />
+                                                  Value="{Binding ChecklistName}"
+                                                  IsVisible="{Binding ShowsChecklistRow}" />
                             </VerticalStackLayout>
                         </Border>
                         <VerticalStackLayout Grid.Row="{Binding DetailsRow}"
@@ -248,6 +295,12 @@
                                     <controls:Timeline Entries="{Binding Timeline}" />
                                 </VerticalStackLayout>
                             </Border>
+                            <controls:LinkCard IsVisible="{Binding ShowsChecklistLink}"
+                                               IconData="{StaticResource FsIconClipboardCheck}"
+                                               Title="{Binding ChecklistName}"
+                                               Subtitle="{Binding ChecklistSubline}"
+                                               LinkDescription="{Binding ChecklistLinkDescription}"
+                                               Command="{Binding OpenChecklistCommand}" />
                         </VerticalStackLayout>
                     </Grid>
                 </VerticalStackLayout>
@@ -307,11 +360,44 @@
                                         IsBusy="{Binding IsStarting}"
                                         Command="{Binding StartJobCommand}"
                                         SemanticFocusRequest="{Binding StartJobFocusRequest}" />
-                <controls:PrimaryButton IsVisible="{Binding ShowsUpdateStatus}"
+                <Grid IsVisible="{Binding ShowsUpdateStatusSecondary}">
+                    <Button Style="{StaticResource FsSecondaryButton}"
+                            Command="{Binding OpenStatusSheetCommand}"
+                            SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
+                            controls:ScrollRequests.SemanticFocus="{Binding UpdateStatusFocusRequest}" />
+                    <HorizontalStackLayout Spacing="{StaticResource FsSpace10}"
+                                           HorizontalOptions="Center"
+                                           InputTransparent="True"
+                                           AutomationProperties.ExcludedWithChildren="True">
+                        <controls:Icon PathData="{StaticResource FsIconActivity}"
+                                       Size="20"
+                                       Color="{StaticResource FsTeal700}"
+                                       VerticalOptions="Center">
+                            <controls:Icon.Triggers>
+                                <DataTrigger TargetType="controls:Icon" Binding="{Binding CanUpdateStatus}" Value="False">
+                                    <Setter Property="Color" Value="{StaticResource FsDisabledText}" />
+                                </DataTrigger>
+                            </controls:Icon.Triggers>
+                        </controls:Icon>
+                        <Label Text="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
+                               Style="{StaticResource FsTextButtonLabel}">
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding CanUpdateStatus}" Value="False">
+                                    <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
+                                </DataTrigger>
+                            </Label.Triggers>
+                        </Label>
+                    </HorizontalStackLayout>
+                </Grid>
+                <controls:PrimaryButton IsVisible="{Binding ShowsUpdateStatusPrimary}"
                                         Text="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
                                         IconData="{StaticResource FsIconActivity}"
                                         Command="{Binding OpenStatusSheetCommand}"
                                         SemanticFocusRequest="{Binding UpdateStatusFocusRequest}" />
+                <controls:PrimaryButton IsVisible="{Binding ShowsInspectionAction}"
+                                        Text="{Binding InspectionActionText}"
+                                        IconData="{StaticResource FsIconClipboardCheck}"
+                                        Command="{Binding OpenChecklistCommand}" />
             </VerticalStackLayout>
         </controls:ActionDock>
         <controls:BottomSheet IsOpen="{Binding ShowsPhoneSheet}"

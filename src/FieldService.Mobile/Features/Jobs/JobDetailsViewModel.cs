@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FieldService.Mobile.Features.Inspection;
 using FieldService.Mobile.Shared.Connectivity;
 using FieldService.Mobile.Shared.Controls;
 using FieldService.Mobile.Shared.Formatting;
@@ -19,10 +21,14 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     public const string RefreshFailedTitle = "The job could not be refreshed.";
     public const string OfflineTitle = "You're offline.";
     public const string MapSearchAddress = "https://www.bing.com/maps?q=";
+    public const string StartInspectionText = "Start inspection";
+    public const string ContinueInspectionText = "Continue inspection";
+    public const string NotSubmittedSuffix = " · not submitted";
 
     public static readonly TimeSpan MetaRefreshInterval = TimeSpan.FromMinutes(1);
 
     private readonly JobsApiClient _jobs;
+    private readonly InspectionStore _inspections;
     private readonly ISessionService _session;
     private readonly IMap _map;
     private readonly IPhoneDialer _phoneDialer;
@@ -36,9 +42,11 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     private SynchronizationContext? _context;
     private DateTimeOffset? _loadedAt;
     private Guid _jobId;
+    private string? _pendingNotice;
 
     public JobDetailsViewModel(
         JobsApiClient jobs,
+        InspectionStore inspections,
         ISessionService session,
         IMap map,
         IPhoneDialer phoneDialer,
@@ -51,6 +59,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         : base(network)
     {
         _jobs = jobs;
+        _inspections = inspections;
         _session = session;
         _map = map;
         _phoneDialer = phoneDialer;
@@ -202,9 +211,46 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     public bool ShowsRowActions => Job is not null && !IsAssigned;
 
-    public bool ShowsDock => !IsInPane && (IsAssigned || ShowsUpdateStatus);
+    public bool ShowsDock => !IsInPane && (IsAssigned || ShowsUpdateStatus || ShowsInspectionAction);
 
-    public bool ShowsHeroActions => IsInPane && (IsAssigned || ShowsUpdateStatus);
+    public bool ShowsHeroActions => IsInPane && (IsAssigned || ShowsUpdateStatus || ShowsInspectionAction);
+
+    public bool ShowsChecklistLink => Job?.Status is JobStatus.InProgress or JobStatus.OnHold or JobStatus.Completed or JobStatus.Cancelled;
+
+    public bool ShowsChecklistRow => Job is not null && !ShowsChecklistLink;
+
+    public int UnsavedAnswers => _jobId == Guid.Empty ? 0 : _inspections.UnsavedCount(_jobId);
+
+    public string ChecklistSubline
+    {
+        get
+        {
+            if (Job is not { } job)
+            {
+                return string.Empty;
+            }
+
+            var answered = string.Create(CultureInfo.InvariantCulture, $"{job.Affordances.CanSubmit.Answered} of {job.Affordances.CanSubmit.Total} answered");
+            return job.Status switch
+            {
+                JobStatus.Completed => job.CompletedAt is { } completed ? "Submitted " + DisplayFormats.AtMoment(completed, Zone, Today) : "Submitted",
+                JobStatus.Cancelled => answered + NotSubmittedSuffix,
+                _ => UnsavedAnswers > 0
+                    ? answered + DisplayFormats.Separator + string.Create(CultureInfo.InvariantCulture, $"{UnsavedAnswers} not saved")
+                    : answered,
+            };
+        }
+    }
+
+    public string ChecklistLinkDescription => ChecklistName + ", " + ChecklistSubline + ", opens the inspection";
+
+    public bool ShowsInspectionAction => Job?.Status == JobStatus.InProgress;
+
+    public string InspectionActionText => Job?.Affordances.CanSubmit.Answered > 0 ? ContinueInspectionText : StartInspectionText;
+
+    public bool ShowsUpdateStatusPrimary => ShowsUpdateStatus && !ShowsInspectionAction;
+
+    public bool ShowsUpdateStatusSecondary => ShowsUpdateStatus && ShowsInspectionAction;
 
     public bool CanCall => _phoneDialer.IsSupported && ContactPhone is not null;
 
@@ -301,20 +347,29 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        if (!query.TryGetValue(Routes.JobIdParameter, out var value))
+        var notice = query.TryGetValue(Routes.NoticeParameter, out var raw) ? raw as string : null;
+        if (notice == Routes.SubmissionInvalidTransitionNotice)
         {
+            _pendingNotice = notice;
+        }
+
+        var jobId = query.TryGetValue(Routes.JobIdParameter, out var value)
+            ? value switch
+            {
+                Guid id => id,
+                string text when Guid.TryParse(text, out var parsed) => parsed,
+                _ => Guid.Empty,
+            }
+            : Guid.Empty;
+        if (jobId != Guid.Empty && (jobId != _jobId || _pendingNotice is null))
+        {
+            _ = ShowJobAsync(jobId);
             return;
         }
 
-        var jobId = value switch
+        if (_pendingNotice is not null && IsActive && Job is not null)
         {
-            Guid id => id,
-            string text when Guid.TryParse(text, out var parsed) => parsed,
-            _ => Guid.Empty,
-        };
-        if (jobId != Guid.Empty)
-        {
-            _ = ShowJobAsync(jobId);
+            _ = RefreshAfterReturnAsync();
         }
     }
 
@@ -339,6 +394,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         _load = null;
         ForgetStatusChanges(keepDraft: false);
         _jobId = Guid.Empty;
+        _pendingNotice = null;
         _loadedAt = null;
         Job = null;
         Timeline = [];
@@ -357,14 +413,21 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     {
         _context = SynchronizationContext.Current;
         _session.SessionEnded += OnSessionEnded;
+        _inspections.Changed += OnInspectionsChanged;
         _timer?.Dispose();
         _timer = _clock.CreateTimer(_ => OnMinute(), null, MetaRefreshInterval, MetaRefreshInterval);
         UpdateStartsLine();
+        NotifyStatusActions();
+        if (Job is not null)
+        {
+            _ = RefreshAfterReturnAsync();
+        }
     }
 
     protected override void OnDeactivated()
     {
         _session.SessionEnded -= OnSessionEnded;
+        _inspections.Changed -= OnInspectionsChanged;
         _timer?.Dispose();
         _timer = null;
     }
@@ -382,7 +445,15 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         }
     }
 
-    partial void OnJobChanged(JobDetailsResponse? value) => NotifyStatusActions();
+    partial void OnJobChanged(JobDetailsResponse? value)
+    {
+        if (value is not null)
+        {
+            _inspections.RememberJob(new InspectionJob(value.Id, value.Number, value.Title, value.ChecklistTemplate.Name));
+        }
+
+        NotifyStatusActions();
+    }
 
     partial void OnIsInPaneChanged(bool value) => NotifyStatusActions();
 
@@ -408,6 +479,61 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         {
             LogNavigateFailed(_logger, _jobId, exception.GetType().Name);
         }
+    }
+
+    [RelayCommand]
+    private async Task OpenChecklistAsync()
+    {
+        if (Job is not { } job || !ShowsChecklistLink)
+        {
+            return;
+        }
+
+        try
+        {
+            await _navigator.GoToAsync(Routes.InspectionPage, new Dictionary<string, object> { [Routes.JobIdParameter] = job.Id });
+        }
+        catch (Exception exception)
+        {
+            LogNavigateFailed(_logger, _jobId, exception.GetType().Name);
+        }
+    }
+
+    private async Task RefreshAfterReturnAsync()
+    {
+        var loaded = await LoadJobAsync();
+        if (!loaded || _pendingNotice != Routes.SubmissionInvalidTransitionNotice)
+        {
+            return;
+        }
+
+        _pendingNotice = null;
+        ActionBanner = new PageBanner(BannerVariant.Conflict, JobNumber + " can no longer be submitted.", "Its status changed after you opened it. The latest version is shown.", null);
+        ScrollToTopRequest++;
+        TitleFocusRequest++;
+    }
+
+    private void OnInspectionsChanged(object? sender, Guid jobId)
+    {
+        if (jobId != _jobId)
+        {
+            return;
+        }
+
+        if (_context is { } context && !ReferenceEquals(SynchronizationContext.Current, context))
+        {
+            context.Post(_ => NotifyChecklist(), null);
+            return;
+        }
+
+        NotifyChecklist();
+    }
+
+    private void NotifyChecklist()
+    {
+        OnPropertyChanged(nameof(UnsavedAnswers));
+        OnPropertyChanged(nameof(ChecklistSubline));
+        OnPropertyChanged(nameof(ChecklistLinkDescription));
     }
 
     private bool CanNavigate() => Job is not null;
@@ -456,7 +582,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         }
     }
 
-    private async Task LoadJobAsync()
+    private async Task<bool> LoadJobAsync()
     {
         _load?.Cancel();
         var load = new CancellationTokenSource();
@@ -464,13 +590,13 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         var token = load.Token;
         if (_jobId == Guid.Empty)
         {
-            return;
+            return false;
         }
 
         if (!IsOnline)
         {
             ShowOffline();
-            return;
+            return false;
         }
 
         if (Job is null)
@@ -483,7 +609,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
             var job = await _jobs.GetJobAsync(_jobId, token);
             if (token.IsCancellationRequested)
             {
-                return;
+                return false;
             }
 
             _loadedAt = _clock.GetUtcNow();
@@ -495,13 +621,17 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
             ActionBanner = null;
             State = ScreenState.Content;
             UpdateStartsLine();
+            NotifyChecklist();
+            return true;
         }
         catch (Exception) when (token.IsCancellationRequested)
         {
+            return false;
         }
         catch (ApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
         {
             await NoLongerAssignedAsync();
+            return false;
         }
         catch (Exception exception) when (IsFailure(exception, token))
         {
@@ -512,12 +642,13 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
                 ActionBanner = null;
                 RefreshError = DescribeRefresh(exception, RefreshFailedTitle, ShowingThisJobAsOf(loadedAt));
                 State = ScreenState.Content;
-                return;
+                return false;
             }
 
             RefreshError = null;
             Error = Describe(exception, LoadFailedTitle);
             State = ScreenState.Error;
+            return false;
         }
     }
 

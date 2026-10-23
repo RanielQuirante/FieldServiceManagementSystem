@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FieldService.Mobile.Shared.Controls;
 using FieldService.Mobile.Shared.Http;
+using FieldService.Mobile.Shared.Navigation;
 using FieldService.Mobile.Shared.Screens;
 using Microsoft.Extensions.Logging;
 
@@ -48,6 +49,7 @@ public sealed partial class JobDetailsViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowsHoldReason), nameof(ConfirmText), nameof(ConfirmBusyText), nameof(ConfirmIconKey))]
+    [NotifyCanExecuteChangedFor(nameof(ConfirmStatusCommand))]
     public partial StatusOption? SelectedStatusOption { get; private set; }
 
     [ObservableProperty]
@@ -86,7 +88,7 @@ public sealed partial class JobDetailsViewModel
 
     public bool ShowsStartJob => Job is { Status: JobStatus.Assigned } && AllowedChanges.Any(change => change.Status == JobStatus.InProgress);
 
-    public bool ShowsUpdateStatus => Job is { Status: not JobStatus.Assigned } job && OptionsFor(job).Count > 0;
+    public bool ShowsUpdateStatus => Job is { Status: not JobStatus.Assigned } job && OptionsFor(job, false).Count > 0;
 
     public bool ShowsNavigationRow => IsAssigned;
 
@@ -97,6 +99,8 @@ public sealed partial class JobDetailsViewModel
     public bool ShowsPaneSheet => IsStatusSheetOpen && IsInPane;
 
     public bool IsStatusOffline => !IsOnline;
+
+    public bool CanUpdateStatus => CanOpenStatusSheet();
 
     public string? DockHelper => ShowsStartJob
         ? IsStatusOffline ? StartOfflineHelper : StartHelper
@@ -128,7 +132,7 @@ public sealed partial class JobDetailsViewModel
 
     public string? ConfirmBusyText => SelectedStatusOption?.BusyText;
 
-    public string? ConfirmIconKey => SelectedStatusOption?.IconKey;
+    public string? ConfirmIconKey => SelectedStatusOption?.ConfirmIconKey;
 
     public bool HasSheetFailure => SheetFailure is not null;
 
@@ -136,7 +140,7 @@ public sealed partial class JobDetailsViewModel
 
     public string SheetSubtitle => Job is null ? string.Empty : JobNumber + " · " + Title;
 
-    public static IReadOnlyList<StatusOption> OptionsFor(JobDetailsResponse job)
+    public static IReadOnlyList<StatusOption> OptionsFor(JobDetailsResponse job, bool hasUnsavedAnswers)
     {
         ArgumentNullException.ThrowIfNull(job);
 
@@ -145,10 +149,24 @@ public sealed partial class JobDetailsViewModel
             return [];
         }
 
-        return [.. job.Affordances.AllowedStatusChanges
+        IEnumerable<StatusOption> options = job.Affordances.AllowedStatusChanges
             .Select(change => StatusOption.For(job.Status, change))
             .OfType<StatusOption>()
-            .Where(option => option.Action != StatusAction.Start)];
+            .Where(option => option.Action != StatusAction.Start);
+        if (job.Status is JobStatus.InProgress or JobStatus.OnHold)
+        {
+            options = options.Append(StatusOption.Complete(job.Affordances.CanSubmit, hasUnsavedAnswers));
+        }
+
+        return [.. options];
+    }
+
+    public static StatusOption? InitialSelection(IReadOnlyList<StatusOption> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var enabled = options.Where(option => option.IsAvailable).ToList();
+        return enabled.Count == 1 ? enabled[0] : null;
     }
 
     public bool CloseSheet()
@@ -201,16 +219,13 @@ public sealed partial class JobDetailsViewModel
             return;
         }
 
-        var options = OptionsFor(job);
+        var options = OptionsFor(job, UnsavedAnswers > 0);
         if (options.Count == 0)
         {
             return;
         }
 
-        var previous = SelectedStatusOption?.Status;
-        var selected = options.Count == 1
-            ? options[0]
-            : options.FirstOrDefault(option => option.Status == previous);
+        var selected = InitialSelection(options);
         foreach (var option in options)
         {
             option.IsSelected = ReferenceEquals(option, selected);
@@ -250,11 +265,37 @@ public sealed partial class JobDetailsViewModel
         IsStatusSheetOpen = false;
     }
 
-    [RelayCommand(AllowConcurrentExecutions = true)]
+    private bool CanConfirmStatus() => SelectedStatusOption is not null;
+
+    [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(CanConfirmStatus))]
     private async Task ConfirmStatusAsync()
     {
-        if (IsUpdatingStatus || IsStarting || SelectedStatusOption is not { } option || Job is null)
+        if (IsUpdatingStatus || IsStarting || SelectedStatusOption is not { } option || Job is not { } job)
         {
+            return;
+        }
+
+        if (option.IsComplete)
+        {
+            if (!option.IsAvailable)
+            {
+                return;
+            }
+
+            IsStatusSheetOpen = false;
+            try
+            {
+                await _navigator.GoToAsync(Routes.ReviewPage, new Dictionary<string, object>
+                {
+                    [Routes.JobIdParameter] = job.Id,
+                    [Routes.SourceParameter] = Routes.FromSheet,
+                });
+            }
+            catch (Exception exception)
+            {
+                LogNavigateFailed(_logger, _jobId, exception.GetType().Name);
+            }
+
             return;
         }
 
@@ -472,10 +513,18 @@ public sealed partial class JobDetailsViewModel
         OnPropertyChanged(nameof(ShowsDock));
         OnPropertyChanged(nameof(ShowsHeroActions));
         OnPropertyChanged(nameof(IsStatusOffline));
+        OnPropertyChanged(nameof(CanUpdateStatus));
         OnPropertyChanged(nameof(DockHelper));
         OnPropertyChanged(nameof(HoldReasonLine));
         OnPropertyChanged(nameof(HasHoldReasonLine));
         OnPropertyChanged(nameof(SheetSubtitle));
+        OnPropertyChanged(nameof(ShowsChecklistLink));
+        OnPropertyChanged(nameof(ShowsChecklistRow));
+        OnPropertyChanged(nameof(ShowsInspectionAction));
+        OnPropertyChanged(nameof(InspectionActionText));
+        OnPropertyChanged(nameof(ShowsUpdateStatusPrimary));
+        OnPropertyChanged(nameof(ShowsUpdateStatusSecondary));
+        NotifyChecklist();
         StartJobCommand.NotifyCanExecuteChanged();
         OpenStatusSheetCommand.NotifyCanExecuteChanged();
     }
