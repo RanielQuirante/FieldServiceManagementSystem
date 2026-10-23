@@ -34,6 +34,8 @@ public static class ErrorCodes
 
     public const string TechnicianUnavailable = "technician.unavailable";
 
+    public const string InspectionIncomplete = "inspection.incomplete";
+
     public const string InspectionLocked = "inspection.locked";
 
     public const string RateLimitExceeded = "rate-limit.exceeded";
@@ -67,6 +69,7 @@ public static class ErrorCodes
             or JobInvalidTransition
             or JobNotAssignable
             or TechnicianUnavailable
+            or InspectionIncomplete
             or InspectionLocked => StatusCodes.Status409Conflict,
         TooLarge => StatusCodes.Status413PayloadTooLarge,
         UnsupportedMediaType => StatusCodes.Status415UnsupportedMediaType,
@@ -93,6 +96,7 @@ public static class ErrorCodes
         JobInvalidTransition => "The job cannot move to that status.",
         JobNotAssignable => "The job can no longer be assigned.",
         TechnicianUnavailable => "The technician is not available.",
+        InspectionIncomplete => "The inspection checklist is not complete.",
         InspectionLocked => "The inspection can no longer be changed.",
         RateLimitExceeded => "Too many requests.",
         ServerError => "An unexpected error occurred.",

@@ -907,6 +907,298 @@
         ]
       }
     },
+    "/api/jobs/{jobId}/submission": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Submit a job",
+        "description": "Completes an InProgress job assigned to the calling technician and submits its inspection in one transaction, and adds a Completed history entry. Every checklist item must have a saved answer; otherwise the response is 409 inspection.incomplete. The site safety confirmation must be true, and the technician notes hold at most 2000 characters. A job that is not InProgress returns 409 job.invalid-transition; a job on hold must be resumed first. Send the version you last read; submitting a job that is already Completed returns the job unchanged. The job and its inspection are read-only afterwards. A technician can submit only the jobs assigned to them; any other job returns 404. The response carries the job's details and its new version.",
+        "operationId": "SubmitJob",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/jobs/{jobId}/inspection": {
+      "get": {
+        "tags": [
+          "Inspections"
+        ],
+        "summary": "Get the inspection of a job",
+        "description": "Returns the checklist of the job's template with every item and its reading fields in position order, the saved answers with their readings, the progress with the count of each result, the submission state, the technician notes and the job's version. It returns the checklist before the first save too, with every answer null and updatedAt null. A technician can read only the inspections of jobs assigned to them; any other job returns 404.",
+        "operationId": "GetInspection",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Inspections"
+        ],
+        "summary": "Save the inspection of a job",
+        "description": "Saves any subset of answers to the job's checklist as a draft; the first save creates the inspection. Each listed answer replaces that item's saved answer, readings included; unlisted items stay as they are, and an answer cannot be cleared. Send 1 to 100 answers, each for a different item of the job's checklist. A Fail needs a note and may carry any of the item's readings; a Pass supplies every reading field of its item once; a NotApplicable answer takes no readings. An answer holds a note of at most 1000 characters and at most 10 readings, each from -99999999.99 to 99999999.99 with at most two decimal places. A save changes the job's version. Send the version you last read; a save in which every answer equals the saved one returns the inspection unchanged. A job that is not InProgress, or an inspection that was submitted, returns 409 inspection.locked. A technician can save only the inspections of jobs assigned to them; any other job returns 404. The response carries the inspection and the job's new version.",
+        "operationId": "SaveInspection",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveInspectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/checklist-templates": {
       "get": {
         "tags": [
@@ -1347,9 +1639,312 @@
           }
         }
       },
+      "InspectionAffordances": {
+        "required": [
+          "canEdit",
+          "canSubmit"
+        ],
+        "type": "object",
+        "properties": {
+          "canEdit": {
+            "type": "boolean"
+          },
+          "canSubmit": {
+            "$ref": "#/components/schemas/SubmitAffordance"
+          }
+        }
+      },
+      "InspectionAnswerInput": {
+        "required": [
+          "checklistItemId",
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "checklistItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/InspectionResult"
+          },
+          "note": {
+            "maxLength": 1000,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "readings": {
+            "maxItems": 10,
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/InspectionReadingInput"
+            }
+          }
+        }
+      },
+      "InspectionAnswerResponse": {
+        "required": [
+          "result",
+          "note",
+          "readings",
+          "answeredAt"
+        ],
+        "type": "object",
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/InspectionResult"
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "readings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InspectionReadingResponse"
+            }
+          },
+          "answeredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "InspectionItemResponse": {
+        "required": [
+          "checklistItemId",
+          "position",
+          "prompt",
+          "readingFields",
+          "answer"
+        ],
+        "type": "object",
+        "properties": {
+          "checklistItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "readingFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InspectionReadingFieldResponse"
+            }
+          },
+          "answer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InspectionAnswerResponse"
+              }
+            ]
+          }
+        }
+      },
+      "InspectionProgress": {
+        "required": [
+          "answered",
+          "total",
+          "passCount",
+          "failCount",
+          "notApplicableCount"
+        ],
+        "type": "object",
+        "properties": {
+          "answered": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "passCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "notApplicableCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "InspectionReadingFieldResponse": {
+        "required": [
+          "readingFieldId",
+          "position",
+          "label",
+          "unit"
+        ],
+        "type": "object",
+        "properties": {
+          "readingFieldId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        }
+      },
+      "InspectionReadingInput": {
+        "required": [
+          "readingFieldId",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "readingFieldId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "maximum": 99999999.99,
+            "minimum": -99999999.99,
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "InspectionReadingResponse": {
+        "required": [
+          "readingFieldId",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "readingFieldId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "InspectionResponse": {
+        "required": [
+          "jobId",
+          "jobNumber",
+          "jobStatus",
+          "template",
+          "items",
+          "progress",
+          "startedAt",
+          "completedAt",
+          "updatedAt",
+          "submittedAt",
+          "technicianNotes",
+          "version",
+          "affordances"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobNumber": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "jobStatus": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "template": {
+            "$ref": "#/components/schemas/ChecklistTemplateReference"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InspectionItemResponse"
+            }
+          },
+          "progress": {
+            "$ref": "#/components/schemas/InspectionProgress"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "submittedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "technicianNotes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "affordances": {
+            "$ref": "#/components/schemas/InspectionAffordances"
+          }
+        }
+      },
+      "InspectionResult": {
+        "enum": [
+          "Pass",
+          "Fail",
+          "NotApplicable"
+        ]
+      },
       "JobAffordances": {
         "required": [
           "allowedStatusChanges",
+          "canSubmit",
           "canAssign"
         ],
         "type": "object",
@@ -1359,6 +1954,9 @@
             "items": {
               "$ref": "#/components/schemas/AllowedStatusChange"
             }
+          },
+          "canSubmit": {
+            "$ref": "#/components/schemas/SubmitAffordance"
           },
           "canAssign": {
             "type": "boolean"
@@ -1770,6 +2368,27 @@
           }
         }
       },
+      "SaveInspectionRequest": {
+        "required": [
+          "answers",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "answers": {
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InspectionAnswerInput"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
+      },
       "SessionClient": {
         "enum": [
           "Web",
@@ -1872,6 +2491,58 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SubmitAffordance": {
+        "required": [
+          "allowed",
+          "blockingCode",
+          "answered",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "blockingCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "answered": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "SubmitJobRequest": {
+        "required": [
+          "siteSafetyConfirmed",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "technicianNotes": {
+            "maxLength": 2000,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "siteSafetyConfirmed": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
           }
         }
       },
@@ -2045,6 +2716,9 @@
     },
     {
       "name": "Jobs"
+    },
+    {
+      "name": "Inspections"
     },
     {
       "name": "ChecklistTemplates"

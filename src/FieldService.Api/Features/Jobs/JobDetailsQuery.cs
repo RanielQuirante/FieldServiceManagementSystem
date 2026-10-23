@@ -6,8 +6,6 @@ namespace FieldService.Api.Features.Jobs;
 
 public static class JobDetailsQuery
 {
-    private static readonly InspectionCompleteness _inspectionNotRead = InspectionCompleteness.Of(0, []);
-
     public static async Task<JobDetailsResponse?> FindAsync(
         FieldServiceDbContext db,
         Guid jobId,
@@ -25,6 +23,7 @@ public static class JobDetailsQuery
             {
                 Job = job,
                 ChecklistTemplate = new ChecklistTemplateReference(template.Id, template.Name, template.Trade),
+                ChecklistItemCount = template.Items.Count,
                 AssignedTechnician = assignee == null
                     ? null
                     : new JobTechnicianReference(assignee.UserId, assignee.User.DisplayName, assignee.Trade),
@@ -55,12 +54,25 @@ public static class JobDetailsQuery
             .ToListAsync(cancellationToken);
 
         var details = row.Job;
-        var capabilities = JobCapabilities.For(details, actor, _inspectionNotRead);
+        var templateId = details.ChecklistTemplateId;
+        var answeredResults = await (
+            from inspection in db.Inspections.AsNoTracking()
+            where inspection.JobId == jobId
+            from answer in inspection.Answers
+            join item in db.Set<ChecklistItem>() on answer.ChecklistItemId equals item.Id
+            where item.TemplateId == templateId
+            select answer.Result)
+            .ToListAsync(cancellationToken);
+
+        var completeness = InspectionCompleteness.Of(row.ChecklistItemCount, answeredResults);
+        var capabilities = JobCapabilities.For(details, actor, completeness);
+        var submit = capabilities.CanSubmit;
         var affordances = new JobAffordances(
             [
                 .. capabilities.AllowedStatusChanges
                     .Select(option => new AllowedStatusChange(option.Status, option.RequiresNote)),
             ],
+            new SubmitAffordance(submit.Allowed, submit.BlockingCode, submit.Answered, submit.Total),
             capabilities.CanAssign);
         return new JobDetailsResponse(
             details.Id,

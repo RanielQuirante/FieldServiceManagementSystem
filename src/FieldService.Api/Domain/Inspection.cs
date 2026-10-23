@@ -66,19 +66,19 @@ public sealed class Inspection
         }
 
         job.EnsureChecklistOfThisJob(checklist);
-        if (EditError(job, this, actor) is { } locked)
-        {
-            return locked;
-        }
-
         if (InspectionRules.Validate(checklist, answers) is [var first, ..])
         {
             return first;
         }
 
+        if (EditError(job, this, actor) is { } locked)
+        {
+            return locked;
+        }
+
         var at = UtcInstant.Truncate(now);
         var changed = false;
-        foreach (var answer in answers)
+        foreach (var answer in answers.OrderBy(answer => PositionOf(checklist, answer)))
         {
             var saved = _answers.Find(existing => existing.ChecklistItemId == answer.ChecklistItemId);
             if (saved is null)
@@ -108,6 +108,10 @@ public sealed class Inspection
         TechnicianNotes = technicianNotes;
         UpdatedAt = at;
     }
+
+    private static short PositionOf(InspectionChecklist checklist, ChecklistAnswer answer) =>
+        checklist.Find(answer.ChecklistItemId)?.Position
+            ?? throw new ArgumentException("Every answer must belong to the checklist.", nameof(answer));
 
     private static DomainError? EditError(Job job, Inspection? inspection, JobActor actor)
     {

@@ -38,6 +38,14 @@ public sealed class BadRequestExceptionHandler(IProblemDetailsService problemDet
 
     private static Dictionary<string, string[]> FieldErrors(BadHttpRequestException exception)
     {
+        if (CollectionLimitResolver.TryResolve(exception.InnerException, out var limitKey, out var limitMessage))
+        {
+            return new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                [limitKey] = [limitMessage],
+            };
+        }
+
         if (exception.InnerException is JsonException { Path: { Length: > 1 } path })
         {
             return new Dictionary<string, string[]>(StringComparer.Ordinal)

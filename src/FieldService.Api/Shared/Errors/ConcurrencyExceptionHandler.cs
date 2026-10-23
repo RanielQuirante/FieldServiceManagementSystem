@@ -46,6 +46,7 @@ public sealed class ConcurrencyExceptionHandler(IProblemDetailsService problemDe
         {
             InnerException: PostgresException { SqlState: PostgresErrorCodes.ObjectNotInPrerequisiteState },
         } => ErrorCodes.InspectionLocked,
+        InvalidOperationException { InnerException: DbUpdateException saveFailure } => Classify(saveFailure),
         _ => null,
     };
 }

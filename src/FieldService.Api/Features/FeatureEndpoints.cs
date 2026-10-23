@@ -1,5 +1,6 @@
 using FieldService.Api.Features.Auth;
 using FieldService.Api.Features.ChecklistTemplates;
+using FieldService.Api.Features.Inspections;
 using FieldService.Api.Features.Jobs;
 using FieldService.Api.Features.Technicians;
 
@@ -12,6 +13,7 @@ public static class FeatureEndpoints
         AuthEndpoints.Map(endpoints);
         TechniciansEndpoints.Map(endpoints);
         JobsEndpoints.Map(endpoints);
+        InspectionsEndpoints.Map(endpoints);
         ChecklistTemplatesEndpoints.Map(endpoints);
 
         return endpoints;
