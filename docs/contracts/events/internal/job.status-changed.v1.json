@@ -1,0 +1,13 @@
+{
+  "id": "01a1549c-bac0-7272-8af7-8acf82fc5f4d",
+  "type": "job.status-changed",
+  "version": 1,
+  "occurredAt": "2026-10-19T14:42:00.000Z",
+  "correlationId": "23191419-f180-45eb-bcaf-8d9912281343",
+  "data": {
+    "jobId": "01a153ec-f2c0-7499-a012-b2be45d90129",
+    "jobNumber": 1049,
+    "status": "InProgress",
+    "previousStatus": "Assigned"
+  }
+}

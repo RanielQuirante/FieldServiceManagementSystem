@@ -5,7 +5,7 @@ This folder holds the contracts between the FieldService applications. Each cont
 | Contract | Between | Guarded by |
 |---|---|---|
 | `openapi.v1.json` | API and both clients | The API's snapshot test, the dashboard's type-check and the technician app's drift tests |
-| Event envelopes and client payloads, with their signature and socket-ticket test vectors | API, notification service and dashboard | Fixture and vector tests in each of the three applications |
+| [`events.md`](events.md), the event envelopes and client payloads in `events/`, and their signature and socket-ticket test vectors | API, notification service and dashboard | Fixture and vector tests in each of the three applications |
 
 The decision behind this approach is [ADR 0011](../decisions/0011-openapi-snapshot-as-the-rest-contract.md).
 

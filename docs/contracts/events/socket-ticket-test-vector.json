@@ -1,0 +1,14 @@
+{
+  "key": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8=",
+  "claims": {
+    "iss": "fieldservice-api",
+    "aud": "fieldservice-notifications",
+    "sub": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca",
+    "role": "Administrator",
+    "jti": "01a1549a-f988-7eaa-9ac7-728ebe591925",
+    "iat": 1792420805,
+    "nbf": 1792420805,
+    "exp": 1792420865
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJmaWVsZHNlcnZpY2UtYXBpIiwiYXVkIjoiZmllbGRzZXJ2aWNlLW5vdGlmaWNhdGlvbnMiLCJzdWIiOiIwMWEwZjZiMS0yNjgwLTcxNTItOTJhNS1iYjRkM2E2ZGY3Y2EiLCJyb2xlIjoiQWRtaW5pc3RyYXRvciIsImp0aSI6IjAxYTE1NDlhLWY5ODgtN2VhYS05YWM3LTcyOGViZTU5MTkyNSIsImlhdCI6MTc5MjQyMDgwNSwibmJmIjoxNzkyNDIwODA1LCJleHAiOjE3OTI0MjA4NjV9.1PTaG34ndYYDjUEofIiaM-Ff45-fYEapbKJ4GMcwen4"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "01a1547a-dae0-7873-9eeb-2933aeb665ba",
+  "type": "job.assigned",
+  "version": 1,
+  "occurredAt": "2026-10-19T14:05:00.000Z",
+  "correlationId": "cfc6eae7-8799-4f8e-8814-ba353fc35100",
+  "data": {
+    "jobId": "01a1546d-1f40-74c9-b6a6-b365b1422136",
+    "jobNumber": 1047,
+    "status": "Assigned",
+    "previousStatus": "Unassigned"
+  }
+}

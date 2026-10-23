@@ -1,0 +1,13 @@
+{
+  "id": "01a15488-9680-7adb-bb78-5c0dc4b45e37",
+  "type": "job.created",
+  "version": 1,
+  "occurredAt": "2026-10-19T14:20:00.000Z",
+  "correlationId": "5729b5fd-2345-495c-a477-c787cffd71a5",
+  "data": {
+    "jobId": "01a15488-9680-7989-92af-ed07fc34a890",
+    "jobNumber": 1051,
+    "status": "Unassigned",
+    "previousStatus": null
+  }
+}
