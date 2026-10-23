@@ -18,6 +18,7 @@ This document currently covers how the applications communicate. The security co
   - [Create a job](#create-a-job)
   - [Assign a job](#assign-a-job)
   - [Technician status update](#technician-status-update)
+  - [Inspection save and submit](#inspection-save-and-submit)
   - [Real-time broadcast](#real-time-broadcast)
   - [Reconnect and refetch](#reconnect-and-refetch)
 
@@ -156,6 +157,63 @@ sequenceDiagram
         end
     end
 ```
+
+### Inspection save and submit
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Tech as Technician
+    participant App as Technician app
+    participant Api as API
+    participant Db as PostgreSQL
+    participant Notif as Notification service
+    participant Web as Dashboard
+    Note over App,Api: Every call checks its role policy and ownership, another technician's job is 404
+    Tech->>App: Continue inspection
+    App->>Api: GET /api/jobs/{jobId}/inspection
+    Api-->>App: 200 with the template items, saved answers, progress and version, also before the first save
+    Tech->>App: Answer Pass, Fail or N/A, enter readings and notes
+    Note over App: Unsaved answers stay in memory and are saved on leaving and before Review and submit
+    App->>Api: PUT /api/jobs/{jobId}/inspection with answers and version
+    alt a field breaks a rule, for example a Fail without a note or a third decimal
+        Api-->>App: 400 with errors keyed like answers[2].note
+    else every answer equals the saved one
+        Api-->>App: 200 with the current state, nothing written
+    else the job is not In progress, or the inspection was submitted
+        Api-->>App: 409 inspection.locked
+    else accepted
+        Api->>Db: One transaction: the inspection, its answers and readings, and the job's version
+        alt the version was stale, for example a second device
+            Api-->>App: 409 concurrency.conflict, and the app reloads
+        else committed
+            Api-->>App: 200 with the progress and the new version, no real-time event
+        end
+    end
+    Tech->>App: Review and submit, add notes, confirm the site is safe
+    App->>Api: POST /api/jobs/{jobId}/submission with technicianNotes, siteSafetyConfirmed and version
+    alt the site is not confirmed safe
+        Api-->>App: 400 keyed siteSafetyConfirmed
+    else the job is already Completed
+        Api-->>App: 200 with the current job, no event
+    else the job is not In progress
+        Api-->>App: 409 job.invalid-transition
+    else an item is unanswered
+        Api-->>App: 409 inspection.incomplete
+    else complete
+        Api->>Db: One transaction: the job Completed, the inspection submitted, the Completed history entry
+        alt the version was stale, or a racing request locked the inspection first
+            Api-->>App: 409 concurrency.conflict or inspection.locked
+        else committed
+            Api-->>App: 200, and the job and its inspection are read-only from now on
+            Api-)Notif: Signed job.status-changed, In progress to Completed
+            Notif-)Web: job.status-changed
+            Web->>Api: GET /api/jobs/{jobId}, and GET /api/jobs/{jobId}/inspection when its report is open
+        end
+    end
+```
+
+Saves send no event, because only the technician sees a draft. Every save that writes also updates the job row, so the job's version guards the checklist too, and two devices saving the same checklist cannot both succeed. Once submitted, the inspection cannot change: the API refuses the write, and a database trigger refuses any update or delete of a submitted inspection's rows. The administrator's read-only report is described in [ui.md](ui.md#inspection-report).
 
 ### Real-time broadcast
 

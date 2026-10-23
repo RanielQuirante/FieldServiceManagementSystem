@@ -10,6 +10,7 @@ This document describes the dashboard's user interface: its design tokens, fonts
 - [Icons](#icons)
 - [Shared components](#shared-components)
 - [Pages and routes](#pages-and-routes)
+- [Inspection report](#inspection-report)
 - [Live updates](#live-updates)
 - [Accessibility](#accessibility)
 - [Supported browsers](#supported-browsers)
@@ -81,6 +82,7 @@ The components live in `src/FieldService.Web/src/shared/ui`.
 | Toast, ToastHost | Short notices at the bottom of the window; an error toast shows the request's reference so support can find it in the logs, and an event toast tells what changed on a job |
 | LivePill | The live-update connection state in the top bar |
 | ConnectionBanner | The Reconnecting, Paused, Back online and Refresh failed messages of live updates |
+| KpiTile | A summary figure with its icon, label and subline, used on the inspection report |
 
 ## Pages and routes
 
@@ -90,9 +92,22 @@ The components live in `src/FieldService.Web/src/shared/ui`.
 | `/jobs` | Job list with search, status and priority filters and paging, 12 jobs per page | Administrators |
 | `/jobs/new` | New job form | Administrators |
 | `/jobs/:jobId` | Job details with the assignee and the status history | Administrators |
+| `/jobs/:jobId/inspection` | The read-only inspection report | Administrators |
 | Any other path | Not found | Administrators |
 
 `/` opens the job list. Page titles read "<page> · FieldService Admin". Every page has loading, empty, error and not-found states as they apply, and focus moves to the page heading after each navigation.
+
+## Inspection report
+
+The report shows a job's checklist as the technician answered it. In the job list, a completed job's title opens its report; a completed job's page links to it with "Inspection report", and the report links back with "Job details".
+
+- **Summary tiles:** the result counts ("8 Pass", "1 Fail", "1 N/A" with the template and item count), the time on site from the first start to the completion, and the completion time and technician. For a job that is not completed, the tiles show the answers saved so far, the time since the start, and the last save.
+- **Results table:** one row per checklist item, in order, with the result, every reading with its label and unit ("Suction 118 psi" over "Discharge 285 psi"), and the note. An unanswered item reads "Not answered". The table scrolls inside its own region on narrow screens.
+- **Technician notes**, a **Job details** card and the full **Status history**.
+- **Not completed:** a notice says the job has not started, has not been submitted yet, or was cancelled.
+- **Live:** when the job's status changes, for example when the technician submits the inspection, the report refreshes in place with the rest of the page's live updates ([Live updates](#live-updates)), with no reload. Draft saves send no event, so a report open on a job in progress shows new answers after the next status change, a reload or a reconnect.
+
+Everything on the report is read-only and rendered as text.
 
 ## Live updates
 
@@ -171,7 +186,7 @@ The splash screen shows the FieldService mark on deep navy, and the launcher ico
 
 ### Controls
 
-The controls live in `src/FieldService.Mobile/Shared/Controls`: `AppHeader` (list, pushed and desktop top-bar variants), `PrimaryButton`, `FormField` (single-line and multi-line), `Banner` (information, offline, error and conflict), `JobCard`, `StatusChip`, `PriorityLabel`, `SegmentedControl`, `CountCapsule`, `Avatar`, `InfoRow`, `IconTile`, `LinkCard`, `Timeline`, `EmptyState`, `BottomSheet` (a fixed header above its scrolling content), `OptionRow`, `ActionDock` and `Icon`.
+The controls live in `src/FieldService.Mobile/Shared/Controls`: `AppHeader` (list, pushed and desktop top-bar variants), `PrimaryButton`, `FormField` (single-line and multi-line), `Banner` (information, offline, error and conflict), `JobCard`, `StatusChip`, `PriorityLabel`, `SegmentedControl`, `CountCapsule`, `Avatar`, `InfoRow`, `IconTile`, `LinkCard`, `Timeline`, `EmptyState`, `BottomSheet` (a fixed header above its scrolling content), `OptionRow`, `ActionDock`, `AnswerControl` (Pass, Fail and N/A), `CheckboxRow` and `Icon`. `FormField` also has a reading variant with a unit suffix and an "Optional" marker.
 
 ### Screens
 
@@ -179,8 +194,10 @@ The controls live in `src/FieldService.Mobile/Shared/Controls`: `AppHeader` (lis
 |---|---|---|
 | Sign in | `//sign-in` | Email and password with field errors, an error banner, and the "Your session ended." notice after an expiry or a revocation |
 | My jobs | `//jobs` | Active and Completed segments, jobs grouped by day, pull to refresh, the account sheet with sign-out |
-| Job details | `jobs/details` | Status, priority, schedule, customer, site, access notes, contact, equipment, description, timeline and checklist; an Assigned job shows the schedule first, with Navigate and, where the device can dial and the job has a contact phone, Call, and Start job; an In progress or On hold job offers Update status, and an On hold job shows its hold reason under the status |
-| Update status | sheet over Job details | Only the changes the server allows for the job: Put on hold, with a required reason of up to 500 characters and a count from 400, or Resume. A conflict closes the sheet, keeps the reason, reloads the job and explains what changed |
+| Job details | `jobs/details` | Status, priority, schedule, customer, site, access notes, contact, equipment, description, timeline and checklist; an Assigned job shows the schedule first, with Navigate and, where the device can dial and the job has a contact phone, Call, and Start job; an In progress or On hold job offers Update status, and an On hold job shows its hold reason under the status; an In progress job also offers Start inspection or Continue inspection with the checklist's progress |
+| Update status | sheet over Job details | Only the changes the server allows for the job: Put on hold, with a required reason of up to 500 characters and a count from 400, or Resume. A conflict closes the sheet, keeps the reason, reloads the job and explains what changed. Complete job appears when the checklist is complete and opens Review and submit |
+| Inspection | `jobs/inspection` | Every checklist item with Pass, Fail and N/A, readings with their units (two decimals at most), and a required fault note on Fail; N/A hides the readings. The progress ("6 of 10 answered") and the result counts sit at the top. Answers are kept in memory while the app runs and saved when the technician leaves the screen and before Review and submit; a conflict reloads and keeps the technician's changes. On hold, cancelled and submitted checklists are read-only |
+| Review and submit | `jobs/review` | The time on site, the result counts, the failed items with their notes, optional technician notes of up to 2,000 characters, and the site-safety confirmation, unchecked each time the screen opens. Submitting completes the job, returns to My jobs with a confirmation, and leaves the job and its checklist read-only |
 
 Every screen has loading, empty, error and offline states. An error shows a reference for support and a Try again button. When the API cannot be reached, the app keeps the jobs it has loaded and says when they were loaded.
 
@@ -195,3 +212,7 @@ On Windows, at 900 units wide or more, My jobs shows the list and the selected j
 - Status and priority always have a text label, as in the dashboard.
 - Each option in the Update status sheet is one screen-reader item with the role of a radio button and its checked state. A status change is announced when it succeeds, and focus moves to the next action.
 - When a sheet closes, its keyboard closes with it, and the sheet's title stays in view while the keyboard is open.
+- Each answer option is one screen-reader item with its selected state. Choosing a result announces it with the new progress, and a submission is announced on My jobs.
+- A field error moves focus to its field and scrolls it, with its message, into view above the bottom action bar.
+- Icons beside text that can wrap stay level with the first line, at every text size.
+- At large text sizes on narrow phones, the answer options drop their icons together and then stack as full-width rows, and button labels wrap instead of being cut.

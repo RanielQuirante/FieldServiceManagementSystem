@@ -13,6 +13,7 @@ The examples use the demo data that the API seeds in Development (see [database.
 - [Auth](#auth)
 - [Technicians](#technicians)
 - [Jobs](#jobs)
+- [Inspections](#inspections)
 - [Checklist templates](#checklist-templates)
 - [Infrastructure endpoints](#infrastructure-endpoints)
 
@@ -25,7 +26,7 @@ The examples use the demo data that the API seeds in Development (see [database.
 | Base path | `/api`. Every business endpoint lives under it. This is version 1 of the contract. |
 | Other paths | `/health/live`, `/health/ready`, and `/openapi/v1.json` in the Development and Testing environments only |
 | Versioning | Changes under `/api` are additive only. A breaking change gets a decision record and a parallel `/api/v2` route group. |
-| Methods | GET reads. POST creates a resource (`/api/jobs`) or performs an action (the auth actions). PUT replaces the state of a sub-resource (`/assignment`, `/status`). There is no PATCH and no DELETE. |
+| Methods | GET reads. POST creates a resource (`/api/jobs`) or performs an action (`/submission` and the auth actions). PUT replaces the state of a sub-resource (`/assignment`, `/status`, `/inspection`). There is no PATCH and no DELETE. |
 | Route ids | `{jobId}` must be a GUID. Any other value matches no route and returns 404 `resource.not-found`. |
 | Unknown input | Unknown query parameters and unknown JSON members are ignored. |
 
@@ -49,6 +50,7 @@ The examples use the demo data that the API seeds in Development (see [database.
 - **Job numbers** are integers starting at 1001. Clients display them as `JOB-` followed by the number, for example `JOB-1042`.
 - **`version`** is an unsigned 32-bit integer. It is opaque: a client sends back the last value it read and never compares or increments it.
 - **Counts** are 32-bit integers of 0 or more.
+- **Reading values** are JSON numbers from −99999999.99 to 99999999.99 with at most two decimal places, the range of the database column `numeric(10,2)`. The OpenAPI document types them as `number` with `format: double`, because that is how it describes a decimal; the two-decimal rule is the API's. A value with a third decimal, such as `54.125`, is a field error and is never rounded by the API. A number with more than 28 significant digits is rounded by the JSON parser before the check, so `54.0000000000000000000000000001` arrives as `54`; a number too large to read, such as `1e29`, is a field error. Trailing zeros carry no meaning: `54`, `54.0` and `54.00` are the same value, and responses may write `54.00`.
 
 | Enumeration | Values | Notes |
 |---|---|---|
@@ -58,6 +60,7 @@ The examples use the demo data that the API seeds in Development (see [database.
 | SessionClient | `Web`, `Mobile` | The `client` member of SignIn |
 | Trade | `Hvac`, `Electrical`, `Plumbing`, `FireSafety` | Interface labels: HVAC, Electrical, Plumbing, Fire safety |
 | JobHistoryAction | `Created`, `Assigned`, `Started`, `PutOnHold`, `Resumed`, `Completed`, `Cancelled` | |
+| InspectionResult | `Pass`, `Fail`, `NotApplicable` | Interface label for NotApplicable: N/A |
 
 Clients accept enumeration values they do not know and render them neutrally. Adding a value is still a contract change.
 
@@ -75,7 +78,7 @@ Clients accept enumeration values they do not know and render them neutrally. Ad
 - Length limits are counted in UTF-16 code units and match the database columns.
 - The API trims leading and trailing white space from request strings before storing them, except `password` and `refreshToken`, which are used exactly as sent.
 - An optional string that is empty after trimming is stored as `null`. A required string must contain a character that is not white space, except `password`, which may be white space only and is then checked like any other password.
-- **Control characters.** Single-line fields reject U+0000 to U+001F and U+007F to U+009F. Multi-line fields (`description`, `siteAccessNotes`, the status `note`) allow only line feed, carriage return and tab among them. Either violation is a field error keyed by the field.
+- **Control characters.** Single-line fields reject U+0000 to U+001F and U+007F to U+009F. Multi-line fields (`description`, `siteAccessNotes`, the status `note`, an inspection answer's `note` and `technicianNotes`) allow only line feed, carriage return and tab among them. Either violation is a field error keyed by the field.
 - Responses return strings as stored.
 
 ### Collections, paging, sorting and filtering
@@ -93,6 +96,8 @@ Clients accept enumeration values they do not know and render them neutrally. Ad
 | GetTechnicians `items` | `displayName` ascending, then `id` ascending |
 | GetChecklistTemplates `items` | `name` ascending |
 | `JobDetailsResponse.history` | `occurredAt` ascending; among equal instants a `Created` entry comes first; then `id` |
+| `InspectionResponse.items` and each item's `readingFields` | `position` ascending |
+| An answer's `readings` | The `position` of each reading's field, ascending |
 
 The `Created` tie-break exists because CreateJob with a technician writes its `Created` and `Assigned` entries in one transaction with the same instant.
 
@@ -170,8 +175,9 @@ The limiter runs after authentication and before authorization, so requests with
 |---|---|
 | Every endpoint | 1 MB |
 | SignIn, RefreshSession, SignOut, IssueSocketTicket | 16 KB |
+| SaveInspection | `answers` 1 to 100 entries, `readings` at most 10 per answer |
 
-A larger body returns 413 `request.too-large`.
+A larger body returns 413 `request.too-large`. Too many answers or readings is a field error (400), not a 413: the API stops reading the list at the first entry past the limit and returns that one error, keyed `answers` or `answers[i].readings`, without checking the entries.
 
 ### CORS
 
@@ -183,7 +189,7 @@ Browsers reach the API from the same origin, through the development proxy or th
 - **Policies.** `Administrator`, `Technician` and `AdministratorOrTechnician`. Every endpoint not listed as anonymous requires an authenticated user.
 - **Socket tickets.** The dashboard connects to the notification service with a short-lived ticket from IssueSocketTicket, never with its access token. The ticket is signed with a separate key that the API never accepts as a bearer token.
 - **Anonymous endpoints.** SignIn, RefreshSession, SignOut, `/health/live`, `/health/ready`, and `/openapi/v1.json` where it is served.
-- **Ownership.** A technician reads only the jobs assigned to them. Any other job returns 404 `job.not-found`, the same response as a job that does not exist. GetAssignedJobs always lists the caller's own jobs and accepts no technician id. Administrators read every job.
+- **Ownership.** A technician reads only the jobs assigned to them, and their inspections. Any other job returns 404 `job.not-found`, the same response as a job that does not exist. GetAssignedJobs always lists the caller's own jobs and accepts no technician id. Administrators read every job and every inspection.
 
 ### Concurrency and idempotency
 
@@ -192,7 +198,7 @@ Every job command carries the `version` the client last read. The API checks a c
 1. Authentication and the endpoint's policy: 401 or 403.
 2. Request validation: 400.
 3. The job, loaded through the ownership rule: 404.
-4. Referenced ids such as `technicianId`: 400 field errors.
+4. Referenced ids such as `technicianId`, `checklistItemId` and `readingFieldId`, and the answer rules of SaveInspection: 400 field errors.
 5. **Same state:** when the job already holds the requested state, the API returns 200 with the current job, writes nothing, adds no history entry and queues no event, whatever `version` was sent.
 6. Business rules on the current state: 409 with the rule's code.
 7. Saving with the client's `version` as the expected one. A stale version, or another write between steps 3 and 7, returns 409 `concurrency.conflict`.
@@ -201,15 +207,19 @@ Every job command carries the `version` the client last read. The API checks a c
 |---|---|---|
 | AssignJob | Status `Assigned` with the same technician | `job.not-assignable`, `technician.unavailable`, `concurrency.conflict` |
 | UpdateJobStatus | The job's status equals the requested status; the request's `note` is discarded | `job.invalid-transition`, `concurrency.conflict` |
+| SubmitJob | The job is `Completed`; the request's `technicianNotes` are discarded | `job.invalid-transition`, `inspection.incomplete`, `concurrency.conflict`; `inspection.locked` in a race (below) |
+| SaveInspection | Every listed answer equals the saved one: the same result, the same note after trimming and the same reading values (`54` equals `54.00`) | `inspection.locked`, `concurrency.conflict` |
 | CreateJob | None; it is not idempotent | `technician.unavailable` |
 
 - Every 409 means: refetch, explain, and let the user act again. When a stale version and a broken rule coincide, the rule's code wins, because rules are checked against the current state first. A missing hold note is also reported before a stale version.
+- SaveInspection reports every field error, template membership included, before `inspection.locked`, so a broken answer is a 400 even on a locked inspection.
 - Mutations are never retried automatically. An explicit Retry resends the same body, and the same-state check makes that safe after a lost response.
-- Two commands that race with the same `version` never both write. One succeeds; the other gets 409 `concurrency.conflict`, or 200 with no write when it reads the job after the winner has already moved it to the requested status (two Start requests). Only the success writes history and queues an event.
+- Two commands that race with the same `version` never both write. One succeeds; the other gets 409 `concurrency.conflict`, or 200 with no write when it reads the job after the winner has already moved it to the requested status (two Start requests, two submissions). Only the success writes history and queues an event.
+- **Inspection races.** A submission writes the inspection before the job, so the loser of two SubmitJob calls can get 409 `inspection.locked` instead of `concurrency.conflict`: the database refuses any change to an inspection that another request has just submitted. A SaveInspection that races a SubmitJob either lands first, and the submission then gets 409 `concurrency.conflict`, or gets 409 `inspection.locked` or `concurrency.conflict` itself. Two first saves of the same inspection give one 200 and one 409 `concurrency.conflict`. A submitted inspection never changes afterwards. Every case is handled the same way: refetch.
 
 ### Job events
 
-After a command commits, the API queues one event for it: `job.created` from CreateJob, `job.assigned` from AssignJob and `job.status-changed` from UpdateJobStatus. A same-state 200, any error response and a rolled-back save queue nothing. The event carries identifiers and statuses only, never personal data.
+After a command commits, the API queues one event for it: `job.created` from CreateJob, `job.assigned` from AssignJob, and `job.status-changed` from UpdateJobStatus and from SubmitJob (status `Completed`, previous status `InProgress`). SaveInspection queues no event. A same-state 200, any error response and a rolled-back save queue nothing. The event carries identifiers and statuses only, never personal data.
 
 - **Delivery.** When `Notifications:BaseUrl` is set (see [configuration.md](configuration.md)), one background dispatcher sends each event, in order, as a signed `POST {Notifications:BaseUrl}/internal/job-events` to the notification service, which relays it to the open dashboards. The request, the envelope and the signature follow [contracts/events.md](contracts/events.md). Without a base URL the API runs standalone and discards events.
 - **Correlation.** The request carries the `X-Correlation-ID` of the command that made the change, so one id links the command's request log, the dispatch and the notification service's entries.
@@ -239,7 +249,7 @@ No exception type, message or stack trace is returned outside Development.
 ### Field errors
 
 - `errors` maps a field path to a non-empty array of messages.
-- Keys are camelCase JSON paths without the `$.` prefix, for example `title` or `scheduledEnd`.
+- Keys are camelCase JSON paths without the `$.` prefix, for example `title`, `scheduledEnd`, `answers[2].note` or `answers[0].readings[1].value`. Indexes count from 0 in the order the request sent the entries.
 - Malformed JSON with a path, such as a wrong type, an unknown enumeration value, an explicit `null` or a duplicate member, is keyed by that path (`$.priority` becomes `priority`).
 - The key `body` is used when the body is sent as `application/json` but is not JSON at all, is missing although required, or has the wrong root type.
 - Query parameters are keyed by their name (`status`, `pageSize`).
@@ -261,10 +271,12 @@ No exception type, message or stack trace is returned outside Development.
 | `job.not-found` | 404 | The job was not found. | The job does not exist, or the technician is not assigned to it | Web: say the job no longer exists and go back to the list. Technician app: say the job is no longer assigned to you and reload the list. |
 | `resource.not-found` | 404 | The resource was not found. | No route matches, including a route id that is not a GUID | A client defect |
 | `request.method-not-allowed` | 405 | The method is not allowed for this resource. | The route exists but not for this method | A client defect |
-| `concurrency.conflict` | 409 | The job was changed by someone else. | A stale `version`, or a concurrent write detected while saving | Refetch the job, explain that someone else changed it, and let the user act again. |
-| `job.invalid-transition` | 409 | The job cannot move to that status. | UpdateJobStatus to a status the job's current status does not lead to, for example `OnHold` from `Assigned`, or any change to a `Completed` or `Cancelled` job | Refetch and offer only the new `allowedStatusChanges`. |
+| `concurrency.conflict` | 409 | The job was changed by someone else. | A stale `version`, or a concurrent write detected while saving | Refetch the job (and the inspection), explain that someone else changed it, and let the user act again. |
+| `job.invalid-transition` | 409 | The job cannot move to that status. | UpdateJobStatus to a status the job's current status does not lead to, for example `OnHold` from `Assigned`, or any change to a `Completed` or `Cancelled` job; SubmitJob for a job that is not `InProgress` | Refetch and offer only the new `allowedStatusChanges`. |
 | `job.not-assignable` | 409 | The job can no longer be assigned. | AssignJob on a job that is neither `Unassigned` nor `Assigned` | Refetch. The assign panel disappears because `canAssign` is false. |
 | `technician.unavailable` | 409 | The technician is not available. | The chosen technician is inactive or off shift | Refetch the technicians and ask for another choice. |
+| `inspection.incomplete` | 409 | The inspection checklist is not complete. | SubmitJob with unanswered checklist items, or before any answer was saved. The `detail` gives the count, for example "4 of 10 checklist items are unanswered." | Open the checklist and show how many items remain. |
+| `inspection.locked` | 409 | The inspection can no longer be changed. | SaveInspection after submission, or while the job is not `InProgress`; also a save or a submission that the database refuses because another request has just submitted the inspection | Refetch and show the inspection read-only. |
 | `request.too-large` | 413 | The request body is too large. | The body exceeds the endpoint's limit | A client defect |
 | `request.unsupported-media-type` | 415 | The request body must be JSON. | A body without `application/json`, or, on an endpoint with a body, any other `Content-Type` even when the body is empty | A client defect |
 | `rate-limit.exceeded` | 429 | Too many requests. | A rate limit was hit | Wait for `Retry-After`. |
@@ -338,12 +350,12 @@ A rule conflict carries a `detail`, for example AssignJob on a completed job:
 |---|---|---|
 | `UserReference` | `id` uuid, `displayName` string | Job `createdBy`; history `actor` and `technician` |
 | `JobTechnicianReference` | `id` uuid, `displayName` string, `trade` Trade | `assignedTechnician` in job details and job lists |
-| `ChecklistTemplateReference` | `id` uuid, `name` string, `trade` Trade | Job details |
+| `ChecklistTemplateReference` | `id` uuid, `name` string, `trade` Trade | Job details; the inspection's `template` |
 | `TechnicianJobReference` | `id` uuid, `number` int64, `status` JobStatus, `scheduledStart` date-time, `scheduledEnd` date-time | GetTechnicians `currentJob` and `nextJob` |
 
 ### JobDetailsResponse
 
-Returned by CreateJob, GetJobById, AssignJob and UpdateJobStatus.
+Returned by CreateJob, GetJobById, AssignJob, UpdateJobStatus and SubmitJob.
 
 | Member | Type | Null | Content |
 |---|---|---|---|
@@ -365,7 +377,7 @@ Returned by CreateJob, GetJobById, AssignJob and UpdateJobStatus.
 | `assignedTechnician` | JobTechnicianReference | yes | Null while `Unassigned`; kept on a cancelled job that had one |
 | `createdBy` | UserReference | no | |
 | `createdAt` | date-time | no | |
-| `updatedAt` | date-time | no | Changes on every status change and assignment |
+| `updatedAt` | date-time | no | Changes on every status change, assignment and inspection save |
 | `assignedAt` | date-time | yes | Latest assignment |
 | `startedAt` | date-time | yes | First start |
 | `completedAt` | date-time | yes | Set exactly when `Completed` |
@@ -381,20 +393,30 @@ Computed for the caller from the same transition table that enforces the command
 | Member | Type | Content |
 |---|---|---|
 | `allowedStatusChanges` | AllowedStatusChange[] | The UpdateJobStatus targets open to the caller now; `[]` when there are none |
+| `canSubmit` | SubmitAffordance | Whether SubmitJob would succeed now, with the checklist progress |
 | `canAssign` | boolean | AssignJob is open to the caller now |
 
 `AllowedStatusChange`: `status` (JobStatus), the status to send to UpdateJobStatus, and `requiresNote` (boolean), true when the change needs a `note` (Put on hold).
 
-| Caller and job status | `allowedStatusChanges` | `canAssign` |
-|---|---|---|
-| Administrator, `Unassigned` or `Assigned` | `[]` | true |
-| Administrator, `InProgress`, `OnHold`, `Completed` or `Cancelled` | `[]` | false |
-| Assigned technician, `Assigned` | `[{ "status": "InProgress", "requiresNote": false }]` (Start job) | false |
-| Assigned technician, `InProgress` | `[{ "status": "OnHold", "requiresNote": true }]` (Put on hold) | false |
-| Assigned technician, `OnHold` | `[{ "status": "InProgress", "requiresNote": false }]` (Resume) | false |
-| Assigned technician, `Completed` or `Cancelled` | `[]` | false |
+`SubmitAffordance`, also returned as the inspection's `affordances.canSubmit` with the same value:
 
-Other technicians never receive the job: it is a 404 for them. A client offers exactly the listed changes and asks for a note when `requiresNote` is true.
+| Member | Type | Content |
+|---|---|---|
+| `allowed` | boolean | SubmitJob would succeed now, apart from a stale `version` |
+| `blockingCode` | string or null | Null when allowed. Otherwise the error code SubmitJob would return, checked in this order: `auth.forbidden`, `job.invalid-transition`, `inspection.incomplete`. The interface text "Finish the inspection checklist first" maps to `inspection.incomplete`. |
+| `answered` | int32 | Checklist items with a saved answer |
+| `total` | int32 | Items in the job's checklist template |
+
+| Caller and job status | `allowedStatusChanges` | `canSubmit` | `canAssign` |
+|---|---|---|---|
+| Administrator, `Unassigned` or `Assigned` | `[]` | not allowed, `auth.forbidden` | true |
+| Administrator, `InProgress`, `OnHold`, `Completed` or `Cancelled` | `[]` | not allowed, `auth.forbidden` | false |
+| Assigned technician, `Assigned` | `[{ "status": "InProgress", "requiresNote": false }]` (Start job) | not allowed, `job.invalid-transition` | false |
+| Assigned technician, `InProgress` | `[{ "status": "OnHold", "requiresNote": true }]` (Put on hold) | allowed when `answered` equals `total`, otherwise `inspection.incomplete` | false |
+| Assigned technician, `OnHold` | `[{ "status": "InProgress", "requiresNote": false }]` (Resume) | not allowed, `job.invalid-transition` | false |
+| Assigned technician, `Completed` or `Cancelled` | `[]` | not allowed, `job.invalid-transition` | false |
+
+Other technicians never receive the job: it is a 404 for them. A client offers exactly the listed changes and asks for a note when `requiresNote` is true. Completing a job is SubmitJob, so `Completed` never appears in `allowedStatusChanges`; the technician app adds "Complete job" beside them and disables it while `canSubmit.allowed` is false.
 
 ### JobHistoryEntryResponse
 
@@ -428,6 +450,35 @@ One row of GetJobs.
 | `updatedAt` | date-time | no |
 | `version` | uint32 | no |
 
+### InspectionResponse
+
+Returned by GetInspection and SaveInspection.
+
+| Member | Type | Null | Content |
+|---|---|---|---|
+| `jobId` | uuid | no | |
+| `jobNumber` | int64 | no | |
+| `jobStatus` | JobStatus | no | |
+| `template` | ChecklistTemplateReference | no | The job's checklist template |
+| `items` | InspectionItemResponse[] | no | Every item of the template, by `position` |
+| `progress` | InspectionProgress | no | |
+| `startedAt` | date-time | yes | The job's first start; time on site runs from here |
+| `completedAt` | date-time | yes | The job's completion |
+| `updatedAt` | date-time | yes | The last change to the inspection; null before the first save |
+| `submittedAt` | date-time | yes | Set by SubmitJob |
+| `technicianNotes` | string | yes | Set by SubmitJob, up to 2000 characters |
+| `version` | uint32 | no | The job's `version`, which also guards the inspection. Send it with SaveInspection and SubmitJob. |
+| `affordances` | InspectionAffordances | no | |
+
+- `InspectionItemResponse`: `checklistItemId` uuid; `position` int32, from 1; `prompt` string, up to 200 characters; `readingFields` InspectionReadingFieldResponse[]; `answer` InspectionAnswerResponse or null.
+- `InspectionReadingFieldResponse`: `readingFieldId` uuid; `position` int32; `label` string, up to 60; `unit` string, up to 16.
+- `InspectionAnswerResponse`: `result` InspectionResult; `note` string or null, up to 1000; `readings` InspectionReadingResponse[], ordered by their field's position; `answeredAt` date-time, the save that last changed this answer.
+- `InspectionReadingResponse`: `readingFieldId` uuid; `value` number with at most two decimal places.
+- `InspectionProgress`: `answered`, `total`, `passCount`, `failCount` and `notApplicableCount`, all int32. Only answers to items of the job's template count.
+- `InspectionAffordances`: `canEdit` (boolean), true only for the assigned technician while the job is `InProgress` and the inspection is not submitted; `canSubmit` (SubmitAffordance), the same value as on the job.
+
+The `version` is read before the answers, so a response never pairs answers with a newer version than they were saved under.
+
 ## Endpoint index
 
 | Feature | Operation | Method and route | Access | Rate limit | Body limit | Success |
@@ -443,12 +494,15 @@ One row of GetJobs.
 | Jobs | GetJobById | `GET /api/jobs/{jobId}` | AdministratorOrTechnician, own jobs only for a technician | Global | | 200 `JobDetailsResponse` |
 | Jobs | AssignJob | `PUT /api/jobs/{jobId}/assignment` | Administrator | Global | 1 MB | 200 `JobDetailsResponse` |
 | Jobs | UpdateJobStatus | `PUT /api/jobs/{jobId}/status` | Technician, own jobs only | Global | 1 MB | 200 `JobDetailsResponse` |
+| Jobs | SubmitJob | `POST /api/jobs/{jobId}/submission` | Technician, own jobs only | Global | 1 MB | 200 `JobDetailsResponse` |
+| Inspections | GetInspection | `GET /api/jobs/{jobId}/inspection` | AdministratorOrTechnician, own jobs only for a technician | Global | | 200 `InspectionResponse` |
+| Inspections | SaveInspection | `PUT /api/jobs/{jobId}/inspection` | Technician, own jobs only | Global | 1 MB | 200 `InspectionResponse` |
 | ChecklistTemplates | GetChecklistTemplates | `GET /api/checklist-templates` | Administrator | Global | | 200 `GetChecklistTemplatesResponse` |
 | Infrastructure | Liveness | `GET /health/live` | Anonymous | None | | 200 text |
 | Infrastructure | Readiness | `GET /health/ready` | Anonymous | None | | 200 or 503 text |
 | Infrastructure | OpenAPI document | `GET /openapi/v1.json` (Development and Testing) | Anonymous | None | | 200 JSON |
 
-OpenAPI tags equal the feature names, and operation ids equal the operation names. GET endpoints are safe and idempotent and read no body; AssignJob and UpdateJobStatus are idempotent through their same-state rules. Every response carries `X-Correlation-ID`, `Cache-Control: no-store` and the security headers listed above; the examples show only the first two.
+OpenAPI tags equal the feature names, and operation ids equal the operation names. GET endpoints are safe and idempotent and read no body; AssignJob, UpdateJobStatus, SubmitJob and SaveInspection are idempotent through their same-state rules. Every response carries `X-Correlation-ID`, `Cache-Control: no-store` and the security headers listed above; the examples show only the first two.
 
 ## Auth
 
@@ -922,7 +976,11 @@ X-Correlation-ID: b2b49504-1cd6-4228-9a7b-85f907ad5a91
     { "id": "01a1549f-79e0-71ae-8e7f-1896175a9d87", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:45:00.000Z" }
   ],
   "version": 48241,
-  "affordances": { "allowedStatusChanges": [], "canAssign": true }
+  "affordances": {
+    "allowedStatusChanges": [],
+    "canSubmit": { "allowed": false, "blockingCode": "auth.forbidden", "answered": 0, "total": 8 },
+    "canAssign": true
+  }
 }
 ```
 
@@ -1080,6 +1138,7 @@ X-Correlation-ID: caa8b68d-452a-4513-8595-cb1ddf78a023
   "version": 48213,
   "affordances": {
     "allowedStatusChanges": [{ "status": "OnHold", "requiresNote": true }],
+    "canSubmit": { "allowed": false, "blockingCode": "inspection.incomplete", "answered": 6, "total": 10 },
     "canAssign": false
   }
 }
@@ -1173,7 +1232,11 @@ X-Correlation-ID: 68849554-8207-48bf-94c6-63a5151a3d93
     { "id": "01a154a2-3900-7138-bfc1-d54f96a71fa5", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-3a08-7fbf-89df-c40260fc01fa", "displayName": "Priya Natarajan" }, "note": null, "occurredAt": "2026-10-19T14:48:00.000Z" }
   ],
   "version": 48263,
-  "affordances": { "allowedStatusChanges": [], "canAssign": true }
+  "affordances": {
+    "allowedStatusChanges": [],
+    "canSubmit": { "allowed": false, "blockingCode": "auth.forbidden", "answered": 0, "total": 8 },
+    "canAssign": true
+  }
 }
 ```
 
@@ -1181,7 +1244,7 @@ Sending the same body again returns the same job with `version` 48263 and change
 
 ### UpdateJobStatus: `PUT /api/jobs/{jobId}/status`
 
-The assigned technician starts, puts on hold or resumes a job. Completing a job is not a status change and is not accepted here.
+The assigned technician starts, puts on hold or resumes a job. Completing a job is not a status change and is not accepted here: it is [SubmitJob](#submitjob-post-apijobsjobidsubmission).
 
 | Item | Value |
 |---|---|
@@ -1277,6 +1340,7 @@ X-Correlation-ID: 23191419-f180-45eb-bcaf-8d9912281343
   "version": 48230,
   "affordances": {
     "allowedStatusChanges": [{ "status": "OnHold", "requiresNote": true }],
+    "canSubmit": { "allowed": false, "blockingCode": "inspection.incomplete", "answered": 0, "total": 8 },
     "canAssign": false
   }
 }
@@ -1306,6 +1370,307 @@ Sending `OnHold` for JOB-1047 while it is still `Assigned`:
   "code": "job.invalid-transition",
   "correlationId": "9b0e4c71-2d5a-4f86-a3c1-7e2f9d4b6a05",
   "traceId": "00-7c3a9e1f5b2d4086a1e9c7b35d2f8e40-5e1a9c3b7d2f4a60-00"
+}
+```
+
+### SubmitJob: `POST /api/jobs/{jobId}/submission`
+
+The assigned technician completes the job and submits its inspection in one transaction.
+
+| Item | Value |
+|---|---|
+| Access | Technician, only for the jobs assigned to them |
+| Rate limit | Global |
+| Success | 200 `JobDetailsResponse` with status `Completed` and the new `version`. The job and its inspection are read-only from then on. |
+| Side effects | In one transaction, at one instant: the job's `status`, `completedAt` and `updatedAt`; the inspection's `submittedAt` and `technicianNotes`; a `Completed` history entry by the technician, without a note. After the database commit, one `job.status-changed` event with status `Completed` and previous status `InProgress` (see [Job events](#job-events)). |
+| Same state | Already `Completed`: 200 with the current job, no write, no history entry and no event, whatever `version` or `technicianNotes` was sent |
+| Idempotency | Through the same-state rule, so an explicit retry after a lost response is safe |
+
+Request body `SubmitJobRequest`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `technicianNotes` | string or null | no | Up to 2000 characters; multi-line. Trimmed; empty after trimming is stored as `null`. |
+| `siteSafetyConfirmed` | boolean | yes | Must be `true`; `false`, `null` or a missing member is 400 keyed `siteSafetyConfirmed` |
+| `version` | uint32 | yes | The job's `version` as last read, for example from the SaveInspection response |
+
+Errors, checked in the order of [Concurrency and idempotency](#concurrency-and-idempotency):
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `request.validation-failed` | A missing or malformed member; `siteSafetyConfirmed` not `true`; `technicianNotes` over 2000 characters or with control characters. These are request rules, so they come first, even for a job that is already `Completed`. |
+| 404 | `job.not-found` | The job does not exist or is not assigned to the caller. Both cases return the same response. |
+| 409 | `job.invalid-transition` | The job is not `InProgress`; a job on hold must be resumed first. The `detail` names the job and its status, for example "JOB-1047 cannot move from Assigned to Completed." |
+| 409 | `inspection.incomplete` | An item has no saved answer, or no answer was ever saved. The `detail` gives the count, for example "4 of 10 checklist items are unanswered." |
+| 409 | `concurrency.conflict` | A stale `version`, for example after a save from another device, or another write to the job while saving |
+| 409 | `inspection.locked` | Only in a race: another request submitted the inspection after this request read it (see [Concurrency and idempotency](#concurrency-and-idempotency)). Refetch: the job is already `Completed`. |
+
+An administrator gets 403 `auth.forbidden`. Nothing is written and no event is queued when the request fails.
+
+Example, Marco Reyes submits JOB-1042 at 10:58 AM with the `version` that SaveInspection returned:
+
+```http
+POST /api/jobs/01a15415-3b40-79a4-859f-2cf627f64d02/submission HTTP/1.1
+Host: 10.0.2.2:5080
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+X-Correlation-ID: 2b5cc4d7-0ef9-4d7c-8a3d-ec81067ed1e7
+```
+
+```json
+{
+  "technicianNotes": "Recharged the system to spec and cleaned the condenser coil. Unit is holding 54 °F supply air. Fan motor bearing is noisy; replacement quote requested.",
+  "siteSafetyConfirmed": true,
+  "version": 48377
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: 2b5cc4d7-0ef9-4d7c-8a3d-ec81067ed1e7
+```
+
+```json
+{
+  "id": "01a15415-3b40-79a4-859f-2cf627f64d02",
+  "number": 1042,
+  "title": "Rooftop HVAC unit not cooling",
+  "description": "Rooftop unit RTU-2 runs but is not cooling. The waiting room is at 81°F. The customer reports the problem started on Saturday afternoon.",
+  "priority": "High",
+  "status": "Completed",
+  "customerName": "Brightwater Medical Clinic",
+  "siteAddress": "214 Harbor Road, Suite 3",
+  "siteAccessNotes": "Roof access through the east stairwell. Ask reception for the roof key.",
+  "contactName": "Nina Alvarez",
+  "contactPhone": "(555) 014-6620",
+  "equipment": "RTU-2, 10-ton packaged rooftop unit",
+  "scheduledStart": "2026-10-19T13:00:00.000Z",
+  "scheduledEnd": "2026-10-19T15:00:00.000Z",
+  "checklistTemplate": { "id": "01a15175-3c00-7000-8000-000102000000", "name": "Rooftop HVAC service", "trade": "Hvac" },
+  "assignedTechnician": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes", "trade": "Hvac" },
+  "createdBy": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" },
+  "createdAt": "2026-10-19T12:14:00.000Z",
+  "updatedAt": "2026-10-19T14:58:00.000Z",
+  "assignedAt": "2026-10-19T12:20:00.000Z",
+  "startedAt": "2026-10-19T13:12:00.000Z",
+  "completedAt": "2026-10-19T14:58:00.000Z",
+  "cancelledAt": null,
+  "history": [
+    { "id": "01a15415-3b40-77f2-9c94-972cf43879ed", "action": "Created", "fromStatus": null, "toStatus": "Unassigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": null, "note": null, "occurredAt": "2026-10-19T12:14:00.000Z" },
+    { "id": "01a1541a-b980-77ba-b9a7-db809866381b", "action": "Assigned", "fromStatus": "Unassigned", "toStatus": "Assigned", "actor": { "id": "01a0f6b1-2680-7152-92a5-bb4d3a6df7ca", "displayName": "Dana Whitfield" }, "technician": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "note": null, "occurredAt": "2026-10-19T12:20:00.000Z" },
+    { "id": "01a1544a-5500-71c6-b856-aa0a8dd0fb9c", "action": "Started", "fromStatus": "Assigned", "toStatus": "InProgress", "actor": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "technician": null, "note": null, "occurredAt": "2026-10-19T13:12:00.000Z" },
+    { "id": "01a154ab-60c0-7ff7-b99b-3a4ca2cef8ab", "action": "Completed", "fromStatus": "InProgress", "toStatus": "Completed", "actor": { "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e", "displayName": "Marco Reyes" }, "technician": null, "note": null, "occurredAt": "2026-10-19T14:58:00.000Z" }
+  ],
+  "version": 48402,
+  "affordances": {
+    "allowedStatusChanges": [],
+    "canSubmit": { "allowed": false, "blockingCode": "job.invalid-transition", "answered": 10, "total": 10 },
+    "canAssign": false
+  }
+}
+```
+
+Submitting the same job before the checklist is complete, at 6 of 10:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "The inspection checklist is not complete.",
+  "status": 409,
+  "detail": "4 of 10 checklist items are unanswered.",
+  "instance": "/api/jobs/01a15415-3b40-79a4-859f-2cf627f64d02/submission",
+  "code": "inspection.incomplete",
+  "correlationId": "4f1d2c8e-9a3b-4e6f-8c7d-1b2a3c4d5e6f",
+  "traceId": "00-3d8f1a2b4c5e6f708192a3b4c5d6e7f8-1a2b3c4d5e6f7081-00"
+}
+```
+
+## Inspections
+
+Route group `/api/jobs/{jobId}/inspection`. Each operation sets its own policy. A job's inspection is its checklist: the items of the job's checklist template, the technician's answers with their readings, and the submission. It is a draft that the technician saves in parts, and it becomes read-only when SubmitJob completes the job.
+
+### GetInspection: `GET /api/jobs/{jobId}/inspection`
+
+The technician's checklist and review screens, and the administrator's read-only inspection report.
+
+| Item | Value |
+|---|---|
+| Access | AdministratorOrTechnician. Administrators read any job's inspection; a technician reads only those of the jobs assigned to them. |
+| Success | 200 `InspectionResponse`, also before the first save: every `answer` is `null`, `updatedAt` is `null` and `progress` counts 0 answered |
+| Errors | 404 `job.not-found`: the job does not exist, or a technician is not assigned to it. Both cases return the same response. |
+
+Example, JOB-1042 at 10:42 AM, after items 01 to 03 were saved at 9:31 AM and items 04 to 06 at 9:50 AM:
+
+```http
+GET /api/jobs/01a15415-3b40-79a4-859f-2cf627f64d02/inspection HTTP/1.1
+Host: 10.0.2.2:5080
+Authorization: Bearer {accessToken}
+X-Correlation-ID: 9e4b1c7d-2f38-4a65-8d0e-7c1b5a3f6e92
+```
+
+```json
+{
+  "jobId": "01a15415-3b40-79a4-859f-2cf627f64d02",
+  "jobNumber": 1042,
+  "jobStatus": "InProgress",
+  "template": { "id": "01a15175-3c00-7000-8000-000102000000", "name": "Rooftop HVAC service", "trade": "Hvac" },
+  "items": [
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202010000", "position": 1, "prompt": "Lock out and tag out unit power", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T13:31:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202020000", "position": 2, "prompt": "Replace return air filters", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T13:31:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202030000", "position": 3, "prompt": "Check refrigerant pressures", "readingFields": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302030100", "position": 1, "label": "Suction", "unit": "psi" }, { "readingFieldId": "01a15175-3c00-7000-8000-000302030200", "position": 2, "label": "Discharge", "unit": "psi" }], "answer": { "result": "Pass", "note": null, "readings": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302030100", "value": 118.00 }, { "readingFieldId": "01a15175-3c00-7000-8000-000302030200", "value": 285.00 }], "answeredAt": "2026-10-19T13:31:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202040000", "position": 4, "prompt": "Clean condenser coil", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T13:50:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202050000", "position": 5, "prompt": "Inspect condenser fan motor and bearings", "readingFields": [], "answer": { "result": "Fail", "note": "Bearing noise at start-up. Recommend motor replacement within 30 days.", "readings": [], "answeredAt": "2026-10-19T13:50:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202060000", "position": 6, "prompt": "Check belts and pulleys", "readingFields": [], "answer": { "result": "NotApplicable", "note": "Direct-drive unit", "readings": [], "answeredAt": "2026-10-19T13:50:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202070000", "position": 7, "prompt": "Clear condensate drain line", "readingFields": [], "answer": null },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202080000", "position": 8, "prompt": "Record supply air temperature", "readingFields": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302080100", "position": 1, "label": "Supply air temperature", "unit": "°F" }], "answer": null },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202090000", "position": 9, "prompt": "Test thermostat and economizer controls", "readingFields": [], "answer": null },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202100000", "position": 10, "prompt": "Restore power and confirm normal operation", "readingFields": [], "answer": null }
+  ],
+  "progress": { "answered": 6, "total": 10, "passCount": 4, "failCount": 1, "notApplicableCount": 1 },
+  "startedAt": "2026-10-19T13:12:00.000Z",
+  "completedAt": null,
+  "updatedAt": "2026-10-19T13:50:00.000Z",
+  "submittedAt": null,
+  "technicianNotes": null,
+  "version": 48213,
+  "affordances": {
+    "canEdit": true,
+    "canSubmit": { "allowed": false, "blockingCode": "inspection.incomplete", "answered": 6, "total": 10 }
+  }
+}
+```
+
+After submission the same request returns `jobStatus` `Completed`, `completedAt` and `submittedAt` at the submission instant, the `technicianNotes`, `canEdit` false and `canSubmit` blocked by `job.invalid-transition`. Time on site is `startedAt` to `completedAt`.
+
+### SaveInspection: `PUT /api/jobs/{jobId}/inspection`
+
+Saves any subset of answers as a draft. The first save creates the inspection. The technician app saves when the technician leaves the checklist and before Review and submit.
+
+| Item | Value |
+|---|---|
+| Access | Technician, only for the jobs assigned to them |
+| Rate limit | Global |
+| Success | 200 `InspectionResponse` with the job's new `version` |
+| Side effects | Upserts the listed answers and their readings, in checklist order; sets the inspection's `updatedAt` and the job's `updatedAt` at one instant. Every save that changes an answer moves the job's `version`, even in the same millisecond as the job's previous write. |
+| Same state | Every listed answer equals the saved one: 200 with the current inspection, no write, `version` unchanged, whatever `version` was sent |
+| Event | None |
+
+Request body `SaveInspectionRequest`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `answers` | InspectionAnswerInput[] | yes | 1 to 100 entries, each for a different item, none `null` |
+| `version` | uint32 | yes | The job's `version` as last read |
+
+`InspectionAnswerInput`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `checklistItemId` | uuid | yes | An item of the job's checklist template |
+| `result` | InspectionResult | yes | `Pass`, `Fail` or `NotApplicable` |
+| `note` | string or null | for `Fail` | Up to 1000 characters; multi-line. A `Fail` needs a note that is not blank after trimming every kind of white space. Trimmed; empty after trimming is stored as `null`. |
+| `readings` | InspectionReadingInput[] or null | for `Pass` on an item with reading fields | At most 10, none `null`. A `Pass` supplies every reading field of its item exactly once; a `NotApplicable` answer supplies none; a `Fail` may supply any of them. |
+
+`InspectionReadingInput`:
+
+| Member | Type | Required | Rules |
+|---|---|---|---|
+| `readingFieldId` | uuid | yes | A reading field of this answer's item, not repeated |
+| `value` | number | yes | −99999999.99 to 99999999.99 with at most two decimal places. A third decimal is refused, never rounded by the API; numbers with more than 28 significant digits are rounded by the JSON parser before the check (see [Identifiers, numbers and enumerations](#identifiers-numbers-and-enumerations)). |
+
+- A listed answer replaces that item's saved answer completely, readings included: a reading the new answer does not list is removed. Unlisted items stay as they are.
+- An answer cannot be cleared back to unanswered.
+- `answeredAt` changes only when the answer changes.
+
+Errors, checked in the order of [Concurrency and idempotency](#concurrency-and-idempotency). Every field error is reported before `inspection.locked`, and all of them in one response:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `request.validation-failed` | The rules above, keyed by the path of the member to fix, for example `answers[2].note`, `answers[0].readings`, `answers[1].checklistItemId` or `answers[0].readings[1].value` |
+| 404 | `job.not-found` | The job does not exist or is not assigned to the caller. It is reported before an unknown item. |
+| 409 | `inspection.locked` | The inspection was submitted ("The inspection was submitted and can no longer be changed."), or the job is not `InProgress` ("JOB-1047 is Assigned, so its inspection cannot be changed."); also a save that reaches the database after another request submitted the inspection |
+| 409 | `concurrency.conflict` | A stale `version`, for example from a second device, or a first save racing another first save |
+
+An administrator gets 403 `auth.forbidden`. Nothing is written when the request fails.
+
+Example, Marco Reyes answers items 07 to 10 of JOB-1042 at 10:56 AM:
+
+```http
+PUT /api/jobs/01a15415-3b40-79a4-859f-2cf627f64d02/inspection HTTP/1.1
+Host: 10.0.2.2:5080
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+X-Correlation-ID: fcc23b2a-1b8a-4e99-8d09-7751ed12657f
+```
+
+```json
+{
+  "answers": [
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202070000", "result": "Pass", "note": null, "readings": null },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202080000", "result": "Pass", "note": null, "readings": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302080100", "value": 54 }] },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202090000", "result": "Pass", "note": null, "readings": null },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202100000", "result": "Pass", "note": null, "readings": null }
+  ],
+  "version": 48213
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: fcc23b2a-1b8a-4e99-8d09-7751ed12657f
+```
+
+```json
+{
+  "jobId": "01a15415-3b40-79a4-859f-2cf627f64d02",
+  "jobNumber": 1042,
+  "jobStatus": "InProgress",
+  "template": { "id": "01a15175-3c00-7000-8000-000102000000", "name": "Rooftop HVAC service", "trade": "Hvac" },
+  "items": [
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202010000", "position": 1, "prompt": "Lock out and tag out unit power", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T13:31:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202020000", "position": 2, "prompt": "Replace return air filters", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T13:31:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202030000", "position": 3, "prompt": "Check refrigerant pressures", "readingFields": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302030100", "position": 1, "label": "Suction", "unit": "psi" }, { "readingFieldId": "01a15175-3c00-7000-8000-000302030200", "position": 2, "label": "Discharge", "unit": "psi" }], "answer": { "result": "Pass", "note": null, "readings": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302030100", "value": 118.00 }, { "readingFieldId": "01a15175-3c00-7000-8000-000302030200", "value": 285.00 }], "answeredAt": "2026-10-19T13:31:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202040000", "position": 4, "prompt": "Clean condenser coil", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T13:50:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202050000", "position": 5, "prompt": "Inspect condenser fan motor and bearings", "readingFields": [], "answer": { "result": "Fail", "note": "Bearing noise at start-up. Recommend motor replacement within 30 days.", "readings": [], "answeredAt": "2026-10-19T13:50:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202060000", "position": 6, "prompt": "Check belts and pulleys", "readingFields": [], "answer": { "result": "NotApplicable", "note": "Direct-drive unit", "readings": [], "answeredAt": "2026-10-19T13:50:00.000Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202070000", "position": 7, "prompt": "Clear condensate drain line", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T14:56:03.250Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202080000", "position": 8, "prompt": "Record supply air temperature", "readingFields": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302080100", "position": 1, "label": "Supply air temperature", "unit": "°F" }], "answer": { "result": "Pass", "note": null, "readings": [{ "readingFieldId": "01a15175-3c00-7000-8000-000302080100", "value": 54.00 }], "answeredAt": "2026-10-19T14:56:03.250Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202090000", "position": 9, "prompt": "Test thermostat and economizer controls", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T14:56:03.250Z" } },
+    { "checklistItemId": "01a15175-3c00-7000-8000-000202100000", "position": 10, "prompt": "Restore power and confirm normal operation", "readingFields": [], "answer": { "result": "Pass", "note": null, "readings": [], "answeredAt": "2026-10-19T14:56:03.250Z" } }
+  ],
+  "progress": { "answered": 10, "total": 10, "passCount": 8, "failCount": 1, "notApplicableCount": 1 },
+  "startedAt": "2026-10-19T13:12:00.000Z",
+  "completedAt": null,
+  "updatedAt": "2026-10-19T14:56:03.250Z",
+  "submittedAt": null,
+  "technicianNotes": null,
+  "version": 48377,
+  "affordances": {
+    "canEdit": true,
+    "canSubmit": { "allowed": true, "blockingCode": null, "answered": 10, "total": 10 }
+  }
+}
+```
+
+Sending the same body again returns the inspection unchanged with `version` 48377. A body whose third answer is a `Fail` without a note, and whose reading has a third decimal:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more fields are invalid.",
+  "status": 400,
+  "instance": "/api/jobs/01a15415-3b40-79a4-859f-2cf627f64d02/inspection",
+  "errors": {
+    "answers[1].readings[0].value": ["Enter a value from -99999999.99 to 99999999.99 with at most two decimal places."],
+    "answers[2].note": ["Describe the problem for a failed item."]
+  },
+  "code": "request.validation-failed",
+  "correlationId": "c3a7e1d9-5b2f-4c86-9e0a-7d1f3b5c9a24",
+  "traceId": "00-9a1b2c3d4e5f60718293a4b5c6d7e8f9-0a1b2c3d4e5f6071-00"
 }
 ```
 
