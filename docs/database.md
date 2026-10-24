@@ -784,9 +784,9 @@ The aggregate root and the concurrency boundary.
 | `pk_jobs` | `id` | yes | Job details and every command |
 | `ix_jobs_number` | `number` | yes | Uniqueness of job numbers. Search does not use it, because it matches `JOB-{number}` as a substring. |
 | `ix_jobs_updated_at_id` | `updated_at DESC, id DESC` | no | The job list without a status filter, ordered by `updated_at DESC, id DESC` with offset paging |
-| `ix_jobs_status_updated_at_id` | `status, updated_at DESC, id DESC` | no | The job list filtered by status; the status facet counts; the dashboard's open-job figures, its Completed and Cancelled counts in the time window, and its list of jobs without a technician |
-| `ix_jobs_assigned_technician_id_status` | `assigned_technician_id, status` | no | A technician's assigned jobs; the open-job counts and the current or next job per technician; the technician filter of the job list; foreign-key support |
-| `ix_jobs_scheduled_start` | `scheduled_start` | no | Range and order on `scheduled_start` for the dashboard's unassigned-job queries at scale |
+| `ix_jobs_status_updated_at_id` | `status, updated_at DESC, id DESC` | no | The job list filtered by status; the status facet counts; the current and next job per technician; the dashboard's open-job figures, its Completed and Cancelled counts in the time window, and its list of jobs without a technician |
+| `ix_jobs_assigned_technician_id_status` | `assigned_technician_id, status` | no | A technician's assigned jobs; the open-job count per technician; the technician filter of the job list; foreign-key support |
+| `ix_jobs_scheduled_start` | `scheduled_start` | no | No current query needs it. When many jobs have no technician, the planner can read the dashboard's list of them through this index in `scheduled_start` order, which also visits every job scheduled earlier and is slower than reading the unassigned jobs alone. A later migration can drop it or replace it with an index on `(status, scheduled_start, number)`. |
 | `ix_jobs_checklist_template_id` | `checklist_template_id` | no | Foreign-key support |
 | `ix_jobs_created_by_user_id` | `created_by_user_id` | no | Foreign-key support |
 

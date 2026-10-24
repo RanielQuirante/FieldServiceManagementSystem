@@ -79,7 +79,7 @@ The default is the value in `appsettings.json`, or the framework's own when that
 | `Notifications:BaseUrl` (`Notifications__BaseUrl`) | String: an absolute `http` or `https` URL, or empty | Empty | Base URL of the notification service. After each committed create, assignment or status change, the API posts a signed job event to `<base URL>/internal/job-events`; a trailing `/` is ignored. When it is empty, the API queues and sends no job events and runs on its own | No | `appsettings.Development.json`; Compose; platform |
 | `Notifications:WebhookSecret` (`Notifications__WebhookSecret`) | String: `whsec_` followed by standard base64 of 32 bytes or more | None; required when `Notifications:BaseUrl` is set | Secret that signs each job event in the Standard Webhooks format. The notification service must list the same value in `WEBHOOK_SECRETS`. It must differ from both `Auth` keys | Yes | User-secrets; test host; Compose; secret store |
 | `Cors:AllowedOrigins` (`Cors__AllowedOrigins__0` and up) | Array of origins, each `scheme://host` or `scheme://host:port` | Empty | Browser origins allowed by the CORS policy. Traffic through the Vite proxy or nginx is same-origin and does not need them | No | `appsettings.Development.json`; Compose; platform |
-| `ForwardedHeaders:KnownProxies` (`ForwardedHeaders__KnownProxies__0` and up) | Array of IP addresses | Empty: the built-in loopback defaults apply | Proxy addresses trusted for `X-Forwarded-For` and `X-Forwarded-Proto`, with a forward limit of 1; `X-Forwarded-Host` is never used. When either forwarded-header list has an entry, the two lists replace the built-in loopback defaults | No | Compose; platform |
+| `ForwardedHeaders:KnownProxies` (`ForwardedHeaders__KnownProxies__0` and up) | Array of IP addresses | Empty: the built-in loopback defaults apply in Development and Testing; required in every other environment | Proxy addresses trusted for `X-Forwarded-For` and `X-Forwarded-Proto`, with a forward limit of 1; `X-Forwarded-Host` is never used. When either forwarded-header list has an entry, the two lists replace the built-in loopback defaults | No | Compose; platform |
 | `ForwardedHeaders:KnownNetworks` (`ForwardedHeaders__KnownNetworks__0` and up) | Array of networks in CIDR notation | Empty | Proxy networks. Empty in every environment: no network range is trusted, and outside Development and Testing the API refuses an entry | No | `appsettings.json` |
 | `Seed:DemoData` (`Seed__DemoData`) | Boolean | `false` | Lets the API seed the demo data at startup. Refused in Production | No | `appsettings.Development.json`; Compose |
 | `Seed:DemoPassword` (`Seed__DemoPassword`) | String of 12 characters or more | None; required when `Seed:DemoData` is `true` | Password of every demo account | Yes, local only | User-secrets; Compose |
@@ -105,7 +105,7 @@ The default is the value in `appsettings.json`, or the framework's own when that
 | `Notifications:BaseUrl` | `http://127.0.0.1:5090` | Empty | `http://notifications:5090` | Private `https` URL of the service |
 | `Notifications:WebhookSecret` | Random value from `create-dev-env.mjs` | Random per run | `${NOTIFICATIONS_WEBHOOK_SECRET}` | Secret store |
 | `Cors:AllowedOrigins` | `http://localhost:5173`, `http://127.0.0.1:5173` | Set by the tests that need it | `http://localhost:8081`, `http://127.0.0.1:8081`, `http://localhost:5173`, `http://127.0.0.1:5173` | The public web origin, `https` only |
-| `ForwardedHeaders:KnownProxies` | Empty: the loopback defaults cover the Vite proxy and `vite preview` | Empty | `${WEB_IPV4_ADDRESS:-172.30.80.10}`, nginx's fixed address | nginx's address, one entry per instance; never the TLS proxy |
+| `ForwardedHeaders:KnownProxies` | Empty: the loopback defaults cover the Vite proxy and `vite preview` | Empty | `${WEB_IPV4_ADDRESS:-172.30.80.10}`, nginx's fixed address | nginx's address, one entry per instance; never the TLS proxy. Required, because the API refuses an empty list outside Development and Testing |
 | `ForwardedHeaders:KnownNetworks` | Empty | Empty | Empty | Empty |
 | `Seed:DemoData` | `true` | `false` | `true` | `false` |
 | `Seed:DemoPassword` | Random value from `create-dev-env.mjs` | Not set | `${SEED_DEMO_PASSWORD}` | Not set |
@@ -143,7 +143,8 @@ The API has exactly three settings files:
 | `appsettings.Development.json` | The Development host list, the Debug level with its overrides, `../../logs/api` with text console output, the two `:5173` origins, the local notification service URL and `Seed:DemoData` `true` |
 | `appsettings.Testing.json` | The `Warning` level, the file sink off and text console output |
 
-- **No Staging or Production file.** Staging values come from the Compose environment and Production values from the platform, so each value has one source. The same image runs in both environments, and a committed Production file could not hold the real values, such as the public host name.
+- **No Staging or Production file.** Staging values come from the Compose environment ([Staging in Compose](#staging-in-compose)) and Production values from the platform, so each value has one source. The same image runs in both environments, and a committed Production file could not hold the real values, such as the public host name.
+- **Only the base file in the image.** The API image's build context leaves out `appsettings.Development.json` and `appsettings.Testing.json`, so a container has `appsettings.json` alone, whatever its environment.
 - **No secrets.** No settings file holds a connection string, a key, the webhook secret or the demo password. They come from the user-secrets store in Development, from the test host in Testing, from `infrastructure/.env` through Compose in Staging, and from the secret store in Production.
 - **Repeated namespaces.** The Development file repeats the base file's namespaces, because configuration merges key by key: a broader `Microsoft` override alone would leave the base file's `Warning` overrides in force.
 - **SQL in Development logs.** `Microsoft.EntityFrameworkCore` at `Information` shows the executed SQL commands. Parameter values stay hidden, because sensitive-data logging is off everywhere.
@@ -178,7 +179,8 @@ The API validates its configuration after it builds the host and before it touch
 | `Seed:DemoPassword` | 12 characters or more when `Seed:DemoData` is `true` | All |
 | `Cors:AllowedOrigins` | Each entry is an absolute `http` or `https` origin, `scheme://host` or `scheme://host:port`, with no path, not even a trailing `/`; `*` is refused | All |
 | `Cors:AllowedOrigins` | Each entry uses `https` | Production |
-| `ForwardedHeaders:KnownProxies` | Each entry parses as an IP address | All |
+| `ForwardedHeaders:KnownProxies` | Each entry is the IP address of one host. An IPv4 entry is written as four decimal numbers without leading zeros, so shorthand, octal and hexadecimal forms are refused. Unspecified addresses (`0.0.0.0`, `::`), the broadcast address `255.255.255.255` and multicast addresses are refused, also in their IPv4-mapped IPv6 form, such as `::ffff:0.0.0.0` | All |
+| `ForwardedHeaders:KnownProxies` | At least one entry, because client addresses are taken only from a listed proxy | All except Development and Testing |
 | `ForwardedHeaders:KnownNetworks` | Each entry parses as a network in CIDR notation | All |
 | `ForwardedHeaders:KnownNetworks` | Empty | All except Development and Testing |
 | `AllowedHosts` | At least one host name, and no `*` entry | Production |
@@ -198,8 +200,9 @@ The API validates its configuration after it builds the host and before it touch
 | Variable | Used by | Purpose | Default | Secret | Format |
 |---|---|---|---|---|---|
 | `DB_HOST_PORT` | `db` port mapping | Host port of the container's PostgreSQL | `5433` | No | 1024 to 65535 |
-| `NETWORK_SUBNET` | Network `fieldservice-net` | Fixed subnet that holds nginx's fixed address | `172.30.80.0/24` | No | IPv4 CIDR. Change it only if it overlaps an existing Docker network, and then set a matching `WEB_IPV4_ADDRESS` |
-| `WEB_IPV4_ADDRESS` | `web` address; the API's only trusted proxy | nginx's fixed address | `172.30.80.10` | No | An IPv4 address inside `NETWORK_SUBNET`, with the host part `.10`. An address outside the subnet makes `docker compose up` fail |
+| `NETWORK_SUBNET` | Network `fieldservice-net` | Fixed subnet that holds nginx's fixed address | `172.30.80.0/24` | No | IPv4 CIDR. Change it only if it overlaps an existing Docker network, and then set a matching `NETWORK_IP_RANGE` and `WEB_IPV4_ADDRESS` |
+| `NETWORK_IP_RANGE` | Network `fieldservice-net` | The part of the subnet from which Docker assigns the gateway's address and every container address other than nginx's, so no other container can take nginx's fixed address | `172.30.80.128/25` | No | IPv4 CIDR inside `NETWORK_SUBNET` that leaves out `WEB_IPV4_ADDRESS`, such as the subnet's upper half. A range outside the subnet makes `docker compose up` fail; Docker does not check that it leaves the address out |
+| `WEB_IPV4_ADDRESS` | `web` address; the API's only trusted proxy | nginx's fixed address | `172.30.80.10` | No | An IPv4 address inside `NETWORK_SUBNET` and outside `NETWORK_IP_RANGE`, with the host part `.10`. An address outside the subnet makes `docker compose up` fail |
 | `POSTGRES_PASSWORD` | `db` | Superuser password, used by the database initialisation and by the test admin connection on a CI runner | Required | Yes | 32 characters, base64url |
 | `FIELDSERVICE_MIGRATOR_PASSWORD` | `db` bootstrap; `migrate` | Password of `fieldservice_migrator` | Required | Yes | 32 characters, base64url |
 | `FIELDSERVICE_APP_PASSWORD` | `db` bootstrap; `api` | Password of `fieldservice_app` | Required | Yes | 32 characters, base64url |
@@ -208,8 +211,63 @@ The API validates its configuration after it builds the host and before it touch
 | `NOTIFICATIONS_WEBHOOK_SECRET` | `api` `Notifications__WebhookSecret`; `notifications` `WEBHOOK_SECRETS` | Event signing secret | Required | Yes | `whsec_` followed by standard base64 of 32 random bytes |
 | `SEED_DEMO_PASSWORD` | `api` `Seed__DemoPassword` | Demo account password | Required | Yes, local only | `xxxx-xxxx-xxxx-xxxx`, 19 characters |
 
+- An `infrastructure/.env` written before `NETWORK_IP_RANGE` existed has no such key, and Compose uses the default. The next run of `create-dev-env.mjs` adds the key with an empty value and keeps every other value.
 - The `db` service fixes its superuser and maintenance database at `postgres`. The bootstrap script creates `fieldservice`, owned by `fieldservice_migrator`.
 - The bootstrap script runs once, on an empty volume, with the two role passwords from the container's environment. After `create-dev-env.mjs --force`, reset the volume with `down -v`.
+- A variable set in the shell overrides `infrastructure/.env` for that one command, for example `DB_HOST_PORT=5434 docker compose -f infrastructure/docker-compose.yml up -d --wait db`.
+
+## Staging in Compose
+
+`infrastructure/docker-compose.yml` holds the whole Staging configuration of the containers. There is no `appsettings.Staging.json`, and no service uses an `env_file`, so each container receives only the variables its `environment` block names. A value written `${VARIABLE}` comes from [`infrastructure/.env`](#compose-variables-infrastructureenv); the Compose file refuses to start when a required one is empty. How the services start, their hardening and their network are described in [deployment.md](deployment.md#running-the-staging-stack-with-compose).
+
+**`api`**
+
+| Variable | Value | Notes |
+|---|---|---|
+| `ASPNETCORE_ENVIRONMENT` | `Staging` | The Production code paths, with demo data allowed |
+| `AllowedHosts` | `localhost;127.0.0.1;10.0.2.2` | The host names of browsers, nginx's `Host` header, scripts and the Android emulator |
+| `ConnectionStrings__FieldService` | `Host=db;Port=5432;Database=fieldservice;Username=fieldservice_app;Password=${FIELDSERVICE_APP_PASSWORD};Maximum Pool Size=20;Application Name=fieldservice-api;GSS Encryption Mode=Disable` | The app role on the `db` service. `GSS Encryption Mode=Disable` turns off Npgsql's attempt to negotiate GSS (Kerberos) encryption, which the containers do not use |
+| `Auth__AccessTokenKey` | `${AUTH_ACCESS_TOKEN_KEY}` | |
+| `Auth__SocketTicketKey` | `${AUTH_SOCKET_TICKET_KEY}` | The same value as the notification service's `SOCKET_TICKET_KEY` |
+| `Notifications__BaseUrl` | `http://notifications:5090` | The notification service on the Compose network |
+| `Notifications__WebhookSecret` | `${NOTIFICATIONS_WEBHOOK_SECRET}` | The same value as the notification service's `WEBHOOK_SECRETS` |
+| `Cors__AllowedOrigins__0` to `__3` | `http://localhost:8081`, `http://127.0.0.1:8081`, `http://localhost:5173`, `http://127.0.0.1:5173` | nginx's origins, and the dev server's for the `backend` profile |
+| `ForwardedHeaders__KnownProxies__0` | `${WEB_IPV4_ADDRESS:-172.30.80.10}` | nginx's fixed address, from the same variable as `web`'s address, and the API's only trusted proxy. No `ForwardedHeaders__KnownNetworks__0` is set, and the API would refuse one in Staging |
+| `Seed__DemoData` | `true` | |
+| `Seed__DemoPassword` | `${SEED_DEMO_PASSWORD}` | |
+| `Logs__Directory` | `/app/logs` | Bind-mounted from the host's `logs/api` |
+| `Logs__ConsoleFormat` | `Json` | Compact JSON events on the console, for Docker's log driver |
+
+Every other setting comes from `appsettings.json`: the `Information` level with the `Warning` overrides, the file sink with 14 files of 50 MB, and the request body limit. The base image sets `ASPNETCORE_HTTP_PORTS=8080`.
+
+**`migrate`**
+
+| Variable | Value | Notes |
+|---|---|---|
+| `ConnectionStrings__Migrations` | `Host=db;Port=5432;Database=fieldservice;Username=fieldservice_migrator;Password=${FIELDSERVICE_MIGRATOR_PASSWORD};Application Name=fieldservice-migrator;GSS Encryption Mode=Disable` | The migrator role, read by the migrations bundle through the design-time database context |
+| `DOTNET_BUNDLE_EXTRACT_BASE_DIR` | `/tmp` | Where a self-contained bundle may unpack files, because the root filesystem is read-only |
+
+**`notifications`**
+
+| Variable | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `HOST` | `0.0.0.0` |
+| `PORT` | `5090` |
+| `LOG_LEVEL` | `info` |
+| `LOG_DIR` | `/app/logs`, bind-mounted from the host's `logs/notifications` |
+| `LOG_PRETTY` | `false` |
+| `WEBHOOK_SECRETS` | `${NOTIFICATIONS_WEBHOOK_SECRET}` |
+| `SOCKET_TICKET_KEY` | `${AUTH_SOCKET_TICKET_KEY}` |
+| `SOCKET_ALLOWED_ORIGINS` | `http://localhost:8081 http://127.0.0.1:8081 http://localhost:5173 http://127.0.0.1:5173` |
+
+`WEBHOOK_TOLERANCE_SECONDS`, `SOCKET_TICKET_ISSUER`, `SOCKET_TICKET_AUDIENCE` and `SOCKET_SESSION_MAX_SECONDS` are not set, so their defaults apply.
+
+**`db`.** `POSTGRES_USER` and `POSTGRES_DB` are `postgres`, `POSTGRES_PASSWORD` is `${POSTGRES_PASSWORD}` and `POSTGRES_INITDB_ARGS` is `--data-checksums`. `FIELDSERVICE_MIGRATOR_PASSWORD` and `FIELDSERVICE_APP_PASSWORD` reach the bootstrap script on the first start of an empty volume.
+
+**`web`.** No variables. The baked `nginx.conf` holds the upstream names, the response headers and the cache policy ([deployment.md](deployment.md#the-web-server)).
+
+**Startup checks in a container.** The API runs the [startup checks](#startup-checks) of Staging and, when one fails, logs a `config.invalid` event for each failed key, then exits with code 134; Compose restarts it until the value is fixed. The notification service exits with code 1 and its `config.invalid:` line, and its health check never passes. A value can be tried for one start without editing `infrastructure/.env`, for example `docker compose -f infrastructure/docker-compose.yml --profile full run --rm --no-deps -e Logs__ConsoleFormat=Text api`; `run` publishes no port, so it does not collide with the running `api`.
 
 ## Notification service (`src/FieldService.Notifications`)
 
@@ -337,7 +395,7 @@ Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantin
 
 The two `.env.example` files list the variable names with empty values, in a stable order:
 
-- `infrastructure/.env.example`: `DB_HOST_PORT`, `NETWORK_SUBNET`, `WEB_IPV4_ADDRESS`, `POSTGRES_PASSWORD`, `FIELDSERVICE_MIGRATOR_PASSWORD`, `FIELDSERVICE_APP_PASSWORD`, `AUTH_ACCESS_TOKEN_KEY`, `AUTH_SOCKET_TICKET_KEY`, `NOTIFICATIONS_WEBHOOK_SECRET`, `SEED_DEMO_PASSWORD`.
+- `infrastructure/.env.example`: `DB_HOST_PORT`, `NETWORK_SUBNET`, `NETWORK_IP_RANGE`, `WEB_IPV4_ADDRESS`, `POSTGRES_PASSWORD`, `FIELDSERVICE_MIGRATOR_PASSWORD`, `FIELDSERVICE_APP_PASSWORD`, `AUTH_ACCESS_TOKEN_KEY`, `AUTH_SOCKET_TICKET_KEY`, `NOTIFICATIONS_WEBHOOK_SECRET`, `SEED_DEMO_PASSWORD`.
 - `src/FieldService.Notifications/.env.example`: `HOST`, `PORT`, `NODE_ENV`, `LOG_LEVEL`, `LOG_DIR`, `LOG_PRETTY`, `WEBHOOK_SECRETS`, `WEBHOOK_TOLERANCE_SECONDS`, `SOCKET_TICKET_KEY`, `SOCKET_TICKET_ISSUER`, `SOCKET_TICKET_AUDIENCE`, `SOCKET_ALLOWED_ORIGINS`, `SOCKET_SESSION_MAX_SECONDS`.
 
 `create-dev-env.mjs` writes the real files, which git ignores, with mode 0600 on macOS and Linux:

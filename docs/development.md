@@ -17,7 +17,7 @@ Run every command from the repository root unless a step says otherwise.
 - The Vite dev server proxies `/api` to the API and `/socket.io` to the notification service, so the browser talks to one origin.
 - After each committed create, assignment or status change, the API posts a signed job event to the notification service at http://127.0.0.1:5090/internal/job-events, the `Notifications:BaseUrl` of `appsettings.Development.json`. The notification service broadcasts it to the signed-in administrators' dashboards, which then refetch the job. The two services share the socket-ticket key and the webhook secret, which `create-dev-env.mjs` writes into the API's user-secrets store and the notification service's `.env` file alike ([configuration.md](configuration.md#values-shared-with-the-api)).
 - `vite preview` serves the production build on the same address with the same proxies and the production security headers, including the Content Security Policy. The dev server sends none of them, because hot reload injects inline code.
-- Each service uses the same host port wherever it runs. Run a service either on the host or in Compose, never both at once.
+- Each service uses the same host port wherever it runs. Run a service either on the host or in Compose ([Containers: Compose profiles](#containers-compose-profiles)), never both at once.
 
 ## Ports
 
@@ -312,6 +312,28 @@ cd src/FieldService.Web
 npm run dev
 ```
 
+### Containers: Compose profiles
+
+With Docker Desktop, the server-side applications also run as containers, in the Staging environment, from `infrastructure/docker-compose.yml`. They use the same host ports as the host processes, so stop the host processes first ([Ports](#ports)). Images, services, hardening and the web server are described in [deployment.md](deployment.md#running-the-staging-stack-with-compose), and the environment of each container in [configuration.md](configuration.md#staging-in-compose).
+
+| Goal | Command | VS Code task |
+|---|---|---|
+| The API, the notification service and the database in containers, the dashboard on the host | `docker compose -f infrastructure/docker-compose.yml --profile backend up -d --build --wait`, then `npm run dev` in `src/FieldService.Web` | `compose: backend up`, then `dev: web` |
+| The whole stack in containers, with nginx on http://localhost:8081 | `docker compose -f infrastructure/docker-compose.yml --profile full up -d --build --wait` | `compose: full up` |
+| Wait until the API is ready | `curl --fail --silent --show-error --retry 30 --retry-delay 2 --retry-all-errors http://127.0.0.1:5080/health/ready` | — |
+| Follow the logs | `docker compose -f infrastructure/docker-compose.yml --profile full logs -f api notifications web` | — |
+| Stop the containers | `docker compose -f infrastructure/docker-compose.yml --profile full down` | `compose: down` |
+| Stop them and delete the database volume | `docker compose -f infrastructure/docker-compose.yml --profile full down -v` | — |
+| Check the file without starting anything | `docker compose -f infrastructure/docker-compose.yml --profile full config --quiet` | — |
+
+- `backend` starts `db`, `migrate`, `api` and `notifications`; `full` adds `web`. The first `--build` takes several minutes, most of it for pulling the .NET SDK image; later builds reuse Docker's cache.
+- `migrate` applies the migrations to the Compose database and exits; the API starts only after it succeeded, and seeds the demo data on an empty database.
+- The `api` container has no health check, so `up --wait` returns as soon as it runs, even when it refuses its configuration. Poll `/health/ready` after each start; when it never answers, `docker compose -f infrastructure/docker-compose.yml --profile full logs api` shows the `config.invalid` events.
+- The containers write their log files to the same `logs/api/` and `logs/notifications/` as the host processes, named by the UTC date ([logging.md](logging.md#containers)).
+- Open the full stack at http://localhost:8081 in Chrome, Firefox or Edge; Safari does not keep the Secure refresh cookie on plain http. The Android emulator reaches the containerized API at `http://10.0.2.2:5080`.
+- The Compose database listens on 127.0.0.1:5433, separate from the local server's `fieldservice` database on 5432; the API test runs keep using the local server.
+- `down` without `-v` keeps the database volume, so the next `up` finds the same data.
+
 ### Checking the running stack
 
 | Check | Expected |
@@ -540,7 +562,10 @@ It fails when a tracked path must never be committed, and when a tracked file ho
 | Windows: "An attempt was made to access a socket in a way forbidden by its access permissions" | A Hyper-V excluded port range | See the Windows note under [Ports](#ports) |
 | Vite: "Port 5173 is already in use" | The dev server and `vite preview` share the port | Stop the other one, or free the port; moving it would break the allowed origin lists |
 | "required variable POSTGRES_PASSWORD is missing a value" | `infrastructure/.env` does not exist | Run `create-dev-env.mjs` |
-| Docker: "Pool overlaps with other one on this address space" | The Compose subnet is already in use | Set `NETWORK_SUBNET`, and a `WEB_IPV4_ADDRESS` inside it, in `infrastructure/.env` |
+| Docker: "Pool overlaps with other one on this address space" | The Compose subnet is already in use | Set `NETWORK_SUBNET`, its upper half as `NETWORK_IP_RANGE`, and a `WEB_IPV4_ADDRESS` inside the subnet but outside the range, in `infrastructure/.env` |
+| Docker: "bind source path does not exist" | `logs/api` or `logs/notifications` is missing | Run `create-dev-env.mjs`, which creates both folders |
+| `compose: full up` succeeds, but http://127.0.0.1:5080/health/ready never answers | The API container refused its configuration and restarts | `docker compose -f infrastructure/docker-compose.yml --profile full logs api` shows a `config.invalid` event per key; run `create-dev-env.mjs` without flags, then `up` again |
+| `EADDRINUSE` on 5080 or 5090 for a host process, or "port is already allocated" from Docker | The Compose `backend` or `full` profile and a host process want the same port | Stop one of them: `docker compose -f infrastructure/docker-compose.yml --profile full down`, or stop the host process |
 | The API answers "Bad Request - Invalid Hostname" (400) | The client used a host name that `AllowedHosts` does not list | Use `localhost`, `127.0.0.1` or `10.0.2.2`, or add the host for one session with `--AllowedHosts` on `dotnet run` |
 | Emulator: "Cleartext HTTP traffic not permitted" | A Release build, or a host other than `10.0.2.2` | Use a Debug build with `http://10.0.2.2:5080` |
 | Android build `XA0030` | A JDK newer than 21 | Point `JAVA_HOME` at JDK 21 |

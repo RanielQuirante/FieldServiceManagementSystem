@@ -2,7 +2,7 @@
 
 FieldService is a field service management system. Administrators create service jobs, assign them to technicians and follow their progress on a web dashboard. Technicians see their jobs on a mobile app, update each job's status as they work, and complete a checklist inspection on site. Changes reach the dashboard in real time.
 
-**Status:** the features described above are in place: sign-in, job creation and assignment, status updates, real-time updates, inspections and their reports, the dashboard, the technicians page, job cancellation and error reporting from the dashboard. Running the system in containers, end-to-end tests against them and the checks on Windows come next.
+**Status:** the features described above are in place: sign-in, job creation and assignment, status updates, real-time updates, inspections and their reports, the dashboard, the technicians page, job cancellation and error reporting from the dashboard. The applications also run as hardened containers with Docker Compose ([deployment.md](docs/deployment.md)). End-to-end tests against the containers and the checks on Windows come next.
 
 ## Applications
 

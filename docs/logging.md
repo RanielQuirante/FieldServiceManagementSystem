@@ -17,7 +17,7 @@ This document describes where each FieldService application writes its logs, how
 | Technician app | Debug | `logs/` inside the app's data folder | Debug |
 | Technician app | Release | Same | Information |
 | Web dashboard | All | No log files. The errors it reports reach the API's log as `client-error.reported` ([Client error reports](#client-error-reports)) | — |
-| nginx | Staging (Compose) | JSON access log to stdout, without query strings or client addresses; errors to stderr at `warn` | — |
+| nginx | Staging (Compose) | JSON access log to stdout, without query strings or client addresses; errors to stderr at `crit` only ([Containers](#containers)) | — |
 | PostgreSQL | Compose | Container stdout | Server default |
 | PostgreSQL | Homebrew on macOS | `/opt/homebrew/var/log/postgresql@17.log` | Server default |
 
@@ -45,6 +45,26 @@ This document describes where each FieldService application writes its logs, how
 | Docker console, per service | 30 MB |
 
 **Dates.** File names follow the process time zone: local time on a developer machine, UTC in containers. Time stamps inside every line are ISO 8601 in UTC: `@t` in the API's events and `time` in the notification service's lines.
+
+## Containers
+
+In the Compose stack ([deployment.md](deployment.md#running-the-staging-stack-with-compose)) each service writes to its console, which Docker's `json-file` driver keeps, and the API and the notification service also write files:
+
+| Service | Files | Console |
+|---|---|---|
+| `api` | `/app/logs`, bind-mounted from the host's `logs/api/`: the same `api-YYYYMMDD.log` files, rotation and retention as on a developer machine | Compact JSON events |
+| `notifications` | `/app/logs`, bind-mounted from the host's `logs/notifications/`: the same `notifications.YYYYMMDD.N.log` files | pino's JSON lines |
+| `migrate` | None | The migrations it applied, as text |
+| `web` | None | nginx's access log, one JSON object per line; errors at `crit` only |
+| `db` | None | PostgreSQL's server log |
+
+- **Console limits.** Every service's console goes to Docker's `json-file` driver with `max-size` 10 MB and `max-file` 3, so the console of one service never takes more than 30 MB. These logs belong to the container: `down` removes them with it, and the files under `logs/` stay.
+- **Folders.** The bind mounts never create a missing host folder. `create-dev-env.mjs` creates `logs/api/` and `logs/notifications/`, and `up` stops with "bind source path does not exist" when one is missing.
+- **Ownership.** On a Linux host, `logs/api/` must be writable by UID 1654, the API's user, and `logs/notifications/` by UID 1000, `node`. Docker Desktop on macOS and Windows maps ownership through its file sharing: the files the containers write belong to your own account on the host, and to the container's user inside the container.
+- **Dates.** A container names its files by the UTC date, and a host process by the local date. Both write into the same folders, and a container continues a host file of the same date name, so the time stamps inside the lines tell the two apart. Run each service either on the host or in Compose, never both at once.
+- **nginx access log.** Each line holds `time`, `method`, `path`, `status`, `bytes`, `durationSeconds` and `correlationId`. The path is nginx's normalized path without the query string, so a search such as `/api/technicians?search=…` is logged as `/api/technicians`, and a path served through the dashboard fallback as `/index.html`. No client address, header other than the correlation id, or body is logged.
+- **nginx correlation id.** `correlationId` is the `X-Correlation-ID` response header of the API or the notification service when nginx proxied the request and the service returned one, and otherwise the request's `X-Correlation-ID` header. nginx writes either value only when it follows the [correlation id rule](#correlation-ids), 1 to 64 letters, digits, `.`, `_` and `-`, and an empty string otherwise. So a proxied API request carries the same id in nginx's line and in the API's request line, the 32-character trace id included when the API refused the caller's header; a request nginx answers itself, such as a file, the dashboard fallback or its own `404`, carries the caller's id when it is valid.
+- **nginx error log.** nginx's error lines quote the whole request line, query string included, the client address and the referrer, so the error log is limited to the `crit` level, which normal operation never reaches. A failed upstream request still shows in the access log, with status `502`.
 
 ## Formats
 
@@ -416,7 +436,9 @@ How the applications keep to them:
 | Events and sockets the notification service refused | `grep -h -E '"msg":"(job-event\|socket)\.rejected"' logs/notifications/*.log` |
 | Change the API level without editing files | `Serilog__MinimumLevel__Default=Debug` in the process or Compose environment |
 | Change the notification service's level | `LOG_LEVEL=debug` in its `.env` file or the Compose environment |
-| Container console | `docker compose -f infrastructure/docker-compose.yml --profile full logs -f api` |
+| Container console | `docker compose -f infrastructure/docker-compose.yml --profile full logs -f api`; name `notifications`, `web`, `migrate` or `db` for the others |
+| nginx access log of one request | `docker compose -f infrastructure/docker-compose.yml --profile full logs --no-log-prefix web \| grep "<correlation id>"` |
+| Why the API container does not start | `docker compose -f infrastructure/docker-compose.yml --profile full logs api \| grep config.invalid` |
 | Technician app on Android (Debug builds) | `adb shell run-as io.github.ranielquirante.fieldservice.tech ls files/logs`, then `adb exec-out run-as io.github.ranielquirante.fieldservice.tech cat files/logs/mobile-YYYYMMDD.log > mobile.log` |
 | Technician app on Windows | The `Data\logs` folder of the unpackaged app under `%LOCALAPPDATA%` |
 | Empty the local log folders | Delete the files inside `logs/api/` and `logs/notifications/`, and keep the folders |

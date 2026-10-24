@@ -5,6 +5,7 @@
 | [architecture.md](architecture.md) | The applications and how they communicate: channels, ports, authentication and the main request and real-time flows |
 | [development.md](development.md) | Local setup on macOS and Windows: prerequisites, the local secrets, the database, running and debugging the four applications, tests and resets |
 | [configuration.md](configuration.md) | Every setting and environment variable per application, with defaults, sources and secret handling |
+| [deployment.md](deployment.md) | The container images, running the Staging stack with Docker Compose, the release step that applies the migrations, and guidance for a production deployment |
 | [logging.md](logging.md) | Log locations, file naming, retention, levels, correlation ids and redaction |
 | [testing.md](testing.md) | How to run each test suite locally and in the build pipeline, with their prerequisites |
 | [api.md](api.md) | The REST API: conventions, the error model and its codes, and every endpoint with examples |
