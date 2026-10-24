@@ -33,6 +33,8 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
 
     private const string HttpsOrigin = "https://fieldservice.example";
 
+    private const string NginxAddress = "172.30.80.10";
+
     private const string ProbePrefix = "/api/inventory-probe/";
 
     private static readonly string[] _documentEnvironments = ["Development", "Testing"];
@@ -193,6 +195,11 @@ public sealed class EndpointInventoryTests(DatabaseFixture fixture) : DatabaseTe
     {
         factory.EnvironmentName = environment;
         factory.Settings["Logs:FileEnabled"] = "false";
+        if (environment is "Staging" or "Production")
+        {
+            factory.Settings[$"{ApiFactory.KnownProxiesKey}:0"] = NginxAddress;
+        }
+
         if (environment == "Production")
         {
             factory.Settings["Cors:AllowedOrigins:0"] = HttpsOrigin;

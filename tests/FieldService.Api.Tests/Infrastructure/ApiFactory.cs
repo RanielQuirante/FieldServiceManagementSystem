@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using FieldService.Api.Persistence;
 using FieldService.Api.Shared.Realtime;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
 using Serilog.Core;
 
@@ -17,6 +19,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public const string TestingEnvironment = "Testing";
 
     public const string WebOrigin = "http://localhost:5173";
+
+    public const string KnownProxiesKey = "ForwardedHeaders:KnownProxies";
 
     public ApiFactory(string connectionString)
     {
@@ -40,6 +44,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public Dictionary<string, string?> Settings { get; }
 
+    public string[] DefaultKnownProxies { get; set; } = [IPAddress.Loopback.ToString(), IPAddress.IPv6Loopback.ToString()];
+
     public string LogsDirectory { get; }
 
     public FakeTimeProvider Clock { get; set; } = new(TruncateToSeconds(DateTimeOffset.UtcNow));
@@ -58,7 +64,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(EnvironmentName);
-        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(Settings));
+        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(EffectiveSettings()));
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<TimeProvider>(Clock);
@@ -68,6 +74,27 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IJobEventQueue>(Events);
             TestServices?.Invoke(services);
         });
+    }
+
+    private Dictionary<string, string?> EffectiveSettings()
+    {
+        var settings = new Dictionary<string, string?>(Settings);
+        var localEnvironment = string.Equals(EnvironmentName, Environments.Development, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(EnvironmentName, TestingEnvironment, StringComparison.OrdinalIgnoreCase);
+        var proxiesSet = settings.Keys.Any(key =>
+            string.Equals(key, KnownProxiesKey, StringComparison.OrdinalIgnoreCase)
+            || key.StartsWith($"{KnownProxiesKey}:", StringComparison.OrdinalIgnoreCase));
+        if (localEnvironment || proxiesSet)
+        {
+            return settings;
+        }
+
+        for (var index = 0; index < DefaultKnownProxies.Length; index++)
+        {
+            settings[$"{KnownProxiesKey}:{index}"] = DefaultKnownProxies[index];
+        }
+
+        return settings;
     }
 
     private static string RandomKey()

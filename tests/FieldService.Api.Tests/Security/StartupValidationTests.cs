@@ -25,6 +25,14 @@ public sealed class StartupValidationTests(DatabaseFixture fixture) : DatabaseTe
 
     private const string ConnectionString = "ConnectionStrings:FieldService";
 
+    private const string KnownProxies = ApiFactory.KnownProxiesKey;
+
+    private const string FirstKnownProxy = $"{ApiFactory.KnownProxiesKey}:0";
+
+    private const string ProxyAddressRule = "must be an IP address of one host";
+
+    private const string ProxyRequiredRule = "must list at least one proxy address outside Development and Testing";
+
     private const string PublishedRule = "published test keys";
 
     private const string PatternedRule = "patterned key";
@@ -65,6 +73,14 @@ public sealed class StartupValidationTests(DatabaseFixture fixture) : DatabaseTe
         "CORS origin with another scheme",
         "http CORS origin in Production",
         "known proxy that is not an address",
+        "no known proxy in Staging",
+        "no known proxy in Production",
+        "known proxy with the unspecified IPv4 address",
+        "known proxy with the unspecified IPv6 address",
+        "known proxy with the IPv4 broadcast address",
+        "known proxy with an IPv4 multicast address",
+        "known proxy with an IPv6 multicast address",
+        "known proxy in shorthand IPv4 form",
         "known network that does not parse",
         "known network in Staging",
         "known network in Production",
@@ -90,6 +106,8 @@ public sealed class StartupValidationTests(DatabaseFixture fixture) : DatabaseTe
         { "Development", "ForwardedHeaders:KnownNetworks:0=172.30.80.0/24" },
         { "Testing", "ForwardedHeaders:KnownNetworks:0=172.30.80.0/24" },
         { "Staging", "ForwardedHeaders:KnownProxies:0=172.30.80.10" },
+        { "Production", "ForwardedHeaders:KnownProxies:0=172.30.80.10" },
+        { "Production", "ForwardedHeaders:KnownProxies:0=2001:db8::10" },
         { "Testing", "Notifications:BaseUrl=http://127.0.0.1:5090" },
         { "Testing", "Auth:AccessTokenKey=<64 random bytes>" },
     };
@@ -333,6 +351,14 @@ public sealed class StartupValidationTests(DatabaseFixture fixture) : DatabaseTe
             "http CORS origin in Production" => Single("Production", Origins, $"http://{Marker()}.example", "Cors:AllowedOrigins", "must use https in Production"),
             "known proxy that is not an address" =>
                 Single("Testing", "ForwardedHeaders:KnownProxies:0", $"proxy-{Marker()}", "ForwardedHeaders:KnownProxies", "must be an IP address"),
+            "no known proxy in Staging" => NoProxyCase("Staging"),
+            "no known proxy in Production" => NoProxyCase("Production"),
+            "known proxy with the unspecified IPv4 address" => Single("Staging", FirstKnownProxy, "0.0.0.0", KnownProxies, ProxyAddressRule),
+            "known proxy with the unspecified IPv6 address" => Single("Production", FirstKnownProxy, "::", KnownProxies, ProxyAddressRule),
+            "known proxy with the IPv4 broadcast address" => Single("Staging", FirstKnownProxy, "255.255.255.255", KnownProxies, ProxyAddressRule),
+            "known proxy with an IPv4 multicast address" => Single("Production", FirstKnownProxy, "239.255.42.99", KnownProxies, ProxyAddressRule),
+            "known proxy with an IPv6 multicast address" => Single("Staging", FirstKnownProxy, "ff0e::2a:63", KnownProxies, ProxyAddressRule),
+            "known proxy in shorthand IPv4 form" => Single("Production", FirstKnownProxy, "10.77.200", KnownProxies, ProxyAddressRule),
             "known network that does not parse" =>
                 Single("Testing", "ForwardedHeaders:KnownNetworks:0", "10.0.0.0/33", "ForwardedHeaders:KnownNetworks", "CIDR notation"),
             "known network in Staging" =>
@@ -388,6 +414,17 @@ public sealed class StartupValidationTests(DatabaseFixture fixture) : DatabaseTe
         key,
         ruleFragment,
         _ => value is { Length: >= 8 } && value.Trim().Length > 0 ? [value] : []);
+
+    private static RefusedCase NoProxyCase(string environment) => new(
+        environment,
+        factory =>
+        {
+            factory.Settings.Remove(FirstKnownProxy);
+            factory.DefaultKnownProxies = [];
+        },
+        KnownProxies,
+        ProxyRequiredRule,
+        _ => []);
 
     private static RefusedCase SeedCase(string environment, string password, string key, string ruleFragment) => new(
         environment,
