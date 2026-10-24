@@ -1,5 +1,5 @@
 import type { ToastRequest } from '@/shared/composables/use-toasts'
-import { formatMoment } from '@/shared/format/date-time'
+import { formatMomentUnbroken } from '@/shared/format/date-time'
 import { formatJobNumber } from '@/shared/format/job-number'
 import { jobStatusLabel, type JobHistoryAction } from '@/shared/format/labels'
 
@@ -70,7 +70,7 @@ export function liveToastNote(entry: LiveJobHistoryEntry): string | null {
 
 export function liveToastMoment(entry: LiveJobHistoryEntry, now: Date): string {
   const elapsed = now.getTime() - Date.parse(entry.occurredAt)
-  return elapsed < justNowMilliseconds ? 'just now' : formatMoment(entry.occurredAt, now)
+  return elapsed < justNowMilliseconds ? 'just now' : formatMomentUnbroken(entry.occurredAt, now)
 }
 
 export function liveToastFor(

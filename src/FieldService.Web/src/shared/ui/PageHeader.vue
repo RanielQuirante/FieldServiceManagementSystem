@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, useTemplateRef } from 'vue'
 
+import { separator } from '@/shared/format/date-time'
+
 import LoadingState from './LoadingState.vue'
 
 const props = withDefaults(
@@ -45,7 +47,7 @@ defineExpose({ focusHeading })
       <LoadingState v-if="loading" :shapes="['page-number']" />
       <span v-else-if="jobNumber && numberSuffix" class="page-header__eyebrow"
         ><span class="page-header__number">{{ jobNumber }}</span
-        ><span aria-hidden="true">{{ ' · ' }}</span
+        ><span aria-hidden="true">{{ separator }}</span
         ><span class="visually-hidden">{{ ', ' }}</span
         ><span>{{ numberSuffix }}</span></span
       >

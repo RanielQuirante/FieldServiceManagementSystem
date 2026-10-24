@@ -5,7 +5,7 @@ export type LivePillState = 'connecting' | 'live' | 'reconnecting' | 'paused'
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { formatTime } from '@/shared/format/date-time'
+import { formatTime, separator } from '@/shared/format/date-time'
 
 const props = withDefaults(
   defineProps<{
@@ -38,7 +38,7 @@ const label = computed(() => (props.state === 'live' ? 'Live' : stateLabels[prop
     <span class="live-pill__text"
       >{{ label
       }}<template v-if="state === 'live' && time"
-        ><span aria-hidden="true">{{ ' · ' }}</span
+        ><span aria-hidden="true">{{ separator }}</span
         ><span class="visually-hidden">{{ ', ' }}</span
         >{{ `updated ${time}` }}</template
       ></span

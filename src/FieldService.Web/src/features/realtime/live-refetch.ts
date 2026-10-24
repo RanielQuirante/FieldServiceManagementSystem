@@ -7,6 +7,7 @@ export type Refetch = () => Promise<boolean>
 
 export interface LivePageCopy {
   readonly refreshFailedTitle: string
+  readonly refreshedLabel: string
   showingFrom(time: string): string
 }
 

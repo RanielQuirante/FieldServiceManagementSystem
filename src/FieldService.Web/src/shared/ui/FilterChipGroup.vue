@@ -15,15 +15,19 @@ export interface FilterChipOption {
 import AppIcon from './AppIcon.vue'
 import CountCapsule from './CountCapsule.vue'
 
-defineProps<{
-  label: string
-  options: readonly FilterChipOption[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    label: string
+    options: readonly FilterChipOption[]
+    disabled?: boolean
+  }>(),
+  { disabled: false },
+)
 
 const model = defineModel<string>({ required: true })
 
 function choose(value: string): void {
-  if (model.value !== value) {
+  if (!props.disabled && model.value !== value) {
     model.value = value
   }
 }
@@ -49,6 +53,7 @@ function countedName(option: FilterChipOption): string | undefined {
       ]"
       :aria-pressed="model === option.value ? 'true' : 'false'"
       :aria-label="countedName(option)"
+      :disabled="disabled"
       @click="choose(option.value)"
     >
       <AppIcon
@@ -115,6 +120,14 @@ function countedName(option: FilterChipOption): string | undefined {
   padding-left: var(--spacing-fs-10);
 }
 
+.filter-chip:disabled {
+  border-color: transparent;
+  background: var(--color-fs-disabled);
+  box-shadow: none;
+  color: var(--color-fs-disabled-text);
+  cursor: not-allowed;
+}
+
 .filter-chip--unselected .filter-chip__icon--unassigned {
   color: var(--color-fs-unassigned);
 }
@@ -148,6 +161,11 @@ function countedName(option: FilterChipOption): string | undefined {
   .filter-chip--selected {
     border-color: Highlight;
     border-width: 2px;
+  }
+
+  .filter-chip:disabled {
+    border-color: GrayText;
+    color: GrayText;
   }
 }
 </style>

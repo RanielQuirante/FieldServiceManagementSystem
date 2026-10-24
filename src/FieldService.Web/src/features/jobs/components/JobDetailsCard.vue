@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { formatMoment, formatScheduled } from '@/shared/format/date-time'
+import { formatMomentUnbroken, formatScheduledUnbroken, separator } from '@/shared/format/date-time'
 import { tradeLabel } from '@/shared/format/labels'
 import Avatar from '@/shared/ui/Avatar.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
@@ -20,13 +20,14 @@ const props = withDefaults(
 const isReport = computed(() => props.variant === 'report')
 
 const created = computed(
-  () => `${formatMoment(props.job.createdAt, props.now)} by ${props.job.createdBy.displayName}`,
+  () =>
+    `${formatMomentUnbroken(props.job.createdAt, props.now)} by ${props.job.createdBy.displayName}`,
 )
 
 const assignedSince = computed(() =>
   props.job.assignedAt === null
     ? null
-    : `Assigned ${formatMoment(props.job.assignedAt, props.now)}`,
+    : `Assigned ${formatMomentUnbroken(props.job.assignedAt, props.now)}`,
 )
 
 const hasContact = computed(() => props.job.contactName !== null || props.job.contactPhone !== null)
@@ -62,7 +63,7 @@ const hasContact = computed(() => props.job.contactName !== null || props.job.co
       <div class="job-details__row">
         <dt>Scheduled</dt>
         <dd class="job-details__numeric">
-          {{ formatScheduled(job.scheduledStart, job.scheduledEnd, now) }}
+          {{ formatScheduledUnbroken(job.scheduledStart, job.scheduledEnd, now) }}
         </dd>
       </div>
       <div v-if="job.equipment" class="job-details__row">
@@ -82,7 +83,9 @@ const hasContact = computed(() => props.job.contactName !== null || props.job.co
               <span>{{ job.assignedTechnician.displayName }}</span>
               <span class="job-details__secondary"
                 >{{ tradeLabel(job.assignedTechnician.trade)
-                }}<template v-if="assignedSince">{{ ` · ${assignedSince}` }}</template></span
+                }}<template v-if="assignedSince">{{
+                  `${separator}${assignedSince}`
+                }}</template></span
               >
             </span>
           </span>

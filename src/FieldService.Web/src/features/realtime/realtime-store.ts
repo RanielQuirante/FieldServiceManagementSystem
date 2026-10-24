@@ -5,7 +5,7 @@ import { useSessionStore } from '@/features/auth/session-store'
 import type { ApiError } from '@/shared/api/api-error'
 import { useToasts } from '@/shared/composables/use-toasts'
 import { createVisibleTimeout, type VisibleTimeout } from '@/shared/composables/visible-timeout'
-import { formatMoment } from '@/shared/format/date-time'
+import { formatMomentUnbroken } from '@/shared/format/date-time'
 
 import {
   createLiveRefetch,
@@ -55,8 +55,10 @@ export const useRealtimeStore = defineStore('realtime', () => {
 
   const notice = computed(() => (activePage.value === null ? null : rawNotice.value))
 
+  const refreshedLabel = computed(() => activePage.value?.refreshedLabel ?? 'Jobs refreshed at')
+
   const noticeTime = computed(() =>
-    refreshedAt.value === null ? null : formatMoment(refreshedAt.value),
+    refreshedAt.value === null ? null : formatMomentUnbroken(refreshedAt.value),
   )
 
   const refreshFailure = computed<RefreshFailureNotice | null>(() => {
@@ -359,6 +361,7 @@ export const useRealtimeStore = defineStore('realtime', () => {
     refreshedAt,
     notice,
     noticeTime,
+    refreshedLabel,
     refreshFailure,
     refreshing,
     flashedJobIds,

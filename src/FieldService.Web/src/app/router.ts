@@ -30,7 +30,7 @@ declare module 'vue-router' {
 
 const jobsCrumb: BreadcrumbLink = { label: 'Jobs', to: { name: 'jobs' } }
 
-export const landingRouteName = 'jobs'
+export const landingRouteName = 'dashboard'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -41,7 +41,9 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: '/',
-    redirect: { name: landingRouteName },
+    name: 'dashboard',
+    component: () => import('@/features/dashboard/pages/DashboardPage.vue'),
+    meta: { requiresAdministrator: true, title: 'Dashboard', section: 'dashboard' },
   },
   {
     path: '/jobs',
@@ -82,6 +84,12 @@ export const routes: RouteRecordRaw[] = [
       section: 'jobs',
       breadcrumbs: [jobsCrumb],
     },
+  },
+  {
+    path: '/technicians',
+    name: 'technicians',
+    component: () => import('@/features/technicians/pages/TechniciansPage.vue'),
+    meta: { requiresAdministrator: true, title: 'Technicians', section: 'technicians' },
   },
   {
     path: '/:pathMatch(.*)*',

@@ -168,6 +168,7 @@ function isActive(item: NavigationItem): boolean {
 .app-shell {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   min-height: 100vh;
   container-type: inline-size;
 }

@@ -70,7 +70,7 @@ defineExpose({ focusRegion })
         <span class="jobs-table__number">{{ formatJobNumber(row.number) }}</span>
         <RouterLink class="jobs-table__title" :to="titleTarget(row)">{{ row.title }}</RouterLink>
       </span>
-      <span v-else-if="column.key === 'customer'" class="jobs-table__stack">
+      <span v-else-if="column.key === 'customer'" class="jobs-table__stack jobs-table__customer">
         <span>{{ row.customerName }}</span>
         <span class="jobs-table__secondary">{{ row.siteAddress }}</span>
       </span>
@@ -142,6 +142,11 @@ defineExpose({ focusRegion })
 
 .jobs-table__stack {
   white-space: nowrap;
+}
+
+.jobs-table__customer {
+  white-space: normal;
+  text-wrap: pretty;
 }
 
 .jobs-table__secondary {

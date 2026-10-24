@@ -117,6 +117,7 @@ const live = useLiveRefetch({
   refetchLists: refreshInBackground,
   page: {
     refreshFailedTitle: 'Jobs could not be refreshed.',
+    refreshedLabel: 'Jobs refreshed at',
     showingFrom: (time) => `Showing jobs from ${time}.`,
   },
 })

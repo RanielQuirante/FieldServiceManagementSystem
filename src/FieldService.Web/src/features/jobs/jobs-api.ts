@@ -21,6 +21,8 @@ export type CreateJobRequest = Schemas['CreateJobRequest']
 
 export type AssignJobRequest = Schemas['AssignJobRequest']
 
+export type CancelJobRequest = Schemas['CancelJobRequest']
+
 export type ChecklistTemplate = Schemas['ChecklistTemplateResponse']
 
 export type Technician = Schemas['TechnicianResponse']
@@ -61,6 +63,15 @@ export function createJob(request: CreateJobRequest): Promise<JobDetails> {
 export function assignJob(jobId: string, request: AssignJobRequest): Promise<JobDetails> {
   return unwrap(
     apiClient.PUT('/api/jobs/{jobId}/assignment', { params: { path: { jobId } }, body: request }),
+  )
+}
+
+export function cancelJob(jobId: string, request: CancelJobRequest): Promise<JobDetails> {
+  return unwrap(
+    apiClient.POST('/api/jobs/{jobId}/cancellation', {
+      params: { path: { jobId } },
+      body: request,
+    }),
   )
 }
 

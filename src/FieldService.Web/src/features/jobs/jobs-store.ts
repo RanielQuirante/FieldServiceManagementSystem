@@ -1,12 +1,20 @@
 import { defineStore } from 'pinia'
 import { computed, shallowRef } from 'vue'
 
-import { isApiError, type ApiError } from '@/shared/api/api-error'
+import { useSessionStore } from '@/features/auth/session-store'
+import { firstFieldError, isApiError, type ApiError } from '@/shared/api/api-error'
 import { jobStatuses, type JobStatus } from '@/shared/format/labels'
 
 import type { JobFilters } from './composables/use-job-filters'
 import * as jobsApi from './jobs-api'
-import type { CreateJobRequest, Inspection, JobDetails, JobList, JobListQuery } from './jobs-api'
+import type {
+  CreateJobRequest,
+  Inspection,
+  JobDetails,
+  JobHistoryEntry,
+  JobList,
+  JobListQuery,
+} from './jobs-api'
 
 export const jobsPageSize = 12
 
@@ -37,25 +45,63 @@ async function fetchInspectionReport(jobId: string): Promise<InspectionReport> {
   throw unexpected ?? missing ?? reasons[0]
 }
 
-export type JobConflictCode = 'concurrency.conflict' | 'job.not-assignable'
+export type AssignConflictCode = 'concurrency.conflict' | 'job.not-assignable'
+
+export type JobConflictCode = AssignConflictCode | 'job.invalid-transition'
+
+export type JobNoticeCode = JobConflictCode | 'already-cancelled'
 
 export interface JobNotice {
   readonly id: number
-  readonly code: JobConflictCode
+  readonly code: JobNoticeCode
   readonly jobNumber: number
 }
 
 export type AssignOutcome =
   | { readonly kind: 'assigned'; readonly job: JobDetails }
-  | { readonly kind: 'conflict'; readonly code: JobConflictCode }
+  | { readonly kind: 'conflict'; readonly code: AssignConflictCode }
 
-const conflictCodes: readonly string[] = ['concurrency.conflict', 'job.not-assignable']
+export type CancelOutcome =
+  | { readonly kind: 'cancelled'; readonly job: JobDetails }
+  | { readonly kind: 'already-cancelled'; readonly job: JobDetails }
+  | { readonly kind: 'reason-rejected'; readonly message: string }
+  | { readonly kind: 'invalid-transition' }
+  | { readonly kind: 'conflict' }
+  | { readonly kind: 'not-found' }
+  | { readonly kind: 'failed'; readonly error: ApiError }
 
-function conflictCodeOf(error: unknown): JobConflictCode | null {
+const assignConflictCodes: readonly string[] = ['concurrency.conflict', 'job.not-assignable']
+
+function conflictCodeOf(error: unknown): AssignConflictCode | null {
   if (!isApiError(error) || error.status !== 409 || error.code === null) {
     return null
   }
-  return conflictCodes.includes(error.code) ? (error.code as JobConflictCode) : null
+  return assignConflictCodes.includes(error.code) ? (error.code as AssignConflictCode) : null
+}
+
+export function newestCancellation(job: JobDetails): JobHistoryEntry | null {
+  for (let index = job.history.length - 1; index >= 0; index -= 1) {
+    const entry = job.history[index]
+    if (entry !== undefined && entry.action === 'Cancelled') {
+      return entry
+    }
+  }
+  return null
+}
+
+export function isOwnCancellation(
+  job: JobDetails,
+  actorId: string | null,
+  reason: string,
+): boolean {
+  const entry = newestCancellation(job)
+  return (
+    job.status === 'Cancelled' &&
+    entry !== null &&
+    actorId !== null &&
+    entry.actor.id === actorId &&
+    entry.note === reason
+  )
 }
 
 export function jobListQuery(filters: JobFilters): JobListQuery {
@@ -343,11 +389,109 @@ export const useJobsStore = defineStore('jobs', () => {
       }
       if (job.value?.id === current.id) {
         await refreshJob(current.id)
-        noticeCount += 1
-        jobNotice.value = { id: noticeCount, code, jobNumber: current.number }
+        showNotice(code, current.number)
       }
       return { kind: 'conflict', code }
     }
+  }
+
+  function showNotice(code: JobNoticeCode, jobNumber: number): void {
+    noticeCount += 1
+    jobNotice.value = { id: noticeCount, code, jobNumber }
+  }
+
+  function isOpen(jobId: string): boolean {
+    return job.value?.id === jobId
+  }
+
+  function markMissing(jobId: string): void {
+    if (!isOpen(jobId)) {
+      return
+    }
+    jobRequest += 1
+    job.value = null
+    jobStatus.value = 'not-found'
+    jobError.value = null
+  }
+
+  async function afterInvalidTransition(current: JobDetails): Promise<CancelOutcome> {
+    if (!isOpen(current.id)) {
+      return { kind: 'invalid-transition' }
+    }
+    await refreshJob(current.id)
+    if (jobStatus.value === 'not-found') {
+      return { kind: 'not-found' }
+    }
+    showNotice('job.invalid-transition', current.number)
+    return { kind: 'invalid-transition' }
+  }
+
+  async function afterCancelConflict(current: JobDetails): Promise<CancelOutcome> {
+    if (!isOpen(current.id)) {
+      return { kind: 'conflict' }
+    }
+    await refreshJob(current.id)
+    if (jobStatus.value === 'not-found') {
+      return { kind: 'not-found' }
+    }
+    if (job.value !== null && !job.value.affordances.canCancel) {
+      showNotice('job.invalid-transition', current.number)
+      return { kind: 'invalid-transition' }
+    }
+    return { kind: 'conflict' }
+  }
+
+  async function cancelFailure(current: JobDetails, error: ApiError): Promise<CancelOutcome> {
+    if (error.status === 404) {
+      markMissing(current.id)
+      return { kind: 'not-found' }
+    }
+    const reasonError = error.status === 400 ? firstFieldError(error.fieldErrors, 'reason') : null
+    if (reasonError !== null) {
+      return { kind: 'reason-rejected', message: reasonError }
+    }
+    if (error.status === 409 && error.code === 'job.invalid-transition') {
+      return afterInvalidTransition(current)
+    }
+    if (error.status === 409 && error.code === 'concurrency.conflict') {
+      return afterCancelConflict(current)
+    }
+    return { kind: 'failed', error }
+  }
+
+  async function cancelJob(reason: string): Promise<CancelOutcome> {
+    const current = job.value
+    if (current === null) {
+      throw new Error('No job is open to cancel')
+    }
+    const sentReason = reason.trim()
+    jobNotice.value = null
+    let updated: JobDetails
+    try {
+      updated = await jobsApi.cancelJob(current.id, {
+        reason: sentReason,
+        version: current.version,
+      })
+    } catch (error) {
+      if (!isApiError(error)) {
+        throw error
+      }
+      return cancelFailure(current, error)
+    }
+    const shown = isOpen(current.id)
+    if (shown) {
+      jobRequest += 1
+      job.value = updated
+      jobStatus.value = 'ready'
+      jobError.value = null
+    }
+    if (isOwnCancellation(updated, useSessionStore().user?.id ?? null, sentReason)) {
+      return { kind: 'cancelled', job: updated }
+    }
+    if (shown) {
+      showNotice('already-cancelled', current.number)
+    }
+    return { kind: 'already-cancelled', job: updated }
   }
 
   async function openReport(jobId: string): Promise<void> {
@@ -486,6 +630,8 @@ export const useJobsStore = defineStore('jobs', () => {
     closeJob,
     createJob,
     assignJob,
+    cancelJob,
+    showNotice,
     report,
     reportStatus,
     reportError,

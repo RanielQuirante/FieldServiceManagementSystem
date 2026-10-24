@@ -3,14 +3,18 @@ withDefaults(
   defineProps<{
     count?: number | null
     variant?: 'default' | 'in-segment' | 'on-gradient' | 'new'
+    hiddenWords?: string | null
   }>(),
-  { count: null, variant: 'default' },
+  { count: null, variant: 'default', hiddenWords: null },
 )
 </script>
 
 <template>
   <span v-if="variant === 'new'" class="count-capsule count-capsule--new">New</span>
-  <span v-else :class="['count-capsule', `count-capsule--${variant}`]">{{ count }}</span>
+  <span v-else :class="['count-capsule', `count-capsule--${variant}`]"
+    >{{ count
+    }}<span v-if="hiddenWords" class="visually-hidden">{{ ` ${hiddenWords}` }}</span></span
+  >
 </template>
 
 <style scoped>

@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 
 import type { ToastMessage } from '@/shared/composables/use-toasts'
+import { separator } from '@/shared/format/date-time'
 
 import AppIcon from './AppIcon.vue'
 import IconButton from './IconButton.vue'
@@ -15,6 +16,8 @@ const emit = defineEmits<{
   hold: []
   release: []
 }>()
+
+const referenceAtMount = props.toast.reference
 
 let timer: ReturnType<typeof setTimeout> | undefined
 let remaining = props.toast.durationMs
@@ -110,7 +113,6 @@ onBeforeUnmount(() => {
 <template>
   <div
     :class="['toast', `toast--${toast.kind}`]"
-    :role="toast.kind === 'error' ? 'alert' : undefined"
     :data-toast-id="toast.id"
     data-surface="dark"
     @mouseenter="onPointerEnter"
@@ -118,27 +120,37 @@ onBeforeUnmount(() => {
     @focusin="onFocusIn"
     @focusout="onFocusOut"
   >
-    <span v-if="toast.kind === 'error'" class="toast__tile" aria-hidden="true">
-      <AppIcon name="alert-triangle" :size="18" />
-    </span>
-    <span v-else class="toast__dot" aria-hidden="true"></span>
-    <span class="toast__text">
-      <span v-if="toast.meta" class="toast__meta"
-        >{{ toast.meta
-        }}<template v-if="toast.metaDetail"
-          ><span aria-hidden="true">{{ ' · ' }}</span
-          ><span class="visually-hidden">{{ ', ' }}</span
-          >{{ toast.metaDetail }}</template
-        ></span
-      >
-      <span class="toast__title">{{ toast.title }}</span>
-      <span v-if="toast.body" class="toast__body">{{ toast.body }}</span>
-      <span v-if="toast.note" class="toast__note">{{ toast.note }}</span>
-      <span v-if="toast.reference" class="toast__reference"
-        >Reference <span class="toast__reference-id">{{ toast.reference }}</span></span
-      >
-    </span>
-    <IconButton label="Dismiss notification" icon="x" variant="on-dark" @click="emit('dismiss')" />
+    <div class="toast__row" :role="toast.kind === 'error' ? 'alert' : undefined">
+      <span v-if="toast.kind === 'error'" class="toast__tile" aria-hidden="true">
+        <AppIcon name="alert-triangle" :size="18" />
+      </span>
+      <span v-else class="toast__dot" aria-hidden="true"></span>
+      <span class="toast__text">
+        <span v-if="toast.meta" class="toast__meta"
+          >{{ toast.meta
+          }}<template v-if="toast.metaDetail"
+            ><span aria-hidden="true">{{ separator }}</span
+            ><span class="visually-hidden">{{ ', ' }}</span
+            >{{ toast.metaDetail }}</template
+          ></span
+        >
+        <span class="toast__title">{{ toast.title }}</span>
+        <span v-if="toast.body" class="toast__body">{{ toast.body }}</span>
+        <span v-if="toast.note" class="toast__note">{{ toast.note }}</span>
+        <span v-if="referenceAtMount" class="toast__reference"
+          >Reference <span class="toast__reference-id">{{ referenceAtMount }}</span></span
+        >
+      </span>
+      <IconButton
+        label="Dismiss notification"
+        icon="x"
+        variant="on-dark"
+        @click="emit('dismiss')"
+      />
+    </div>
+    <p v-if="!referenceAtMount && toast.reference" class="toast__reference toast__reference--later">
+      Reference <span class="toast__reference-id">{{ toast.reference }}</span>
+    </p>
   </div>
 </template>
 
@@ -146,8 +158,8 @@ onBeforeUnmount(() => {
 .toast {
   display: flex;
   flex: none;
-  align-items: flex-start;
-  gap: var(--spacing-fs-12);
+  flex-direction: column;
+  gap: var(--spacing-fs-4);
   width: 100%;
   padding: var(--spacing-fs-14) var(--spacing-fs-8) var(--spacing-fs-14) var(--spacing-fs-16);
   border: 1px solid var(--color-fs-toast-border);
@@ -157,6 +169,12 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(var(--blur-fs-glass));
   box-shadow: var(--shadow-fs-toast);
   color: var(--color-fs-on-dark);
+}
+
+.toast__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-fs-12);
 }
 
 .toast__dot {
@@ -224,6 +242,11 @@ onBeforeUnmount(() => {
   color: var(--color-fs-on-dark-2);
   font-size: 0.75rem;
   line-height: 1.4;
+}
+
+.toast__reference--later {
+  margin: 0;
+  padding: 0 calc(2.25rem + var(--spacing-fs-12)) 0 calc(32px + var(--spacing-fs-12));
 }
 
 .toast__reference-id {

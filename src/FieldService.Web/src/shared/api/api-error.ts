@@ -144,9 +144,14 @@ export async function unwrap<Data>(pending: Promise<FetchOutcome<Data>>): Promis
   return outcome.data
 }
 
-export async function unwrapEmpty(pending: Promise<FetchOutcome<unknown>>): Promise<void> {
+export async function unwrapResponse(pending: Promise<FetchOutcome<unknown>>): Promise<Response> {
   const outcome = await settle(pending)
   if (!outcome.response.ok) {
     throw apiErrorFromResponse(outcome.response, outcome.error)
   }
+  return outcome.response
+}
+
+export async function unwrapEmpty(pending: Promise<FetchOutcome<unknown>>): Promise<void> {
+  await unwrapResponse(pending)
 }

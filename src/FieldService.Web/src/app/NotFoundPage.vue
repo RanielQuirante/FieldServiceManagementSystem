@@ -13,11 +13,11 @@ import { landingRouteName } from './router'
     <EmptyState
       icon="navigation"
       title="Nothing is at this address"
-      body="The link may be mistyped or out of date. Check the address, or go back to the jobs list."
+      body="The link may be mistyped or out of date. Check the address, or go back to the dashboard."
     >
       <template #actions>
-        <AppButton variant="secondary" icon="list" :to="{ name: landingRouteName }"
-          >Go to jobs</AppButton
+        <AppButton variant="secondary" icon="grid" :to="{ name: landingRouteName }"
+          >Go to dashboard</AppButton
         >
       </template>
     </EmptyState>

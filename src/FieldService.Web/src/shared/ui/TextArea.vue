@@ -10,9 +10,12 @@ const props = withDefaults(
     name?: string
     error?: string | null
     help?: string | null
+    count?: string | null
     optional?: boolean
     required?: boolean
+    ariaRequired?: boolean
     disabled?: boolean
+    readonly?: boolean
     placeholder?: string
     maxlength?: number
     rows?: number
@@ -22,9 +25,12 @@ const props = withDefaults(
     name: undefined,
     error: null,
     help: null,
+    count: null,
     optional: false,
     required: false,
+    ariaRequired: false,
     disabled: false,
+    readonly: false,
     placeholder: undefined,
     maxlength: undefined,
     rows: 3,
@@ -41,8 +47,14 @@ const errorId = computed(() => `${areaId.value}-error`)
 
 const helpId = computed(() => `${areaId.value}-help`)
 
+const countId = computed(() => `${areaId.value}-count`)
+
 const describedBy = computed(() => {
-  const ids = [props.error ? errorId.value : null, props.help ? helpId.value : null]
+  const ids = [
+    props.error ? errorId.value : null,
+    props.help ? helpId.value : null,
+    props.count ? countId.value : null,
+  ]
   const present = ids.filter((value): value is string => value !== null)
   return present.length > 0 ? present.join(' ') : undefined
 })
@@ -70,8 +82,10 @@ defineExpose({ focus })
       :rows="rows"
       :required="required"
       :disabled="disabled"
+      :readonly="readonly"
       :placeholder="placeholder"
       :maxlength="maxlength"
+      :aria-required="ariaRequired ? 'true' : undefined"
       :aria-invalid="error ? 'true' : undefined"
       :aria-describedby="describedBy"
     ></textarea>
@@ -79,6 +93,7 @@ defineExpose({ focus })
       <AppIcon name="alert-triangle" :size="14" />{{ error }}
     </p>
     <p v-if="help" :id="helpId" class="text-area__help">{{ help }}</p>
+    <p v-if="count" :id="countId" class="text-area__count">{{ count }}</p>
   </div>
 </template>
 
@@ -154,12 +169,17 @@ defineExpose({ focus })
   color: var(--color-fs-danger);
 }
 
-.text-area__help {
+.text-area__help,
+.text-area__count {
   margin: 0;
   font-size: var(--text-fs-meta);
   line-height: var(--text-fs-meta--line-height);
   color: var(--color-fs-muted);
   text-wrap: pretty;
+}
+
+.text-area__count {
+  font-variant-numeric: tabular-nums;
 }
 
 @media (forced-colors: active) {

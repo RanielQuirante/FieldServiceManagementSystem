@@ -80,6 +80,10 @@ export function formatTime(value: Instant): string {
   return `${clock.hour}:${clock.minute} ${clock.meridiem}`
 }
 
+export function formatWeekday(value: Instant): string {
+  return weekdaysShort[toDate(value).getDay()] ?? ''
+}
+
 export function formatShortDate(value: Instant, now: Date = new Date()): string {
   const date = toDate(value)
   const label = `${weekdaysShort[date.getDay()]} ${date.getDate()} ${monthsShort[date.getMonth()]}`
@@ -89,6 +93,12 @@ export function formatShortDate(value: Instant, now: Date = new Date()): string 
 export function formatLongDate(value: Instant): string {
   const date = toDate(value)
   return `${weekdaysLong[date.getDay()]} ${date.getDate()} ${monthsLong[date.getMonth()]} ${date.getFullYear()}`
+}
+
+export const noBreakSpace = '\u{00a0}'
+
+export function unbroken(text: string): string {
+  return text.replace(/ /g, noBreakSpace)
 }
 
 export function formatTimeWindow(start: Instant, end: Instant, now: Date = new Date()): string {
@@ -126,6 +136,16 @@ export function formatScheduled(start: Instant, end: Instant, now: Date = new Da
   return `${formatShortDate(start, now)}, ${formatTimeWindow(start, end, now)}`
 }
 
+export function formatScheduledUnbroken(
+  start: Instant,
+  end: Instant,
+  now: Date = new Date(),
+): string {
+  return unbroken(formatScheduled(start, end, now))
+    .split(`,${noBreakSpace}`)
+    .join(', ')
+}
+
 export function formatUpdated(value: Instant, now: Date = new Date()): string {
   const offset = dayOffset(value, now)
   if (offset === 0) {
@@ -140,15 +160,22 @@ export function formatMoment(value: Instant, now: Date = new Date()): string {
     : `${formatShortDate(value, now)}, ${formatTime(value)}`
 }
 
+export function formatMomentUnbroken(value: Instant, now: Date = new Date()): string {
+  return unbroken(formatMoment(value, now)).replace(`,${noBreakSpace}`, ', ')
+}
+
 export function formatDuration(milliseconds: number): string {
   const totalMinutes = Math.max(Math.floor(milliseconds / 60_000), 0)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
   if (hours === 0) {
-    return `${minutes} min`
+    return `${minutes}${noBreakSpace}min`
   }
-  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`
+  const whole = `${hours}${noBreakSpace}h`
+  return minutes === 0 ? whole : `${whole}${noBreakSpace}${minutes}${noBreakSpace}min`
 }
+
+export const separator = `${noBreakSpace}\u{00b7} `
 
 const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/
 

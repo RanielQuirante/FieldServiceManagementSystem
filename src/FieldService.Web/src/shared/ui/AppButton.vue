@@ -17,6 +17,7 @@ const props = withDefaults(
     type?: 'button' | 'submit'
     to?: RouteLocationRaw
     icon?: IconName
+    trailingIcon?: IconName
     disabled?: boolean
     ariaDisabled?: boolean
     busy?: boolean
@@ -29,6 +30,7 @@ const props = withDefaults(
     type: 'button',
     to: undefined,
     icon: undefined,
+    trailingIcon: undefined,
     disabled: false,
     ariaDisabled: false,
     busy: false,
@@ -89,6 +91,7 @@ defineExpose({ focus })
       <AppIcon v-if="icon" :name="icon" :size="iconSize" />
       <span v-if="showsBusyLabel">{{ busyLabel }}</span>
       <slot v-else />
+      <AppIcon v-if="trailingIcon" :name="trailingIcon" :size="16" />
     </a>
   </RouterLink>
   <button
@@ -103,6 +106,7 @@ defineExpose({ focus })
     <AppIcon v-if="icon" :name="icon" :size="iconSize" />
     <span v-if="showsBusyLabel">{{ busyLabel }}</span>
     <slot v-else />
+    <AppIcon v-if="trailingIcon" :name="trailingIcon" :size="16" />
   </button>
 </template>
 

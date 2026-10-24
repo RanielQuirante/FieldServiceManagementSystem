@@ -78,6 +78,7 @@ const live = useLiveRefetch({
   refetchWithJob: (updated) => store.reportRefetchFor(updated),
   page: {
     refreshFailedTitle: 'The inspection report could not be refreshed.',
+    refreshedLabel: 'The report was refreshed at',
     showingFrom: (time) => `Showing it as of ${time}.`,
   },
 })

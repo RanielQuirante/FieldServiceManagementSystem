@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 
 import { useLiveRefetch } from '@/features/realtime/use-live-refetch'
 import { usePageTitle } from '@/shared/composables/use-page-title'
-import { formatMoment } from '@/shared/format/date-time'
+import { formatMomentUnbroken } from '@/shared/format/date-time'
 import { formatJobNumber } from '@/shared/format/job-number'
 import AppButton from '@/shared/ui/AppButton.vue'
 import Banner from '@/shared/ui/Banner.vue'
@@ -17,8 +17,10 @@ import SectionCard from '@/shared/ui/SectionCard.vue'
 import StatusChip from '@/shared/ui/StatusChip.vue'
 
 import AssignTechnicianCard, { type JobNoticeCopy } from '../components/AssignTechnicianCard.vue'
+import CancelJobDialog, { type CancelDialogResult } from '../components/CancelJobDialog.vue'
 import JobDetailsCard from '../components/JobDetailsCard.vue'
 import StatusTimeline from '../components/StatusTimeline.vue'
+import { cancelledNotice, jobNoticeText } from '../job-cancellation'
 import { useJobsStore } from '../jobs-store'
 
 const route = useRoute()
@@ -43,27 +45,32 @@ const notice = computed<JobNoticeCopy | null>(() => {
   if (current === null) {
     return null
   }
-  const number = formatJobNumber(current.jobNumber)
-  return current.code === 'job.not-assignable'
-    ? {
-        id: current.id,
-        title: `${number} can no longer be assigned.`,
-        message: 'Its status changed after you opened it. The latest version is shown.',
-      }
-    : {
-        id: current.id,
-        title: `${number} changed after you opened it.`,
-        message: 'The latest version is shown. Check it, then try again.',
-      }
+  return { id: current.id, ...jobNoticeText(current.code, current.jobNumber) }
 })
 
 const panelShown = computed(() => job.value?.affordances.canAssign === true)
+
+const canCancel = computed(() => job.value?.affordances.canCancel === true)
+
+const cancelled = computed(() =>
+  job.value === null ? null : cancelledNotice(job.value, now.value),
+)
 
 const openStatuses: readonly string[] = ['Unassigned', 'Assigned', 'InProgress', 'OnHold']
 
 const liveLineShown = computed(() => job.value !== null && openStatuses.includes(job.value.status))
 
 const side = useTemplateRef<HTMLElement>('side')
+
+const cancelTrigger = useTemplateRef<InstanceType<typeof AppButton>>('cancelTrigger')
+
+const cancelDialog = useTemplateRef<InstanceType<typeof CancelJobDialog>>('cancelDialog')
+
+const cancelOpen = shallowRef(false)
+
+const cancelReason = shallowRef('')
+
+const cancelAnnouncement = shallowRef('')
 
 const live = useLiveRefetch({
   refetch: () => store.refreshOpenJob(),
@@ -72,6 +79,7 @@ const live = useLiveRefetch({
   },
   page: {
     refreshFailedTitle: 'The job could not be refreshed.',
+    refreshedLabel: 'This job was refreshed at',
     showingFrom: (time) => `Showing this job as of ${time}.`,
   },
 })
@@ -96,6 +104,37 @@ function retry(): void {
   void store.reloadJob(jobId.value)
 }
 
+function triggerElement(): HTMLElement | null {
+  const element: unknown = cancelTrigger.value?.$el
+  return element instanceof HTMLElement ? element : null
+}
+
+function openCancel(): void {
+  cancelAnnouncement.value = ''
+  cancelOpen.value = true
+}
+
+async function dismissCancel(): Promise<void> {
+  cancelOpen.value = false
+  await nextTick()
+  const trigger = triggerElement()
+  if (trigger !== null && trigger.isConnected) {
+    trigger.focus()
+  } else {
+    header.value?.focusHeading()
+  }
+}
+
+async function finishCancel(result: CancelDialogResult): Promise<void> {
+  cancelOpen.value = false
+  cancelReason.value = ''
+  if (result.kind === 'cancelled') {
+    cancelAnnouncement.value = `${formatJobNumber(result.job.number)} cancelled.`
+  }
+  await nextTick()
+  header.value?.focusHeading()
+}
+
 watch(job, (current) => {
   now.value = new Date()
   if (current !== null) {
@@ -108,6 +147,33 @@ watch(
   (shown, wasShown) => {
     const active = document.activeElement
     if (shown || !wasShown || active === null || side.value?.contains(active) !== true) {
+      return
+    }
+    void nextTick(() => {
+      header.value?.focusHeading()
+    })
+  },
+  { flush: 'pre' },
+)
+
+watch(
+  canCancel,
+  (allowed, wasAllowed) => {
+    if (allowed || !wasAllowed) {
+      return
+    }
+    const current = job.value
+    if (cancelOpen.value) {
+      if (current === null || cancelDialog.value?.isBusy() === true) {
+        return
+      }
+      cancelOpen.value = false
+      cancelReason.value = ''
+      store.showNotice('job.invalid-transition', current.number)
+      return
+    }
+    const trigger = triggerElement()
+    if (trigger === null || document.activeElement !== trigger) {
       return
     }
     void nextTick(() => {
@@ -142,7 +208,8 @@ onBeforeUnmount(() => {
         <StatusChip :status="job.status" />
         <PriorityLabel :priority="job.priority" />
         <span
-          >Created {{ formatMoment(job.createdAt, now) }} by {{ job.createdBy.displayName }}</span
+          >Created {{ formatMomentUnbroken(job.createdAt, now) }} by
+          {{ job.createdBy.displayName }}</span
         >
       </template>
       <template v-if="job.status === 'Completed'" #actions>
@@ -163,6 +230,14 @@ onBeforeUnmount(() => {
       :title="pageNotice.title"
       :message="pageNotice.message"
     />
+    <Banner
+      v-if="cancelled"
+      class="job-detail__cancelled"
+      :role="null"
+      icon="x-circle"
+      :title="cancelled.title"
+      :detail="cancelled.reason"
+    />
     <div class="job-detail">
       <div class="job-detail__main">
         <JobDetailsCard :job="job" :now="now" />
@@ -177,11 +252,30 @@ onBeforeUnmount(() => {
             </p>
           </div>
         </SectionCard>
+        <AppButton
+          v-if="canCancel"
+          ref="cancelTrigger"
+          class="job-detail__cancel"
+          variant="danger"
+          icon="x-circle"
+          @click="openCancel"
+          >Cancel job</AppButton
+        >
+        <CancelJobDialog
+          v-if="cancelOpen"
+          ref="cancelDialog"
+          v-model:reason="cancelReason"
+          :job="job"
+          :open="cancelOpen"
+          @dismiss="dismissCancel"
+          @finished="finishCancel"
+        />
       </div>
       <div v-if="panelShown" ref="side" class="job-detail__side">
         <AssignTechnicianCard :job="job" :now="now" :notice="panelNotice" />
       </div>
     </div>
+    <p class="visually-hidden" role="status">{{ cancelAnnouncement }}</p>
   </template>
   <template v-else-if="store.jobStatus === 'not-found'">
     <PageHeader title="Job not found" />
@@ -251,6 +345,10 @@ onBeforeUnmount(() => {
 .job-detail__side {
   flex: 1 1 380px;
   min-width: 0;
+}
+
+.job-detail__cancel {
+  align-self: flex-start;
 }
 
 .job-detail__description {

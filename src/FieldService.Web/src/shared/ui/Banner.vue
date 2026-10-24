@@ -11,11 +11,19 @@ const props = withDefaults(
     title: string
     variant?: BannerVariant
     message?: string | null
+    detail?: string | null
     reference?: string | null
     icon?: IconName
     role?: 'status' | 'alert' | null
   }>(),
-  { variant: 'info', message: null, reference: null, icon: undefined, role: 'status' },
+  {
+    variant: 'info',
+    message: null,
+    detail: null,
+    reference: null,
+    icon: undefined,
+    role: 'status',
+  },
 )
 
 const defaultIcons: Readonly<Record<BannerVariant, IconName>> = {
@@ -29,12 +37,22 @@ const iconName = computed(() => props.icon ?? defaultIcons[props.variant])
 </script>
 
 <template>
-  <div :role="role ?? undefined" :class="['banner', `banner--${variant}`]">
+  <div
+    :role="role ?? undefined"
+    :class="['banner', `banner--${variant}`, { 'banner--stacked': Boolean(detail) }]"
+  >
     <span class="banner__tile" aria-hidden="true">
       <AppIcon :name="iconName" :size="18" />
     </span>
     <div class="banner__body">
-      <p class="banner__text">
+      <div v-if="detail" class="banner__lines">
+        <p class="banner__text">
+          <strong class="banner__title">{{ title }}</strong
+          ><span v-if="message" class="banner__message">{{ ` ${message}` }}</span>
+        </p>
+        <p class="banner__detail">{{ detail }}</p>
+      </div>
+      <p v-else class="banner__text">
         <strong class="banner__title">{{ title }}</strong
         ><span v-if="message" class="banner__message">{{ ` ${message}` }}</span>
       </p>
@@ -89,6 +107,25 @@ const iconName = computed(() => props.icon ?? defaultIcons[props.variant])
 
 .banner__message {
   color: var(--color-fs-ink-2);
+}
+
+.banner--stacked {
+  align-items: flex-start;
+}
+
+.banner__lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-fs-4);
+  min-width: 0;
+}
+
+.banner__detail {
+  margin: 0;
+  color: var(--color-fs-ink-2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
 }
 
 .banner__reference {

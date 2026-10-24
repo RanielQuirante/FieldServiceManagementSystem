@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink, type RouteLocationRaw } from 'vue-router'
 
+import { separator } from '@/shared/format/date-time'
 import type { JobStatus } from '@/shared/format/labels'
 
 import type { IconName } from './icons'
@@ -77,7 +78,7 @@ const element = computed(() => (props.to === undefined ? 'div' : RouterLink))
       <span v-if="sublineParts.length > 0" class="kpi-tile__subline"
         ><template v-for="(part, index) in sublineParts" :key="index"
           ><template v-if="index > 0"
-            ><span aria-hidden="true">{{ ' · ' }}</span
+            ><span aria-hidden="true">{{ separator }}</span
             ><span class="visually-hidden">{{ ', ' }}</span></template
           >{{ part }}</template
         ></span
@@ -101,6 +102,7 @@ const element = computed(() => (props.to === undefined ? 'div' : RouterLink))
   box-shadow: var(--shadow-fs-glass);
   color: var(--color-fs-ink);
   text-decoration: none;
+  container-type: inline-size;
 }
 
 .kpi-tile--neutral {
@@ -210,6 +212,19 @@ const element = computed(() => (props.to === undefined ? 'div' : RouterLink))
 .kpi-tile__skeleton-subline {
   width: 72%;
   height: 0.875rem;
+}
+
+@container (width < 125px) {
+  .kpi-tile__head {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: var(--spacing-fs-10);
+  }
+
+  .kpi-tile__label {
+    min-height: 2.6em;
+  }
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

@@ -12,7 +12,7 @@ import {
 const props = withDefaults(
   defineProps<{
     status?: string
-    shift?: 'on' | 'off' | null
+    shift?: 'on' | 'off' | 'inactive' | null
     result?: string | null
     count?: number | null
   }>(),
@@ -27,11 +27,22 @@ const resultText = computed(() =>
   props.count === null ? resultLook.value.label : `${props.count} ${resultLook.value.label}`,
 )
 
-const shiftLabel = computed(() => (props.shift === 'on' ? 'On shift' : 'Off shift'))
+const shiftLabels: Readonly<Record<'on' | 'off' | 'inactive', string>> = {
+  on: 'On shift',
+  off: 'Off shift',
+  inactive: 'Inactive',
+}
+
+const shiftLabel = computed(() => (props.shift === null ? '' : shiftLabels[props.shift]))
+
+const shiftLook = computed(() => (props.shift === 'on' ? 'on' : 'off'))
 </script>
 
 <template>
-  <span v-if="shift" :class="['status-chip', 'status-chip--shift', `status-chip--${shift}-shift`]">
+  <span
+    v-if="shift"
+    :class="['status-chip', 'status-chip--shift', `status-chip--${shiftLook}-shift`]"
+  >
     <span class="status-chip__dot" aria-hidden="true"></span>{{ shiftLabel }}
   </span>
   <span v-else-if="result !== null" :class="['status-chip', `status-chip--${resultLook.tone}`]">

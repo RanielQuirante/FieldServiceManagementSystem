@@ -2,11 +2,14 @@ import type { ApiError } from '@/shared/api/api-error'
 import {
   dayOffset,
   formatDuration,
-  formatMoment,
+  formatMomentUnbroken,
   formatShortDate,
   formatTime,
   formatTimeWindow,
   isSameLocalDay,
+  noBreakSpace,
+  separator,
+  unbroken,
   type Instant,
 } from '@/shared/format/date-time'
 import type { InspectionResult, JobHistoryAction } from '@/shared/format/labels'
@@ -66,8 +69,6 @@ const unavailable: SummaryValue = { kind: 'unavailable' }
 
 const minusSign = '−'
 
-const noBreakSpace = ' '
-
 function text(value: string): SummaryValue {
   return { kind: 'text', text: value }
 }
@@ -114,10 +115,12 @@ export function millisecondsToNextMinute(now: Date): number {
 
 export function formatTimeRange(start: Instant, end: Instant, now: Date): string {
   if (isSameLocalDay(start, end)) {
-    const window = formatTimeWindow(start, end, now)
-    return dayOffset(start, now) === 0 ? window : `${formatShortDate(start, now)}, ${window}`
+    const window = unbroken(formatTimeWindow(start, end, now))
+    return dayOffset(start, now) === 0
+      ? window
+      : `${unbroken(formatShortDate(start, now))}, ${window}`
   }
-  return `${formatMoment(start, now)} – ${formatMoment(end, now)}`
+  return `${formatMomentUnbroken(start, now)}${noBreakSpace}\u{2013} ${formatMomentUnbroken(end, now)}`
 }
 
 export function itemCountText(count: number): string {
@@ -144,11 +147,11 @@ function momentValue(
 ): Pick<SummaryTile, 'value' | 'subline'> {
   const by = actor === null ? null : `by ${actor}`
   if (dayOffset(at, now) === 0) {
-    return { value: text(formatTime(at)), subline: by === null ? [] : [by] }
+    return { value: text(unbroken(formatTime(at))), subline: by === null ? [] : [by] }
   }
-  const time = `at ${formatTime(at)}`
+  const time = `at ${unbroken(formatTime(at))}`
   return {
-    value: text(formatShortDate(at, now)),
+    value: text(unbroken(formatShortDate(at, now))),
     subline: [by === null ? time : `${time} ${by}`],
   }
 }
@@ -189,7 +192,7 @@ function timeOnSiteTile(job: JobDetails, now: Date): SummaryTile {
         return {
           ...base,
           value: text(timeOnSiteBetween(startedAt, now)),
-          subline: [`Since ${formatMoment(startedAt, now)}`],
+          subline: [`Since ${formatMomentUnbroken(startedAt, now)}`],
         }
       }
       break
@@ -240,8 +243,8 @@ export function isTimeOnSiteRunning(job: JobDetails): boolean {
 export function reportMeta(job: JobDetails, now: Date): string {
   const completed = job.status === 'Completed' ? latestEntry(job, 'Completed') : null
   return completed === null
-    ? `Created ${formatMoment(job.createdAt, now)} by ${job.createdBy.displayName}`
-    : `Completed ${formatMoment(completed.occurredAt, now)} by ${completed.actor.displayName}`
+    ? `Created ${formatMomentUnbroken(job.createdAt, now)} by ${job.createdBy.displayName}`
+    : `Completed ${formatMomentUnbroken(completed.occurredAt, now)} by ${completed.actor.displayName}`
 }
 
 export function reportNotice(status: string): ReportNotice | null {
@@ -315,7 +318,7 @@ export function reportRows(inspection: Inspection): ReportRow[] {
 }
 
 export function inspectionHeading(inspection: Inspection): string {
-  return `Inspection · ${inspection.template.name}`
+  return `Inspection${separator}${inspection.template.name}`
 }
 
 export function loadFailureMessage(error: ApiError | null): string {

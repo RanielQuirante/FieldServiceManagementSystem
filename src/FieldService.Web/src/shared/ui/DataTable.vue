@@ -5,7 +5,7 @@ export interface DataTableColumn {
   readonly key: string
   readonly label: string
   readonly skeleton?: readonly SkeletonShape[]
-  readonly skeletonLayout?: 'column' | 'row'
+  readonly skeletonLayout?: 'column' | 'row' | 'avatar-column'
 }
 
 export type DataTableState = 'loading' | 'content' | 'empty'
@@ -29,6 +29,7 @@ const props = withDefaults(
     inCard?: boolean
     skeletonRows?: number
     updatedKeys?: ReadonlySet<string>
+    listBelow?: 0 | 640 | 900
   }>(),
   {
     state: 'content',
@@ -38,14 +39,18 @@ const props = withDefaults(
     inCard: false,
     skeletonRows: 5,
     updatedKeys: () => new Set<string>(),
+    listBelow: 0,
   },
 )
 
-defineSlots<{
+const slots = defineSlots<{
   cell(props: { row: Row; column: DataTableColumn }): unknown
   empty(): unknown
   footer(): unknown
+  list?(): unknown
 }>()
+
+const hasList = computed(() => props.listBelow > 0 && slots.list !== undefined)
 
 const isDense = computed(() => props.columns.length >= 7)
 
@@ -93,7 +98,16 @@ defineExpose({ focusRegion })
 </script>
 
 <template>
-  <div :class="['data-table', { 'data-table--in-card': inCard, 'data-table--dense': isDense }]">
+  <div
+    :class="[
+      'data-table',
+      {
+        'data-table--in-card': inCard,
+        'data-table--dense': isDense,
+        [`data-table--list-below-${listBelow}`]: hasList,
+      },
+    ]"
+  >
     <div ref="region" class="data-table__scroll" role="region" tabindex="0" :aria-label="caption">
       <table
         :class="['data-table__table', `data-table__table--min-${minWidth}`]"
@@ -118,7 +132,15 @@ defineExpose({ focusRegion })
               aria-hidden="true"
             >
               <td v-for="column in columns" :key="column.key">
+                <span
+                  v-if="column.skeletonLayout === 'avatar-column'"
+                  class="data-table__skeleton-pair"
+                >
+                  <LoadingState :shapes="(column.skeleton ?? []).slice(0, 1)" />
+                  <LoadingState :shapes="(column.skeleton ?? []).slice(1)" />
+                </span>
                 <LoadingState
+                  v-else
                   :shapes="column.skeleton ?? ['short']"
                   :layout="column.skeletonLayout ?? 'column'"
                 />
@@ -148,6 +170,9 @@ defineExpose({ focusRegion })
           </template>
         </tbody>
       </table>
+    </div>
+    <div v-if="hasList" class="data-table__list">
+      <slot name="list" />
     </div>
     <div v-if="$slots.footer && state === 'content'" class="data-table__footer">
       <slot name="footer" />
@@ -276,6 +301,41 @@ td:last-child {
   position: sticky;
   left: 0;
   width: 100cqw;
+}
+
+.data-table__skeleton-pair {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-fs-12);
+}
+
+.data-table--list-below-640,
+.data-table--list-below-900 {
+  container-type: inline-size;
+}
+
+.data-table__list {
+  display: none;
+}
+
+@container (width < 640px) {
+  .data-table--list-below-640 > .data-table__scroll {
+    display: none;
+  }
+
+  .data-table--list-below-640 > .data-table__list {
+    display: block;
+  }
+}
+
+@container (width < 900px) {
+  .data-table--list-below-900 > .data-table__scroll {
+    display: none;
+  }
+
+  .data-table--list-below-900 > .data-table__list {
+    display: block;
+  }
 }
 
 .data-table__footer {

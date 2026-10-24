@@ -3,6 +3,8 @@ import { computed, onScopeDispose, type ComputedRef } from 'vue'
 import type { LiveRefetchRegistration } from './live-refetch'
 import { useRealtimeStore } from './realtime-store'
 
+export type { LivePageCopy, LiveRefetchRegistration } from './live-refetch'
+
 export interface LiveRefetchHandle {
   readonly flashedJobIds: ComputedRef<ReadonlySet<string>>
   markFresh(): void

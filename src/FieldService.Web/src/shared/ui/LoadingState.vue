@@ -7,11 +7,18 @@ export type SkeletonShape =
   | 'short'
   | 'schedule'
   | 'avatar'
+  | 'avatar-medium'
   | 'avatar-large'
   | 'radio'
   | 'name'
   | 'technician-name'
   | 'technician-detail'
+  | 'trade'
+  | 'trade-line'
+  | 'shift-chip'
+  | 'count'
+  | 'next-job'
+  | 'phone'
   | 'chip'
   | 'page-number'
   | 'page-title'
@@ -110,6 +117,11 @@ withDefaults(
   height: 1.75rem;
 }
 
+.loading-state__block--avatar-medium {
+  width: 2rem;
+  height: 2rem;
+}
+
 .loading-state__block--avatar-large {
   width: 2.25rem;
   height: 2.25rem;
@@ -131,6 +143,33 @@ withDefaults(
 .loading-state__block--technician-detail {
   width: 11.25rem;
   height: 0.75rem;
+}
+
+.loading-state__block--trade {
+  width: 4.5rem;
+  height: 0.75rem;
+}
+
+.loading-state__block--trade-line {
+  width: 4.5rem;
+}
+
+.loading-state__block--shift-chip {
+  width: 5rem;
+  height: 1.625rem;
+}
+
+.loading-state__block--count {
+  width: 1.625rem;
+  height: 1.5rem;
+}
+
+.loading-state__block--next-job {
+  width: 8.75rem;
+}
+
+.loading-state__block--phone {
+  width: 6.5rem;
 }
 
 .loading-state__block--chip {

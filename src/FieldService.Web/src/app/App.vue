@@ -59,6 +59,7 @@ async function signOut(): Promise<void> {
         <ConnectionBanner
           :notice="realtime.notice"
           :time="realtime.noticeTime"
+          :refreshed-label="realtime.refreshedLabel"
           :failure="realtime.refreshFailure"
           :busy="realtime.refreshing"
           @refresh="refreshNow"

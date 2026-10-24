@@ -11,10 +11,10 @@ export function installErrorHandling(
   target: Window = window,
 ): RemoveErrorHandling {
   const handle = (error: unknown, source: ErrorSource, route: string): void => {
-    const report = reportError(error, source, route)
+    reportError(error, source, route)
 
     if (import.meta.env.DEV) {
-      console.error(`[${report.source}] ${report.message}`, error)
+      console.error(`[${source}]`, error)
     }
   }
 

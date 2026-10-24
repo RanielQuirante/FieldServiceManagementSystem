@@ -18,10 +18,11 @@ const props = withDefaults(
   defineProps<{
     notice: ConnectionNotice | null
     time?: string | null
+    refreshedLabel?: string
     failure?: RefreshFailureCopy | null
     busy?: boolean
   }>(),
-  { time: null, failure: null, busy: false },
+  { time: null, refreshedLabel: 'Jobs refreshed at', failure: null, busy: false },
 )
 
 const emit = defineEmits<{
@@ -80,7 +81,7 @@ watch(
       <p v-else-if="notice === 'back-online'" class="connection-banner__text">
         <strong class="connection-banner__lead">Back online.</strong
         ><span class="connection-banner__detail"
-          >{{ ' Jobs refreshed at ' }}<span class="connection-banner__time">{{ time }}</span
+          >{{ ` ${refreshedLabel} ` }}<span class="connection-banner__time">{{ time }}</span
           >.</span
         >
       </p>

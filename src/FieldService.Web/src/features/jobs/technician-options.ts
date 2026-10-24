@@ -1,4 +1,10 @@
-import { dayOffset, formatShortDate, formatTime, type Instant } from '@/shared/format/date-time'
+import {
+  dayOffset,
+  formatShortDate,
+  formatTime,
+  separator,
+  type Instant,
+} from '@/shared/format/date-time'
 import { formatJobNumber } from '@/shared/format/job-number'
 import { tradeLabel } from '@/shared/format/labels'
 
@@ -92,13 +98,13 @@ function scheduleClause(technician: Technician, now: Date): DetailPart[] {
   if (current !== null && current.status === 'InProgress') {
     if (hasPassed(current.scheduledEnd, now)) {
       return [
-        plain(' · still on '),
+        plain(`${separator}still on `),
         jobNumberPart(current.number),
         ...momentParts(current.scheduledEnd, now, ', due ', ', due '),
       ]
     }
     return [
-      plain(' · finishes '),
+      plain(`${separator}finishes `),
       jobNumberPart(current.number),
       ...momentParts(current.scheduledEnd, now, ' by ', ' on '),
     ]
@@ -106,7 +112,7 @@ function scheduleClause(technician: Technician, now: Date): DetailPart[] {
   const next = technician.nextJob
   if (next !== null) {
     return [
-      plain(' · next '),
+      plain(`${separator}next `),
       jobNumberPart(next.number),
       ...momentParts(next.scheduledStart, now, ' at ', ' on '),
     ]
@@ -117,9 +123,9 @@ function scheduleClause(technician: Technician, now: Date): DetailPart[] {
 export function assignRowDetail(technician: Technician, trade: string, now: Date): DetailPart[] {
   const tradeText = tradeLabel(technician.trade)
   if (!technician.availableForAssignment) {
-    return [plain(`${tradeText} · ${unavailableReason(technician)}`)]
+    return [plain(`${tradeText}${separator}${unavailableReason(technician)}`)]
   }
-  const summary = plain(`${tradeText} · ${openJobsLabel(technician.openJobCount)}`)
+  const summary = plain(`${tradeText}${separator}${openJobsLabel(technician.openJobCount)}`)
   return technician.trade === trade ? [summary, ...scheduleClause(technician, now)] : [summary]
 }
 

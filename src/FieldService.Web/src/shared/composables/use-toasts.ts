@@ -111,6 +111,15 @@ const useToastQueue = defineStore('toasts', () => {
     return show({ kind: 'error', title: errorToastTitle, body: errorToastBody, reference })
   }
 
+  function attachReference(id: number, reference: string): boolean {
+    const target = toasts.value.find((toast) => toast.id === id)
+    if (target === undefined || target.kind !== 'error' || target.reference !== null) {
+      return false
+    }
+    toasts.value = toasts.value.map((toast) => (toast.id === id ? { ...toast, reference } : toast))
+    return true
+  }
+
   function dismiss(id: number): void {
     held.delete(id)
     toasts.value = toasts.value.filter((toast) => toast.id !== id)
@@ -139,7 +148,18 @@ const useToastQueue = defineStore('toasts', () => {
     toasts.value = []
   }
 
-  return { toasts, layout, show, showError, dismiss, hold, release, setLayout, clear }
+  return {
+    toasts,
+    layout,
+    show,
+    showError,
+    attachReference,
+    dismiss,
+    hold,
+    release,
+    setLayout,
+    clear,
+  }
 })
 
 export function useToasts(): ReturnType<typeof useToastQueue> {
