@@ -8,9 +8,8 @@
     <Border x:Name="Track"
             BindingContext="{x:Reference Root}"
             StrokeShape="RoundRectangle 16">
-        <Grid ColumnDefinitions="*,*"
-              ColumnSpacing="{StaticResource FsSpace4}">
-            <Grid Grid.Column="0">
+        <controls:SegmentRowLayout>
+            <Grid>
                 <Border x:Name="FirstSurface"
                         StrokeThickness="0"
                         StrokeShape="RoundRectangle 12"
@@ -21,9 +20,20 @@
                                        VerticalOptions="Center"
                                        InputTransparent="True"
                                        AutomationProperties.ExcludedWithChildren="True">
-                    <Label x:Name="FirstLabel"
-                           Text="{Binding FirstText}"
-                           VerticalOptions="Center" />
+                    <Grid>
+                        <Label x:Name="FirstLabelWidth"
+                               Text="{Binding FirstText}"
+                               FontFamily="GeistSemiBold"
+                               Opacity="0"
+                               InputTransparent="True"
+                               AutomationProperties.IsInAccessibleTree="False"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                        <Label x:Name="FirstLabel"
+                               Text="{Binding FirstText}"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Grid>
                     <controls:CountCapsule x:Name="FirstCapsule"
                                            Text="{Binding FirstCount}"
                                            IsVisible="{Binding HasFirstCount}" />
@@ -35,7 +45,7 @@
                         CommandParameter="{Binding FirstParameter}"
                         SemanticProperties.Description="{Binding FirstDescription}" />
             </Grid>
-            <Grid Grid.Column="1">
+            <Grid>
                 <Border x:Name="SecondSurface"
                         StrokeThickness="0"
                         StrokeShape="RoundRectangle 12"
@@ -46,9 +56,20 @@
                                        VerticalOptions="Center"
                                        InputTransparent="True"
                                        AutomationProperties.ExcludedWithChildren="True">
-                    <Label x:Name="SecondLabel"
-                           Text="{Binding SecondText}"
-                           VerticalOptions="Center" />
+                    <Grid>
+                        <Label x:Name="SecondLabelWidth"
+                               Text="{Binding SecondText}"
+                               FontFamily="GeistSemiBold"
+                               Opacity="0"
+                               InputTransparent="True"
+                               AutomationProperties.IsInAccessibleTree="False"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                        <Label x:Name="SecondLabel"
+                               Text="{Binding SecondText}"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Grid>
                     <controls:CountCapsule x:Name="SecondCapsule"
                                            Text="{Binding SecondCount}"
                                            IsVisible="{Binding HasSecondCount}" />
@@ -60,6 +81,6 @@
                         CommandParameter="{Binding SecondParameter}"
                         SemanticProperties.Description="{Binding SecondDescription}" />
             </Grid>
-        </Grid>
+        </controls:SegmentRowLayout>
     </Border>
 </ContentView>

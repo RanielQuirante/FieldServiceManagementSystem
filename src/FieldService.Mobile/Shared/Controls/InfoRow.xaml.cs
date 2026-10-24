@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using FieldService.Mobile.Shared.Formatting;
 
 namespace FieldService.Mobile.Shared.Controls;
 
@@ -110,7 +111,8 @@ public partial class InfoRow : ContentView
     }
 
     public static string Describe(string? label, string? value, string? secondaryValue) =>
-        string.Join(", ", new[] { label, value, secondaryValue }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        string.Join(", ", new[] { label, value, secondaryValue }.Where(part => !string.IsNullOrWhiteSpace(part)))
+            .Replace(DisplayFormats.ZeroWidthSpace, string.Empty, StringComparison.Ordinal);
 
     private void UpdateText()
     {

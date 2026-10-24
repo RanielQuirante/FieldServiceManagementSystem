@@ -71,12 +71,10 @@ public partial class JobCard : ContentView, ITappableCard
     public JobCard()
     {
         InitializeComponent();
-        ApplyWellRows(twoRows: false);
-        Well.SizeChanged += (_, _) => UpdateWellRows();
         ApplyLook();
     }
 
-    public bool IsTwoRowWell { get; private set; }
+    public bool IsTwoRowWell => WellContent.IsTwoRows;
 
     public string? JobNumber
     {
@@ -175,51 +173,7 @@ public partial class JobCard : ContentView, ITappableCard
         ? new WellRows(TimeColumnSpan: 2, PriorityRow: 1, PriorityColumn: 0, PriorityIndent: ClockWidth + ClockGap, RowSpacing: WellRowGap, PaddingKey: "FsPaddingWellTwoRow", PriorityColumnIsAuto: false)
         : new WellRows(TimeColumnSpan: 1, PriorityRow: 0, PriorityColumn: 1, PriorityIndent: 0, RowSpacing: 0, PaddingKey: "FsPaddingWell", PriorityColumnIsAuto: true);
 
-    private void ApplyWellRows(bool twoRows)
-    {
-        var rows = WellRowsFor(twoRows);
-        IsTwoRowWell = twoRows;
-        WellGrid.ColumnDefinitions[1].Width = rows.PriorityColumnIsAuto ? GridLength.Auto : new GridLength(0);
-        Grid.SetColumnSpan(TimeGroup, rows.TimeColumnSpan);
-        Grid.SetRow(WellPriority, rows.PriorityRow);
-        Grid.SetColumn(WellPriority, rows.PriorityColumn);
-        WellPriority.Margin = new Thickness(rows.PriorityIndent, 0, 0, 0);
-        WellGrid.RowSpacing = rows.RowSpacing;
-        Well.SetDynamicResource(Border.PaddingProperty, rows.PaddingKey);
-    }
-
-    private void OnTimeWindowChanged()
-    {
-        WellTime = DisplayFormats.BreakAfterEnDash(TimeWindow);
-        ScheduleWellRows();
-    }
-
-    private void ScheduleWellRows()
-    {
-        if (Dispatcher is { } dispatcher)
-        {
-            dispatcher.Dispatch(UpdateWellRows);
-        }
-    }
-
-    private void UpdateWellRows()
-    {
-        if (Well is null || Well.Width <= 0 || TimeLabel.Handler is null || WellPriority.Handler is null)
-        {
-            return;
-        }
-
-        var contentWidth = Well.Width - Well.Padding.HorizontalThickness;
-        var timeGroup = TimeGroupWidth(TimeLabel.Measure(double.PositiveInfinity, double.PositiveInfinity).Width);
-        var priority = WellPriority.Measure(double.PositiveInfinity, double.PositiveInfinity).Width - WellPriority.Margin.HorizontalThickness;
-        ((IView)TimeLabel).InvalidateMeasure();
-        ((IView)WellPriority).InvalidateMeasure();
-        var twoRows = WellNeedsTwoRows(timeGroup, priority, contentWidth);
-        if (twoRows != IsTwoRowWell)
-        {
-            ApplyWellRows(twoRows);
-        }
-    }
+    private void OnTimeWindowChanged() => WellTime = DisplayFormats.BreakAfterEnDash(TimeWindow);
 
     private void ApplyLook()
     {
@@ -250,7 +204,6 @@ public partial class JobCard : ContentView, ITappableCard
         Well.SetDynamicResource(Border.BackgroundProperty, urgent ? "FsWellUrgentBrush" : "FsWellBrush");
         Well.SetDynamicResource(MinimumHeightRequestProperty, IsCompact ? "FsHeightWellCompact" : "FsHeightWell");
         Well.StrokeShape = new RoundRectangle { CornerRadius = IsCompact ? 12 : 14 };
-        ScheduleWellRows();
     }
 }
 

@@ -10,6 +10,7 @@ public partial class AnswerControl : ContentView
     public const double OptionStroke = 1.5;
     public const double IconSize = 18;
     public const double IconGap = 6;
+    public const double StackMargin = 4;
 
     public static readonly BindableProperty ResultProperty = BindableProperty.Create(
         nameof(Result),
@@ -101,7 +102,7 @@ public partial class AnswerControl : ContentView
 
     public static bool ShowsIcon(double innerWidth, double labelWidth) => innerWidth >= IconSize + IconGap + labelWidth;
 
-    public static bool Stacks(double rowInnerWidth, double widestLabelWidth) => rowInnerWidth < widestLabelWidth;
+    public static bool Stacks(double rowInnerWidth, double widestLabelWidth) => rowInnerWidth < widestLabelWidth + StackMargin;
 
     private void FitToWidth(bool force = false)
     {

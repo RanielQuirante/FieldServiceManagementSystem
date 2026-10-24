@@ -147,11 +147,17 @@
                     </Grid>
                     <VerticalStackLayout IsVisible="{Binding HasSummary}"
                                          Spacing="{StaticResource FsSpace12}">
-                        <HorizontalStackLayout Spacing="{StaticResource FsSpace8}">
-                            <controls:StatusChip Status="{Binding SummaryStatus}" />
-                            <controls:PriorityLabel Priority="{Binding SummaryPriority}"
+                        <Grid x:Name="ChipRow"
+                              ColumnDefinitions="Auto,*"
+                              RowDefinitions="Auto,Auto"
+                              ColumnSpacing="{StaticResource FsSpace8}">
+                            <controls:StatusChip x:Name="SummaryChip"
+                                                 Status="{Binding SummaryStatus}" />
+                            <controls:PriorityLabel x:Name="SummaryPriorityLabel"
+                                                    Grid.Column="1"
+                                                    Priority="{Binding SummaryPriority}"
                                                     IsOnDark="True" />
-                        </HorizontalStackLayout>
+                        </Grid>
                         <Label x:Name="SummaryTitleLabel"
                                Text="{Binding SummaryTitle}"
                                Style="{StaticResource FsTextHeroJobTitle}"
@@ -186,9 +192,11 @@
                                    Style="{StaticResource FsTextMetaOnDark}" />
                         </VerticalStackLayout>
                         <VerticalStackLayout IsVisible="{Binding HasStatusLine}"
-                                             Spacing="{StaticResource FsSpace4}">
+                                             Spacing="{StaticResource FsSpace4}"
+                                             SemanticProperties.Description="{Binding StatusDescription}">
                             <Grid ColumnDefinitions="Auto,*"
-                                  ColumnSpacing="{StaticResource FsSpace8}">
+                                  ColumnSpacing="{StaticResource FsSpace8}"
+                                  AutomationProperties.ExcludedWithChildren="{Binding HasStatusDescription}">
                                 <Grid WidthRequest="16"
                                       VerticalOptions="Start">
                                     <Label Style="{StaticResource FsTextMetaOnDark}"
@@ -212,7 +220,8 @@
                                    Style="{StaticResource FsTextMetaOnDark}"
                                    Margin="{StaticResource FsMarginHeroReason}"
                                    MaxLines="3"
-                                   LineBreakMode="TailTruncation" />
+                                   LineBreakMode="TailTruncation"
+                                   AutomationProperties.ExcludedWithChildren="{Binding HasStatusDescription}" />
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                     <ContentView x:Name="PushedAccessory"

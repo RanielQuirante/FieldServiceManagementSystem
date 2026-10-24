@@ -163,17 +163,18 @@ public partial class SegmentedControl : ContentView
         Track.SetDynamicResource(Border.StrokeProperty, IsOnDark ? "FsGlassDarkTrackStrokeBrush" : "FsTransparentBrush");
         Track.StrokeThickness = IsOnDark ? 1 : 0;
         Track.SetDynamicResource(Border.PaddingProperty, "FsPaddingSegmentTrack");
-        ApplySegment(FirstSurface, FirstLabel, FirstCapsule, FirstButton, IsFirstSelected);
-        ApplySegment(SecondSurface, SecondLabel, SecondCapsule, SecondButton, !IsFirstSelected);
+        ApplySegment(FirstSurface, FirstLabel, FirstLabelWidth, FirstCapsule, FirstButton, IsFirstSelected);
+        ApplySegment(SecondSurface, SecondLabel, SecondLabelWidth, SecondCapsule, SecondButton, !IsFirstSelected);
     }
 
-    private void ApplySegment(Border surface, Label label, CountCapsule capsule, Button button, bool selected)
+    private void ApplySegment(Border surface, Label label, Label width, CountCapsule capsule, Button button, bool selected)
     {
         surface.SetDynamicResource(Border.BackgroundProperty, selected ? "FsSegmentSelectedBrush" : "FsTransparentBrush");
         surface.SetDynamicResource(Border.ShadowProperty, selected ? IsOnDark ? "FsShadowSegmentOnDark" : "FsShadowSegment" : "FsShadowNone");
 
         label.FontFamily = selected ? "GeistSemiBold" : "GeistMedium";
         label.SetDynamicResource(Label.FontSizeProperty, FontSizeKey(IsCompact));
+        width.SetDynamicResource(Label.FontSizeProperty, FontSizeKey(IsCompact));
         label.SetDynamicResource(Label.TextColorProperty, selected ? "FsInk" : IsOnDark ? "FsOnDark2" : "FsInk2");
         capsule.Variant = CapsuleFor(selected, IsOnDark);
         button.SetDynamicResource(StyleProperty, IsOnDark ? "FsOverlayButtonOnDark" : "FsOverlayButton");

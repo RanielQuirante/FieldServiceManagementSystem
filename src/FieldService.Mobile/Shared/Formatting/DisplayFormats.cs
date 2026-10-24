@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using FieldService.Mobile.Features.Jobs;
 
@@ -6,9 +7,9 @@ namespace FieldService.Mobile.Shared.Formatting;
 public static class DisplayFormats
 {
     public const string EnDash = "–";
-    public const string Separator = " · ";
-    public const string ZeroWidthSpace = "​";
-    public const char NoBreakSpace = ' ';
+    public const string Separator = "\U000000A0\U000000B7 ";
+    public const string ZeroWidthSpace = "\U0000200B";
+    public const char NoBreakSpace = '\U000000A0';
 
     private static readonly CultureInfo _culture = CultureInfo.InvariantCulture;
 
@@ -64,6 +65,7 @@ public static class DisplayFormats
             : Time(start, zone) + EnDash + Time(end, zone);
     }
 
+    [return: NotNullIfNotNull(nameof(text))]
     public static string? BreakAfterEnDash(string? text) => text?.Replace(EnDash, EnDash + ZeroWidthSpace, StringComparison.Ordinal);
 
     public static string SpokenTimeWindow(DateTimeOffset start, DateTimeOffset end, TimeZoneInfo zone, DateOnly today) =>
@@ -103,12 +105,12 @@ public static class DisplayFormats
         var minutes = totalMinutes % 60;
         if (hours == 0)
         {
-            return string.Create(_culture, $"{minutes} min");
+            return string.Create(_culture, $"{minutes}{NoBreakSpace}min");
         }
 
         return minutes == 0
-            ? string.Create(_culture, $"{hours} h")
-            : string.Create(_culture, $"{hours} h {minutes} min");
+            ? string.Create(_culture, $"{hours}{NoBreakSpace}h")
+            : string.Create(_culture, $"{hours}{NoBreakSpace}h{NoBreakSpace}{minutes}{NoBreakSpace}min");
     }
 
     public static string? StartsLine(DateTimeOffset start, DateTimeOffset now, TimeZoneInfo zone)

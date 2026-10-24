@@ -23,7 +23,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     public const string MapSearchAddress = "https://www.bing.com/maps?q=";
     public const string StartInspectionText = "Start inspection";
     public const string ContinueInspectionText = "Continue inspection";
-    public const string NotSubmittedSuffix = " · not submitted";
+    public const string NotSubmittedSuffix = DisplayFormats.Separator + "not submitted";
 
     public static readonly TimeSpan MetaRefreshInterval = TimeSpan.FromMinutes(1);
 
@@ -109,7 +109,6 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         nameof(ShowsRowCall),
         nameof(CallLabel),
         nameof(NavigateLabel),
-        nameof(NavigateColumnSpan),
         nameof(ShowsPaneHero),
         nameof(ShowsPaneMeta))]
     [NotifyCanExecuteChangedFor(nameof(NavigateCommand), nameof(CallCommand))]
@@ -156,7 +155,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     public string ScheduleLine => Job is null
         ? string.Empty
-        : DisplayFormats.ScheduleLine(Job.ScheduledStart, Job.ScheduledEnd, Zone, Today);
+        : DisplayFormats.BreakAfterEnDash(DisplayFormats.ScheduleLine(Job.ScheduledStart, Job.ScheduledEnd, Zone, Today));
 
     public string AssignedLine
     {
@@ -197,7 +196,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     public string ScheduledText => Job is null
         ? string.Empty
-        : DisplayFormats.Scheduled(Job.ScheduledStart, Job.ScheduledEnd, Zone, Today);
+        : DisplayFormats.BreakAfterEnDash(DisplayFormats.Scheduled(Job.ScheduledStart, Job.ScheduledEnd, Zone, Today));
 
     public bool ShowsScheduledRow => Job is not null && !IsAssigned;
 
@@ -215,7 +214,8 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     public bool ShowsHeroActions => IsInPane && (IsAssigned || ShowsUpdateStatus || ShowsInspectionAction);
 
-    public bool ShowsChecklistLink => Job?.Status is JobStatus.InProgress or JobStatus.OnHold or JobStatus.Completed or JobStatus.Cancelled;
+    public bool ShowsChecklistLink => Job is { Status: JobStatus.InProgress or JobStatus.OnHold or JobStatus.Completed }
+        or { Status: JobStatus.Cancelled, Affordances.CanSubmit.Answered: > 0 };
 
     public bool ShowsChecklistRow => Job is not null && !ShowsChecklistLink;
 
@@ -259,8 +259,6 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     public string CallLabel => "Call " + (ContactName ?? CustomerName);
 
     public string NavigateLabel => "Navigate to " + SiteAddress;
-
-    public int NavigateColumnSpan => CanCall ? 1 : 2;
 
     public bool ShowsPushedHeader => !IsInPane;
 

@@ -30,7 +30,8 @@
                                     StartsText="{Binding StartsLine}"
                                     AssignedText="{Binding AssignedLine}"
                                     StatusLineText="{Binding StatusLine}"
-                                    ReasonText="{Binding HoldReasonLine}"
+                                    ReasonText="{Binding ReasonLine}"
+                                    StatusDescription="{Binding StatusDescription}"
                                     SummaryFocusRequest="{Binding TitleFocusRequest}" />
                 <VerticalStackLayout Padding="{Binding ContentPadding}"
                                      Spacing="{StaticResource FsSpace16}">
@@ -77,14 +78,19 @@
                                        IsVisible="{Binding HasAssignedLine}"
                                        Style="{StaticResource FsTextMetaOnDark}" />
                             </VerticalStackLayout>
-                            <Label Text="{Binding PaneMeta}"
-                                   IsVisible="{Binding ShowsPaneMeta}"
-                                   Style="{StaticResource FsTextMetaOnDark}" />
-                            <Label Text="{Binding HoldReasonLine}"
-                                   IsVisible="{Binding HasHoldReasonLine}"
-                                   Style="{StaticResource FsTextMetaOnDark}"
-                                   MaxLines="3"
-                                   LineBreakMode="TailTruncation" />
+                            <VerticalStackLayout IsVisible="{Binding ShowsPaneMeta}"
+                                                 Spacing="{StaticResource FsSpace4}"
+                                                 SemanticProperties.Description="{Binding PaneStatusDescription}">
+                                <Label Text="{Binding PaneMeta}"
+                                       Style="{StaticResource FsTextMetaOnDark}"
+                                       AutomationProperties.ExcludedWithChildren="{Binding HasStatusDescription}" />
+                                <Label Text="{Binding ReasonLine}"
+                                       IsVisible="{Binding HasReasonLine}"
+                                       Style="{StaticResource FsTextMetaOnDark}"
+                                       MaxLines="3"
+                                       LineBreakMode="TailTruncation"
+                                       AutomationProperties.ExcludedWithChildren="{Binding HasStatusDescription}" />
+                            </VerticalStackLayout>
                             <HorizontalStackLayout IsVisible="{Binding ShowsHeroActions}"
                                                    Spacing="{StaticResource FsSpace10}">
                                 <Grid IsVisible="{Binding ShowsStartJob}">
@@ -315,11 +321,8 @@
                              HelperText="{Binding DockHelper}"
                              AutomationProperties.ExcludedWithChildren="{Binding IsStatusSheetOpen}">
             <VerticalStackLayout Spacing="{StaticResource FsSpace10}">
-                <Grid ColumnDefinitions="*,*"
-                      ColumnSpacing="{StaticResource FsSpace10}"
-                      IsVisible="{Binding ShowsNavigationRow}">
-                    <Grid Grid.Column="0"
-                          Grid.ColumnSpan="{Binding NavigateColumnSpan}">
+                <controls:DockButtonRow IsVisible="{Binding ShowsNavigationRow}">
+                    <Grid>
                         <Button Style="{StaticResource FsSecondaryButton}"
                                 Command="{Binding NavigateCommand}"
                                 SemanticProperties.Description="{Binding NavigateLabel}" />
@@ -335,8 +338,7 @@
                                    Style="{StaticResource FsTextButtonLabel}" />
                         </HorizontalStackLayout>
                     </Grid>
-                    <Grid Grid.Column="1"
-                          IsVisible="{Binding CanCall}">
+                    <Grid IsVisible="{Binding CanCall}">
                         <Button Style="{StaticResource FsSecondaryButton}"
                                 Command="{Binding CallCommand}"
                                 SemanticProperties.Description="{Binding CallLabel}" />
@@ -352,7 +354,7 @@
                                    Style="{StaticResource FsTextButtonLabel}" />
                         </HorizontalStackLayout>
                     </Grid>
-                </Grid>
+                </controls:DockButtonRow>
                 <controls:PrimaryButton IsVisible="{Binding ShowsStartJob}"
                                         Text="Start job"
                                         BusyText="Starting…"

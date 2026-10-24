@@ -23,12 +23,15 @@ public sealed class JobDayGroup : List<JobListItem>
     {
         ArgumentNullException.ThrowIfNull(jobs);
 
-        return [.. jobs
+        IEnumerable<AssignedJobResponse> ordered = view == AssignedJobsView.Completed
+            ? jobs.OrderByDescending(job => GroupInstant(job, view))
+            : jobs;
+        return [.. ordered
             .GroupBy(job => DisplayFormats.LocalDay(GroupInstant(job, view), zone))
             .Select(group => new JobDayGroup(
                 group.Key,
                 DisplayFormats.DayGroupLabel(group.Key, today),
-                group.Select(job => JobListItem.From(job, zone, today))))];
+                group.Select(job => JobListItem.From(job, zone, today, group.Key))))];
     }
 
     public static DateTimeOffset GroupInstant(AssignedJobResponse job, AssignedJobsView view)
@@ -54,7 +57,16 @@ public sealed record JobListItem(
 {
     public bool IsUrgent => Priority == JobPriority.Urgent;
 
-    public static JobListItem From(AssignedJobResponse job, TimeZoneInfo zone, DateOnly today)
+    public static string WellText(AssignedJobResponse job, TimeZoneInfo zone, DateOnly today, DateOnly groupDay)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return DisplayFormats.LocalDay(job.ScheduledStart, zone) == groupDay
+            ? DisplayFormats.TimeWindow(job.ScheduledStart, job.ScheduledEnd, zone, today)
+            : DisplayFormats.Scheduled(job.ScheduledStart, job.ScheduledEnd, zone, today);
+    }
+
+    public static JobListItem From(AssignedJobResponse job, TimeZoneInfo zone, DateOnly today, DateOnly groupDay)
     {
         ArgumentNullException.ThrowIfNull(job);
 
@@ -79,7 +91,7 @@ public sealed record JobListItem(
             job.Priority,
             job.CustomerName,
             job.SiteAddress,
-            DisplayFormats.TimeWindow(job.ScheduledStart, job.ScheduledEnd, zone, today),
+            WellText(job, zone, today, groupDay),
             description);
     }
 

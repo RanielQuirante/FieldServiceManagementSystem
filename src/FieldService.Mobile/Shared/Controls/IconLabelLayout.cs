@@ -4,15 +4,22 @@ namespace FieldService.Mobile.Shared.Controls;
 
 public sealed class IconLabelLayout : Layout
 {
+    public const double WrapRatio = 1.5;
+
     public static double LabelWidthFor(double width, Thickness padding, double iconWidth) =>
         double.IsPositiveInfinity(width) ? double.PositiveInfinity : Math.Max(0, width - padding.HorizontalThickness - iconWidth);
 
-    public static (Rect Icon, Rect Label) Place(Rect bounds, Thickness padding, Size icon, Size label)
+    public static bool Wraps(double labelHeight, double lineHeight) => lineHeight > 0 && labelHeight > lineHeight * WrapRatio;
+
+    public static TextAlignment AlignmentFor(bool wrapped) => wrapped ? TextAlignment.Start : TextAlignment.Center;
+
+    public static (Rect Icon, Rect Label) Place(Rect bounds, Thickness padding, Size icon, Size label, bool wrapped)
     {
         var innerWidth = Math.Max(0, bounds.Width - padding.HorizontalThickness);
-        var labelWidth = Math.Min(label.Width, Math.Max(0, innerWidth - icon.Width));
+        var available = Math.Max(0, innerWidth - icon.Width);
+        var labelWidth = wrapped ? available : Math.Min(label.Width, available);
         var groupHeight = Math.Max(icon.Height, label.Height);
-        var left = bounds.Left + padding.Left + ((innerWidth - icon.Width - labelWidth) / 2);
+        var left = bounds.Left + padding.Left + (wrapped ? 0 : (innerWidth - icon.Width - labelWidth) / 2);
         var top = bounds.Top + padding.Top + ((bounds.Height - padding.VerticalThickness - groupHeight) / 2);
         return (new Rect(left, top, icon.Width, icon.Height), new Rect(left + icon.Width, top, labelWidth, label.Height));
     }
@@ -33,7 +40,15 @@ public sealed class IconLabelLayout : Layout
         public override Size ArrangeChildren(Rect bounds)
         {
             var (icon, label) = Parts();
-            var (iconBounds, labelBounds) = Place(bounds, layout.Padding, icon?.DesiredSize ?? Size.Zero, label?.DesiredSize ?? Size.Zero);
+            var iconSize = icon?.DesiredSize ?? Size.Zero;
+            var labelSize = label?.Measure(LabelWidthFor(bounds.Width, layout.Padding, iconSize.Width), double.PositiveInfinity) ?? Size.Zero;
+            var wrapped = Wraps(labelSize.Height, iconSize.Height);
+            if (label is Label text)
+            {
+                text.HorizontalTextAlignment = AlignmentFor(wrapped);
+            }
+
+            var (iconBounds, labelBounds) = Place(bounds, layout.Padding, iconSize, labelSize, wrapped);
             icon?.Arrange(iconBounds);
             label?.Arrange(labelBounds);
             return bounds.Size;

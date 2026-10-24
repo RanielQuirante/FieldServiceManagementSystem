@@ -2,6 +2,7 @@
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:jobs="clr-namespace:FieldService.Mobile.Features.Jobs"
+             xmlns:formatting="clr-namespace:FieldService.Mobile.Shared.Formatting"
              x:Class="FieldService.Mobile.Features.Jobs.UpdateStatusSheetTitle"
              x:DataType="jobs:JobDetailsViewModel">
     <VerticalStackLayout Spacing="{StaticResource FsSpace4}">
@@ -16,7 +17,7 @@
                           FontFamily="GeistMonoMedium"
                           FontSize="{StaticResource FsFontSizeMono}"
                           TextColor="{StaticResource FsMuted}" />
-                    <Span Text=" · " />
+                    <Span Text="{x:Static formatting:DisplayFormats.Separator}" />
                     <Span Text="{Binding Title}" />
                 </FormattedString>
             </Label.FormattedText>

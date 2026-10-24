@@ -484,7 +484,7 @@
         <Setter Property="StrokeThickness" Value="0" />
         <Setter Property="StrokeShape" Value="RoundRectangle 12" />
         <Setter Property="MinimumWidthRequest" Value="{StaticResource FsWidthCapsule}" />
-        <Setter Property="HeightRequest" Value="{StaticResource FsHeightCapsule}" />
+        <Setter Property="MinimumHeightRequest" Value="{StaticResource FsHeightCapsule}" />
         <Setter Property="Padding" Value="{StaticResource FsPaddingCapsule}" />
     </Style>
 

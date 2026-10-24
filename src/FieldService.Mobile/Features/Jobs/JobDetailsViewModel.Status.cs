@@ -2,6 +2,7 @@ using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FieldService.Mobile.Shared.Controls;
+using FieldService.Mobile.Shared.Formatting;
 using FieldService.Mobile.Shared.Http;
 using FieldService.Mobile.Shared.Navigation;
 using FieldService.Mobile.Shared.Screens;
@@ -108,21 +109,21 @@ public sealed partial class JobDetailsViewModel
 
     public string StartJobLabel => IsStarting ? "Starting…" : "Start job";
 
-    public string? HoldReasonLine
-    {
-        get
-        {
-            if (Job is not { Status: JobStatus.OnHold } job)
-            {
-                return null;
-            }
+    public string? ReasonLine => ReasonNote is { } note ? "“" + note + "”" : null;
 
-            var note = job.History.LastOrDefault(entry => entry.Action == JobHistoryAction.PutOnHold)?.Note;
-            return string.IsNullOrWhiteSpace(note) ? null : "“" + note.Trim() + "”";
-        }
-    }
+    public bool HasReasonLine => ReasonLine is not null;
 
-    public bool HasHoldReasonLine => HoldReasonLine is not null;
+    public string? StatusDescription => Job is { Status: JobStatus.Cancelled } && HasStatusLine
+        ? Spoken(StatusLine, ReasonNote)
+        : null;
+
+    public string? PaneStatusDescription => StatusDescription is null
+        ? null
+        : Spoken(StatusLine + ", " + CustomerName, ReasonNote);
+
+    public bool HasStatusDescription => StatusDescription is not null;
+
+    private string? ReasonNote => Job is { } job ? ReasonNoteFor(job) : null;
 
     public bool ShowsHoldReason => SelectedStatusOption?.RequiresNote == true;
 
@@ -138,7 +139,7 @@ public sealed partial class JobDetailsViewModel
 
     public bool HasActionBanner => ActionBanner is not null;
 
-    public string SheetSubtitle => Job is null ? string.Empty : JobNumber + " · " + Title;
+    public string SheetSubtitle => Job is null ? string.Empty : JobNumber + DisplayFormats.Separator + Title;
 
     public static IReadOnlyList<StatusOption> OptionsFor(JobDetailsResponse job, bool hasUnsavedAnswers)
     {
@@ -159,6 +160,25 @@ public sealed partial class JobDetailsViewModel
         }
 
         return [.. options];
+    }
+
+    public static string? ReasonNoteFor(JobDetailsResponse job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        JobHistoryAction? action = job.Status switch
+        {
+            JobStatus.OnHold => JobHistoryAction.PutOnHold,
+            JobStatus.Cancelled => JobHistoryAction.Cancelled,
+            _ => null,
+        };
+        if (action is null)
+        {
+            return null;
+        }
+
+        var note = job.History.LastOrDefault(entry => entry.Action == action)?.Note;
+        return string.IsNullOrWhiteSpace(note) ? null : note.Trim();
     }
 
     public static StatusOption? InitialSelection(IReadOnlyList<StatusOption> options)
@@ -409,6 +429,8 @@ public sealed partial class JobDetailsViewModel
         }
     }
 
+    private static string Spoken(string line, string? note) => note is null ? line : line + ". " + note;
+
     private bool Dropped(CancellationToken token, Guid? requestedFor) =>
         token.IsCancellationRequested || (requestedFor is { } requester && _session.User?.Id != requester);
 
@@ -515,8 +537,11 @@ public sealed partial class JobDetailsViewModel
         OnPropertyChanged(nameof(IsStatusOffline));
         OnPropertyChanged(nameof(CanUpdateStatus));
         OnPropertyChanged(nameof(DockHelper));
-        OnPropertyChanged(nameof(HoldReasonLine));
-        OnPropertyChanged(nameof(HasHoldReasonLine));
+        OnPropertyChanged(nameof(ReasonLine));
+        OnPropertyChanged(nameof(HasReasonLine));
+        OnPropertyChanged(nameof(StatusDescription));
+        OnPropertyChanged(nameof(PaneStatusDescription));
+        OnPropertyChanged(nameof(HasStatusDescription));
         OnPropertyChanged(nameof(SheetSubtitle));
         OnPropertyChanged(nameof(ShowsChecklistLink));
         OnPropertyChanged(nameof(ShowsChecklistRow));

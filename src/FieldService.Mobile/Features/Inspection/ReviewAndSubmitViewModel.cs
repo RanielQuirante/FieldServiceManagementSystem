@@ -191,8 +191,8 @@ public sealed partial class ReviewAndSubmitViewModel : ScreenViewModel, IQueryAt
         var duration = elapsed < TimeSpan.FromMinutes(1) ? LessThanAMinute : DisplayFormats.Duration(elapsed);
         var startDay = DisplayFormats.LocalDay(start, zone);
         var range = startDay == DisplayFormats.LocalDay(now, zone)
-            ? DisplayFormats.TimeWindow(start, now, zone, today)
-            : DisplayFormats.ShortDate(startDay, today) + ", " + DisplayFormats.Time(start, zone) + " " + DisplayFormats.EnDash + " " + DisplayFormats.Time(now, zone);
+            ? DisplayFormats.BreakAfterEnDash(DisplayFormats.TimeWindow(start, now, zone, today))
+            : DisplayFormats.ShortDate(startDay, today) + ", " + DisplayFormats.Time(start, zone) + DisplayFormats.NoBreakSpace + DisplayFormats.EnDash + " " + DisplayFormats.Time(now, zone);
         return range + DisplayFormats.Separator + duration;
     }
 

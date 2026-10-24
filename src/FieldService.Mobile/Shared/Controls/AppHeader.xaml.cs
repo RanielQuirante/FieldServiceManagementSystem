@@ -78,9 +78,14 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         typeof(JobStatus),
         typeof(AppHeader),
         JobStatus.Unknown,
-        propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ApplyIcons());
+        propertyChanged: (bindable, _, _) => ((AppHeader)bindable).OnSummaryStatusChanged());
 
-    public static readonly BindableProperty SummaryPriorityProperty = BindableProperty.Create(nameof(SummaryPriority), typeof(JobPriority), typeof(AppHeader), JobPriority.Unknown);
+    public static readonly BindableProperty SummaryPriorityProperty = BindableProperty.Create(
+        nameof(SummaryPriority),
+        typeof(JobPriority),
+        typeof(AppHeader),
+        JobPriority.Unknown,
+        propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ScheduleChipRows());
 
     public static readonly BindableProperty SummaryTitleProperty = BindableProperty.Create(nameof(SummaryTitle), typeof(string), typeof(AppHeader));
 
@@ -113,6 +118,14 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ApplyText());
 
     public static readonly BindableProperty HasReasonTextProperty = BindableProperty.Create(nameof(HasReasonText), typeof(bool), typeof(AppHeader), false);
+
+    public static readonly BindableProperty StatusDescriptionProperty = BindableProperty.Create(
+        nameof(StatusDescription),
+        typeof(string),
+        typeof(AppHeader),
+        propertyChanged: (bindable, _, _) => ((AppHeader)bindable).ApplyText());
+
+    public static readonly BindableProperty HasStatusDescriptionProperty = BindableProperty.Create(nameof(HasStatusDescription), typeof(bool), typeof(AppHeader), false);
 
     public static readonly BindableProperty SummaryFocusRequestProperty = BindableProperty.Create(
         nameof(SummaryFocusRequest),
@@ -156,13 +169,21 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
 
     public static readonly BindableProperty HasUpdatedTextProperty = BindableProperty.Create(nameof(HasUpdatedText), typeof(bool), typeof(AppHeader), false);
 
+    public const double ChipGap = 8;
+
     public AppHeader()
     {
         InitializeComponent();
+        ApplyChipRows(twoRows: false);
+        ChipRow.SizeChanged += (_, _) => UpdateChipRows();
+        SummaryChip.SizeChanged += (_, _) => UpdateChipRows();
+        SummaryPriorityLabel.SizeChanged += (_, _) => UpdateChipRows();
         ApplyVariant();
         ApplyIcons();
         ApplyText();
     }
+
+    public bool IsTwoRowChips { get; private set; }
 
     public AppHeaderVariant Variant
     {
@@ -392,6 +413,18 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         private set => SetValue(HasReasonTextProperty, value);
     }
 
+    public string? StatusDescription
+    {
+        get => (string?)GetValue(StatusDescriptionProperty);
+        set => SetValue(StatusDescriptionProperty, value);
+    }
+
+    public bool HasStatusDescription
+    {
+        get => (bool)GetValue(HasStatusDescriptionProperty);
+        private set => SetValue(HasStatusDescriptionProperty, value);
+    }
+
     public int SummaryFocusRequest
     {
         get => (int)GetValue(SummaryFocusRequestProperty);
@@ -416,6 +449,13 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         SyncIndicator.Offline => "FsIconWifiOff",
         _ => "FsIconClock",
     };
+
+    public static bool ChipsNeedTwoRows(double chipWidth, double priorityWidth, double contentWidth) =>
+        chipWidth + ChipGap + priorityWidth > contentWidth;
+
+    public static ChipRows ChipRowsFor(bool twoRows) => twoRows
+        ? new ChipRows(PriorityRow: 1, PriorityColumn: 0, RowSpacing: ChipGap)
+        : new ChipRows(PriorityRow: 0, PriorityColumn: 1, RowSpacing: 0);
 
     public void ApplySystemBarInsets(double statusBar, double navigationBar) => StatusBarInset = Math.Max(0, statusBar);
 
@@ -451,6 +491,47 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         Hero.SetDynamicResource(Border.ShadowProperty, IsDesktopTopBar ? "FsShadowTopBar" : "FsShadowHero");
     }
 
+    private void OnSummaryStatusChanged()
+    {
+        ApplyIcons();
+        ScheduleChipRows();
+    }
+
+    private void ApplyChipRows(bool twoRows)
+    {
+        var rows = ChipRowsFor(twoRows);
+        IsTwoRowChips = twoRows;
+        Grid.SetRow(SummaryPriorityLabel, rows.PriorityRow);
+        Grid.SetColumn(SummaryPriorityLabel, rows.PriorityColumn);
+        ChipRow.RowSpacing = rows.RowSpacing;
+    }
+
+    private void ScheduleChipRows()
+    {
+        if (Dispatcher is { } dispatcher)
+        {
+            dispatcher.Dispatch(UpdateChipRows);
+        }
+    }
+
+    private void UpdateChipRows()
+    {
+        if (ChipRow is null || ChipRow.Width <= 0 || SummaryChip.Handler is null || SummaryPriorityLabel.Handler is null)
+        {
+            return;
+        }
+
+        var chip = SummaryChip.Measure(double.PositiveInfinity, double.PositiveInfinity).Width;
+        var priority = SummaryPriorityLabel.Measure(double.PositiveInfinity, double.PositiveInfinity).Width;
+        ((IView)SummaryChip).InvalidateMeasure();
+        ((IView)SummaryPriorityLabel).InvalidateMeasure();
+        var twoRows = ChipsNeedTwoRows(chip, priority, ChipRow.Width);
+        if (twoRows != IsTwoRowChips)
+        {
+            ApplyChipRows(twoRows);
+        }
+    }
+
     private void ApplyIcons()
     {
         if (SyncIcon is null)
@@ -469,6 +550,7 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         HasAssignedText = !string.IsNullOrWhiteSpace(AssignedText);
         HasStatusLine = !string.IsNullOrWhiteSpace(StatusLineText);
         HasReasonText = !string.IsNullOrWhiteSpace(ReasonText);
+        HasStatusDescription = !string.IsNullOrWhiteSpace(StatusDescription);
         HasUpdatedText = !string.IsNullOrWhiteSpace(UpdatedText);
     }
 
@@ -503,3 +585,5 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         PushedAccessory.Content = PushedBody;
     }
 }
+
+public sealed record ChipRows(int PriorityRow, int PriorityColumn, double RowSpacing);

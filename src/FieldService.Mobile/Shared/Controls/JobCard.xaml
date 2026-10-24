@@ -23,15 +23,14 @@
                 <VerticalStackLayout x:Name="Summary"
                                      Padding="{StaticResource FsPaddingJobCardInner}"
                                      Spacing="{StaticResource FsSpace10}">
-                    <Grid ColumnDefinitions="*,Auto"
-                          ColumnSpacing="{StaticResource FsSpace12}">
+                    <controls:CardHeadLayout>
                         <Label Text="{Binding JobNumber}"
                                Style="{StaticResource FsTextMono}"
+                               LineBreakMode="NoWrap"
                                VerticalOptions="Center" />
-                        <controls:StatusChip Grid.Column="1"
-                                             Status="{Binding Status}"
+                        <controls:StatusChip Status="{Binding Status}"
                                              IsCompact="{Binding IsCompact}" />
-                    </Grid>
+                    </controls:CardHeadLayout>
                     <Label x:Name="TitleLabel"
                            Text="{Binding Title}" />
                     <VerticalStackLayout Spacing="{StaticResource FsSpace6}">
@@ -81,12 +80,8 @@
                 </VerticalStackLayout>
                 <Border x:Name="Well"
                         StrokeThickness="0">
-                    <Grid x:Name="WellGrid"
-                          RowDefinitions="Auto,Auto"
-                          ColumnDefinitions="*,Auto,Auto"
-                          ColumnSpacing="{StaticResource FsSpace10}"
-                          RowSpacing="{StaticResource FsSpace4}"
-                          VerticalOptions="Center">
+                    <controls:TimeWellLayout x:Name="WellContent"
+                                             VerticalOptions="Center">
                         <Grid x:Name="TimeGroup"
                               ColumnDefinitions="Auto,*"
                               ColumnSpacing="{StaticResource FsSpace8}"
@@ -112,16 +107,13 @@
                                    VerticalOptions="Center" />
                         </Grid>
                         <controls:PriorityLabel x:Name="WellPriority"
-                                                Grid.Column="1"
                                                 Priority="{Binding Priority}"
                                                 IsCompact="{Binding IsCompact}" />
-                        <controls:Icon Grid.Column="2"
-                                       Grid.RowSpan="2"
-                                       PathData="{StaticResource FsIconChevronRight}"
+                        <controls:Icon PathData="{StaticResource FsIconChevronRight}"
                                        Size="20"
                                        Color="{StaticResource FsMuted}"
                                        VerticalOptions="Center" />
-                    </Grid>
+                    </controls:TimeWellLayout>
                 </Border>
             </VerticalStackLayout>
         </Border>

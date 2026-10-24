@@ -81,7 +81,7 @@
     <Thickness x:Key="FsPaddingLinkCard">16,14</Thickness>
     <Thickness x:Key="FsPaddingSignInCard">20,24</Thickness>
     <Thickness x:Key="FsPaddingSignInHero">24,40,24,0</Thickness>
-    <Thickness x:Key="FsPaddingPrimaryButton">22,0</Thickness>
+    <Thickness x:Key="FsPaddingPrimaryButton">22,8</Thickness>
     <Thickness x:Key="FsPaddingSecondaryButton">20,0</Thickness>
     <Thickness x:Key="FsPaddingDesktopButton">16,0</Thickness>
     <Thickness x:Key="FsPaddingQuietButton">12,0</Thickness>
