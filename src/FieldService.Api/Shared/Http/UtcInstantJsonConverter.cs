@@ -11,28 +11,31 @@ public sealed partial class UtcInstantJsonConverter : JsonConverter<DateTimeOffs
 
     public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType != JsonTokenType.String)
+        if (reader.TokenType != JsonTokenType.String || !TryParse(reader.GetString(), out var instant))
         {
             throw new JsonException();
         }
 
-        var text = reader.GetString();
-        if (text is null || !Rfc3339WithOffset().IsMatch(text))
-        {
-            throw new JsonException();
-        }
+        return instant;
+    }
 
-        if (!DateTimeOffset.TryParse(
-            text.ToUpperInvariant(),
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out var parsed))
+    public static bool TryParse(string? text, out DateTimeOffset instant)
+    {
+        if (text is null
+            || !Rfc3339WithOffset().IsMatch(text)
+            || !DateTimeOffset.TryParse(
+                text.ToUpperInvariant(),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed))
         {
-            throw new JsonException();
+            instant = default;
+            return false;
         }
 
         var ticks = parsed.UtcTicks;
-        return new DateTimeOffset(ticks - (ticks % TimeSpan.TicksPerMillisecond), TimeSpan.Zero);
+        instant = new DateTimeOffset(ticks - (ticks % TimeSpan.TicksPerMillisecond), TimeSpan.Zero);
+        return true;
     }
 
     public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options)

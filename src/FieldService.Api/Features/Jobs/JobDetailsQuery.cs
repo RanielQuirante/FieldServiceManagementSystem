@@ -73,7 +73,8 @@ public static class JobDetailsQuery
                     .Select(option => new AllowedStatusChange(option.Status, option.RequiresNote)),
             ],
             new SubmitAffordance(submit.Allowed, submit.BlockingCode, submit.Answered, submit.Total),
-            capabilities.CanAssign);
+            capabilities.CanAssign,
+            capabilities.CanCancel);
         return new JobDetailsResponse(
             details.Id,
             details.Number,

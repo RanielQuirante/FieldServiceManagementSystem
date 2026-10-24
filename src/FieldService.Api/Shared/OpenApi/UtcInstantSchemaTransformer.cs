@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -20,10 +21,15 @@ public sealed class UtcInstantSchemaTransformer : IOpenApiSchemaTransformer
         }
         else if (type == typeof(DateTimeOffset?))
         {
-            schema.Type = JsonSchemaType.String | JsonSchemaType.Null;
+            schema.Type = IsParameterValue(context) ? JsonSchemaType.String : JsonSchemaType.String | JsonSchemaType.Null;
             schema.Format = DateTimeFormat;
         }
 
         return Task.CompletedTask;
     }
+
+    private static bool IsParameterValue(OpenApiSchemaTransformerContext context) =>
+        context.JsonPropertyInfo is null
+        && context.ParameterDescription is { } parameter
+        && parameter.Source != BindingSource.Body;
 }

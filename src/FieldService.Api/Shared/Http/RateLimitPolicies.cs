@@ -13,6 +13,8 @@ public static class RateLimitPolicies
 
     public const string SocketTickets = "socket-tickets";
 
+    public const string ClientErrors = "client-errors";
+
     public const string Global = "global";
 
     public const int SignInLimit = 10;
@@ -20,6 +22,8 @@ public static class RateLimitPolicies
     public const int RefreshLimit = 30;
 
     public const int SocketTicketLimit = 30;
+
+    public const int ClientErrorLimit = 10;
 
     public const int UserLimit = 300;
 
@@ -47,12 +51,13 @@ public static class RateLimitPolicies
             options.AddPolicy(SignIn, new ClientAddressPolicy(SignIn, SignInLimit));
             options.AddPolicy(Refresh, new ClientAddressPolicy(Refresh, RefreshLimit));
             options.AddPolicy(SocketTickets, new UserPolicy(SocketTickets, SocketTicketLimit));
+            options.AddPolicy(ClientErrors, new UserPolicy(ClientErrors, ClientErrorLimit));
         });
 
         return services;
     }
 
-    public static bool PartitionsByUser(string policy) => policy is Global or SocketTickets;
+    public static bool PartitionsByUser(string policy) => policy is Global or SocketTickets or ClientErrors;
 
     public static string ClientAddress(HttpContext context) =>
         context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress;

@@ -22,6 +22,10 @@ public static partial class SecurityLog
 
     public const string RateLimitRejectedEvent = "rate-limit.rejected";
 
+    public const string ClientErrorReportedEvent = "client-error.reported";
+
+    public const string WebSource = "web";
+
     public const string UnknownAccount = "unknown-account";
 
     public const string WrongPassword = "wrong-password";
@@ -116,4 +120,22 @@ public static partial class SecurityLog
         Level = LogLevel.Information,
         Message = "Socket ticket {TicketId} issued to user {UserId}")]
     public static partial void SocketTicketIssued(ILogger logger, Guid userId, Guid ticketId);
+
+    [LoggerMessage(
+        EventId = 4010,
+        EventName = ClientErrorReportedEvent,
+        Level = LogLevel.Warning,
+        Message = "Client error reported from {Source} by user {UserId} with correlation id {CorrelationId}: {ErrorSource} on route {Route} at {OccurredAt}, app version {AppVersion}, reported correlation id {ReportedCorrelationId}: {ErrorMessage} {ErrorStack}")]
+    public static partial void ClientErrorReported(
+        ILogger logger,
+        string source,
+        Guid userId,
+        string correlationId,
+        string errorSource,
+        string? route,
+        DateTimeOffset occurredAt,
+        string? appVersion,
+        string? reportedCorrelationId,
+        string errorMessage,
+        string? errorStack);
 }

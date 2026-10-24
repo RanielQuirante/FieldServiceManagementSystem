@@ -273,6 +273,93 @@
         ]
       }
     },
+    "/api/dashboard/summary": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "Get the dashboard summary",
+        "description": "Returns the dashboard's figures in one read. The open job counts describe the current state, independent of the window. The range counts the jobs created, completed and cancelled inside the window, which starts at from (inclusive) and ends at to (exclusive). Both are required instants with Z or a numeric offset; to must be after from, and the window may span at most 31 days. The technician counts include active technicians only. Needs a technician lists at most the 10 earliest-scheduled Unassigned jobs, and recent activity lists at most the 6 newest history entries inside the window, newest first.",
+        "operationId": "GetDashboardSummary",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/technicians": {
       "get": {
         "tags": [
@@ -1015,6 +1102,114 @@
         ]
       }
     },
+    "/api/jobs/{jobId}/cancellation": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Cancel a job",
+        "description": "Cancels a job that is Unassigned, Assigned, InProgress or OnHold, sets its cancellation time and adds a Cancelled history entry with the reason as its note. The reason is required and holds at most 500 characters. A Completed job returns 409 job.invalid-transition. Send the version you last read; cancelling a job that is already Cancelled returns the job unchanged and the reason is not stored. The job keeps its assigned technician and becomes read-only, and a draft inspection stays unsubmitted and can no longer be changed. The response carries the job's details and its new version.",
+        "operationId": "CancelJob",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/jobs/{jobId}/inspection": {
       "get": {
         "tags": [
@@ -1255,6 +1450,76 @@
           }
         ]
       }
+    },
+    "/api/client-errors": {
+      "post": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Report a client error",
+        "description": "Records an error from the web dashboard in the API log as one Warning entry with the source web and the caller's user id. The message, source and stack are scrubbed of tokens, secrets, email addresses and query strings before they are logged. The message holds at most 500 characters, the source and the route at most 200, and the stack at most 2000; the route is the path only, without a query string or fragment. The body holds at most 8 KB, and each user can report at most 10 errors a minute. The response has no body and echoes nothing.",
+        "operationId": "ReportClientError",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportClientErrorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1365,6 +1630,24 @@
           "technicianId": {
             "type": "string",
             "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
+      },
+      "CancelJobRequest": {
+        "required": [
+          "reason",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 0,
+            "type": "string"
           },
           "version": {
             "type": "integer",
@@ -1504,6 +1787,275 @@
               "string"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "DashboardActivityEntry": {
+        "required": [
+          "id",
+          "occurredAt",
+          "action",
+          "jobId",
+          "jobNumber",
+          "fromStatus",
+          "toStatus",
+          "actor",
+          "technician",
+          "note"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "$ref": "#/components/schemas/JobHistoryAction"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobNumber": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fromStatus": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobStatus"
+              }
+            ]
+          },
+          "toStatus": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/UserReference"
+          },
+          "technician": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UserReference"
+              }
+            ]
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DashboardOpenJobs": {
+        "required": [
+          "total",
+          "unassigned",
+          "assigned",
+          "inProgress",
+          "onHold",
+          "withTechnician",
+          "inProgressTechnicianCount",
+          "nextAssignedStart",
+          "onHoldSince"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unassigned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "assigned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inProgress": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "onHold": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "withTechnician": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inProgressTechnicianCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nextAssignedStart": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "onHoldSince": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "DashboardRange": {
+        "required": [
+          "from",
+          "to",
+          "created",
+          "completed",
+          "cancelled",
+          "unassignedScheduled",
+          "lastCompletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "completed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cancelled": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unassignedScheduled": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastCompletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "DashboardSummaryResponse": {
+        "required": [
+          "generatedAt",
+          "openJobs",
+          "range",
+          "technicians",
+          "needsTechnician",
+          "recentActivity"
+        ],
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "openJobs": {
+            "$ref": "#/components/schemas/DashboardOpenJobs"
+          },
+          "range": {
+            "$ref": "#/components/schemas/DashboardRange"
+          },
+          "technicians": {
+            "$ref": "#/components/schemas/DashboardTechnicianCounts"
+          },
+          "needsTechnician": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardUnassignedJob"
+            }
+          },
+          "recentActivity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardActivityEntry"
+            }
+          }
+        }
+      },
+      "DashboardTechnicianCounts": {
+        "required": [
+          "total",
+          "onShift"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "onShift": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "DashboardUnassignedJob": {
+        "required": [
+          "id",
+          "number",
+          "title",
+          "priority",
+          "customerName",
+          "siteAddress",
+          "scheduledStart",
+          "scheduledEnd"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/JobPriority"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "siteAddress": {
+            "type": "string"
+          },
+          "scheduledStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scheduledEnd": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -1945,7 +2497,8 @@
         "required": [
           "allowedStatusChanges",
           "canSubmit",
-          "canAssign"
+          "canAssign",
+          "canCancel"
         ],
         "type": "object",
         "properties": {
@@ -1959,6 +2512,9 @@
             "$ref": "#/components/schemas/SubmitAffordance"
           },
           "canAssign": {
+            "type": "boolean"
+          },
+          "canCancel": {
             "type": "boolean"
           }
         }
@@ -2368,6 +2924,61 @@
           }
         }
       },
+      "ReportClientErrorRequest": {
+        "required": [
+          "message",
+          "source",
+          "occurredAt"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "maxLength": 500,
+            "minLength": 0,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string"
+          },
+          "route": {
+            "maxLength": 200,
+            "minLength": 0,
+            "pattern": "^/[A-Za-z0-9/_.~%-]*$",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "correlationId": {
+            "pattern": "^[A-Za-z0-9._-]{1,64}$",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stack": {
+            "maxLength": 2000,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "appVersion": {
+            "pattern": "^[0-9A-Za-z.+-]{1,32}$",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "SaveInspectionRequest": {
         "required": [
           "answers",
@@ -2712,6 +3323,9 @@
       "name": "Auth"
     },
     {
+      "name": "Dashboard"
+    },
+    {
       "name": "Technicians"
     },
     {
@@ -2722,6 +3336,9 @@
     },
     {
       "name": "ChecklistTemplates"
+    },
+    {
+      "name": "Diagnostics"
     }
   ]
 }

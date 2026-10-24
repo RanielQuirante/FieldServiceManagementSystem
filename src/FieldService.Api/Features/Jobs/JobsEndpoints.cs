@@ -1,4 +1,5 @@
 using FieldService.Api.Features.Jobs.AssignJob;
+using FieldService.Api.Features.Jobs.CancelJob;
 using FieldService.Api.Features.Jobs.CreateJob;
 using FieldService.Api.Features.Jobs.GetJobById;
 using FieldService.Api.Features.Jobs.GetJobs;
@@ -22,5 +23,6 @@ public static class JobsEndpoints
         AssignJobEndpoint.Map(jobs);
         UpdateJobStatusEndpoint.Map(jobs);
         SubmitJobEndpoint.Map(jobs);
+        CancelJobEndpoint.Map(jobs);
     }
 }

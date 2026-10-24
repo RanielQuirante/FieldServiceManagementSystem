@@ -5,6 +5,7 @@ namespace FieldService.Api.Features.Jobs;
 public sealed record JobAffordances(
     IReadOnlyList<AllowedStatusChange> AllowedStatusChanges,
     SubmitAffordance CanSubmit,
-    bool CanAssign);
+    bool CanAssign,
+    bool CanCancel);
 
 public sealed record AllowedStatusChange(JobStatus Status, bool RequiresNote);

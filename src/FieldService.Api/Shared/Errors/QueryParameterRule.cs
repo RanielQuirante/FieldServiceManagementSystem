@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using FieldService.Api.Shared.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FieldService.Api.Shared.Errors;
@@ -13,6 +14,11 @@ public sealed class QueryParameterRule
     public const string IntegerMessage = "The value must be a whole number.";
 
     public const string EmptyValueMessage = "Enter a value, or leave the parameter out.";
+
+    public const string InstantMessage =
+        "The value must be a date and time with Z or a numeric offset, such as 2026-10-19T04:00:00.000Z.";
+
+    private const DateTimeStyles BinderInstantStyles = DateTimeStyles.AdjustToUniversal | DateTimeStyles.AllowWhiteSpaces;
 
     private readonly Func<string, string?> _check;
 
@@ -93,7 +99,21 @@ public sealed class QueryParameterRule
                     : IntegerMessage);
         }
 
+        if (valueType == typeof(DateTimeOffset))
+        {
+            return new QueryParameterRule(
+                name,
+                valueType,
+                static value => value.Length == 0 ? EmptyValueMessage
+                    : IsInstant(value) ? null
+                    : InstantMessage);
+        }
+
         throw new InvalidOperationException(
             $"The query parameter {name} has the type {valueType.Name}, which has no validation rule.");
     }
+
+    private static bool IsInstant(string value) =>
+        UtcInstantJsonConverter.TryParse(value, out _)
+        && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, BinderInstantStyles, out _);
 }
