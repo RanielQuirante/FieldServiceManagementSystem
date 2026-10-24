@@ -136,7 +136,12 @@ const SECRET_NAMES = Object.freeze([
   'SEED_DEMO_PASSWORD',
 ])
 
-const COMPOSE_SETTINGS = Object.freeze(['DB_HOST_PORT', 'NETWORK_SUBNET', 'WEB_IPV4_ADDRESS'])
+const COMPOSE_SETTINGS = Object.freeze([
+  'DB_HOST_PORT',
+  'NETWORK_SUBNET',
+  'NETWORK_IP_RANGE',
+  'WEB_IPV4_ADDRESS',
+])
 
 const NOTIFICATIONS_DEFAULTS = Object.freeze([
   ['HOST', '127.0.0.1'],

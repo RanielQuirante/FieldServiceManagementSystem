@@ -1,0 +1,15 @@
+*
+!global.json
+!nuget.config
+!Directory.Build.props
+!Directory.Packages.props
+!.editorconfig
+!.config/dotnet-tools.json
+!src/FieldService.Api
+src/FieldService.Api/bin
+src/FieldService.Api/obj
+src/FieldService.Api/appsettings.Development.json
+src/FieldService.Api/appsettings.Testing.json
+**/.env
+**/.env.*
+**/*.log

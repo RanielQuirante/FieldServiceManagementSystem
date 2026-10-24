@@ -1,5 +1,19 @@
 name: fieldservice
 
+x-hardened: &hardened
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
 services:
   db:
     image: postgres:17.11-trixie
@@ -31,6 +45,123 @@ services:
       start_period: 10s
       start_interval: 1s
 
+  migrate:
+    <<: *hardened
+    profiles: ["backend", "full"]
+    build:
+      context: ..
+      dockerfile: src/FieldService.Api/Dockerfile
+      target: migrator
+    image: fieldservice/migrate:local
+    init: true
+    environment:
+      ConnectionStrings__Migrations: "Host=db;Port=5432;Database=fieldservice;Username=fieldservice_migrator;Password=${FIELDSERVICE_MIGRATOR_PASSWORD:?};Application Name=fieldservice-migrator;GSS Encryption Mode=Disable"
+      DOTNET_BUNDLE_EXTRACT_BASE_DIR: /tmp
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *hardened
+    profiles: ["backend", "full"]
+    build:
+      context: ..
+      dockerfile: src/FieldService.Api/Dockerfile
+      target: runtime
+    image: fieldservice/api:local
+    init: true
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      AllowedHosts: "localhost;127.0.0.1;10.0.2.2"
+      ConnectionStrings__FieldService: "Host=db;Port=5432;Database=fieldservice;Username=fieldservice_app;Password=${FIELDSERVICE_APP_PASSWORD:?};Maximum Pool Size=20;Application Name=fieldservice-api;GSS Encryption Mode=Disable"
+      Auth__AccessTokenKey: "${AUTH_ACCESS_TOKEN_KEY:?}"
+      Auth__SocketTicketKey: "${AUTH_SOCKET_TICKET_KEY:?}"
+      Notifications__BaseUrl: http://notifications:5090
+      Notifications__WebhookSecret: "${NOTIFICATIONS_WEBHOOK_SECRET:?}"
+      Cors__AllowedOrigins__0: http://localhost:8081
+      Cors__AllowedOrigins__1: http://127.0.0.1:8081
+      Cors__AllowedOrigins__2: http://localhost:5173
+      Cors__AllowedOrigins__3: http://127.0.0.1:5173
+      ForwardedHeaders__KnownProxies__0: "${WEB_IPV4_ADDRESS:-172.30.80.10}"
+      Seed__DemoData: "true"
+      Seed__DemoPassword: "${SEED_DEMO_PASSWORD:?}"
+      Logs__Directory: /app/logs
+      Logs__ConsoleFormat: Json
+    ports:
+      - "127.0.0.1:5080:8080"
+    volumes:
+      - type: bind
+        source: ../logs/api
+        target: /app/logs
+        bind:
+          create_host_path: false
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  notifications:
+    <<: *hardened
+    profiles: ["backend", "full"]
+    build:
+      context: ..
+      dockerfile: src/FieldService.Notifications/Dockerfile
+    image: fieldservice/notifications:local
+    init: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "5090"
+      LOG_LEVEL: info
+      LOG_DIR: /app/logs
+      LOG_PRETTY: "false"
+      WEBHOOK_SECRETS: "${NOTIFICATIONS_WEBHOOK_SECRET:?}"
+      SOCKET_TICKET_KEY: "${AUTH_SOCKET_TICKET_KEY:?}"
+      SOCKET_ALLOWED_ORIGINS: "http://localhost:8081 http://127.0.0.1:8081 http://localhost:5173 http://127.0.0.1:5173"
+    ports:
+      - "127.0.0.1:5090:5090"
+    volumes:
+      - type: bind
+        source: ../logs/notifications
+        target: /app/logs
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('node:http').get('http://127.0.0.1:5090/health/live',r=>process.exit(r.statusCode>=200&&r.statusCode<300?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+      start_interval: 1s
+    restart: unless-stopped
+
+  web:
+    <<: *hardened
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: src/FieldService.Web/Dockerfile
+    image: fieldservice/web:local
+    networks:
+      default:
+        ipv4_address: "${WEB_IPV4_ADDRESS:-172.30.80.10}"
+    ports:
+      - "127.0.0.1:8081:8080"
+    depends_on:
+      api:
+        condition: service_started
+      notifications:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+      start_interval: 1s
+    restart: unless-stopped
+
 volumes:
   fieldservice-pgdata:
     name: fieldservice-pgdata
@@ -41,3 +172,4 @@ networks:
     ipam:
       config:
         - subnet: "${NETWORK_SUBNET:-172.30.80.0/24}"
+          ip_range: "${NETWORK_IP_RANGE:-172.30.80.128/25}"

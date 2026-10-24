@@ -1,0 +1,7 @@
+*
+!src/FieldService.Notifications
+src/FieldService.Notifications/node_modules
+src/FieldService.Notifications/dist
+**/.env
+**/.env.*
+**/*.log

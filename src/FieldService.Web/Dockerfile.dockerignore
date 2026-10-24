@@ -1,0 +1,14 @@
+*
+!docs/contracts/openapi.v1.json
+!src/FieldService.Web
+src/FieldService.Web/node_modules
+src/FieldService.Web/dist
+src/FieldService.Web/coverage
+src/FieldService.Web/test-results
+src/FieldService.Web/playwright-report
+src/FieldService.Web/e2e
+!src/FieldService.Web/e2e/tsconfig.json
+src/FieldService.Web/src/shared/api/schema.gen.ts
+**/.env
+**/.env.*
+**/*.log
