@@ -109,7 +109,7 @@ describe('KpiTile', () => {
     })
   })
 
-  it('hides the " · " between subline parts and reads a comma instead', () => {
+  it('hides the " · " between subline parts, its dot kept on the line before, and reads a comma instead', () => {
     const wrapper = show({
       label: 'Result',
       icon: 'clipboard-check',
@@ -119,7 +119,7 @@ describe('KpiTile', () => {
 
     const subline = wrapper.find('.kpi-tile__subline')
     expect(subline.find('[aria-hidden="true"]').text()).toBe('·')
-    expect(subline.find('[aria-hidden="true"]').element.textContent).toBe(' · ')
+    expect(subline.find('[aria-hidden="true"]').element.textContent).toBe('\u{00a0}\u{00b7} ')
     expect(subline.find('.visually-hidden').element.textContent).toBe(', ')
     expect(spokenText(subline.element)).toBe('Rooftop HVAC service, 10 items')
   })
@@ -272,6 +272,7 @@ describe('KpiTile', () => {
       'box-shadow': 'var(--shadow-fs-glass)',
       color: 'var(--color-fs-ink)',
       'text-decoration': 'none',
+      'container-type': 'inline-size',
     })
     expect(tokens.get('--radius-fs-card')).toBe('1.25rem')
     expect(tokens.get('--spacing-fs-20')).toBe('1.25rem')
@@ -294,6 +295,41 @@ describe('KpiTile', () => {
       color: 'var(--color-fs-muted)',
       'font-size': 'var(--text-fs-meta)',
     })
+  })
+
+  it('stacks its head, tile over a two-line label, once the tile is narrower than its label row needs', () => {
+    const narrow = '@container (width < 125px)'
+    const tokens = readTokens()
+    const padding = Number.parseFloat(tokens.get('--spacing-fs-20') ?? '') * 16
+    const unassignedLabelWidth = 73
+    const labelRow = unassignedLabelWidth + 12 + 40
+
+    expect(labelRow + 2 * padding).toBe(165)
+    expect(labelRow).toBe(125)
+    expect(ruleDeclarations(component, '.kpi-tile__head', narrow)).toEqual({
+      'flex-direction': 'column-reverse',
+      'align-items': 'flex-start',
+      'justify-content': 'flex-end',
+      gap: 'var(--spacing-fs-10)',
+    })
+    expect(ruleDeclarations(component, '.kpi-tile__label', narrow)).toEqual({
+      'min-height': '2.6em',
+    })
+  })
+
+  it('keeps the label before the tile in reading order when the head stacks', () => {
+    const wrapper = show({
+      label: 'Unassigned',
+      icon: 'circle-dashed',
+      tone: 'Unassigned',
+      value: '4',
+    })
+    const head = wrapper.find('.kpi-tile__head').element
+
+    expect(Array.from(head.children).map((child) => child.className)).toEqual([
+      'kpi-tile__label',
+      'icon-tile icon-tile--40 icon-tile--unassigned',
+    ])
   })
 
   it('turns opaque without blur under reduced transparency and draws a CanvasText border in forced colours', () => {

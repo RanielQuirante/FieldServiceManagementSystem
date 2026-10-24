@@ -14,7 +14,9 @@ import {
 } from './support/api.ts'
 import {
   assignCopy,
+  cancelCopy,
   createJobCopy,
+  dashboardCopy,
   documentTitle,
   historyCopy,
   jobDetailCopy,
@@ -268,9 +270,10 @@ function trackStatusRequests(page: Page): string[] {
   return requests
 }
 
-async function expectNoControlsIn(page: Page): Promise<void> {
+async function expectOnlyCancelIn(page: Page): Promise<void> {
   const main = page.getByRole('main')
-  for (const role of ['button', 'link', 'textbox', 'combobox', 'radio', 'checkbox'] as const) {
+  await expect(main.getByRole('button'), 'buttons in main').toHaveText([cancelCopy.trigger])
+  for (const role of ['link', 'textbox', 'combobox', 'radio', 'checkbox'] as const) {
     await expect(main.getByRole(role), `${role} elements in main`).toHaveCount(0)
   }
 }
@@ -503,8 +506,9 @@ test.describe('W1 job list', () => {
 test.describe('E2E-18 deep links and not found (W1 part)', () => {
   test.use({ expectedConsole: consolePatterns.jobNotFound })
 
-  test('an unknown job id shows the job-not-found state and an unknown path shows the not-found page', async ({
+  test('an unknown job id shows the job-not-found state and an unknown path shows the not-found page, whose link leads to the dashboard', async ({
     adminPage: page,
+    adminSession,
   }) => {
     await page.goto(`/jobs/${randomUUID()}`)
 
@@ -522,9 +526,15 @@ test.describe('E2E-18 deep links and not found (W1 part)', () => {
     await expect(page.getByRole('heading', { level: 1, name: notFoundCopy.heading })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: notFoundCopy.title })).toBeVisible()
     await expect(page).toHaveTitle(documentTitle(notFoundCopy.heading))
-    await page.getByRole('link', { name: notFoundCopy.goToJobs }).click()
-    await expect(page).toHaveURL('/jobs')
-    await expect(page.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
+    await page.getByRole('link', { name: notFoundCopy.goToDashboard }).click()
+    await expect(page).toHaveURL('/')
+    await expect(
+      page.getByRole('heading', {
+        level: 1,
+        name: dashboardCopy.greeting(adminSession.user.displayName),
+      }),
+    ).toBeVisible()
+    await expect(page).toHaveTitle(documentTitle(dashboardCopy.heading))
   })
 })
 
@@ -920,7 +930,7 @@ test.describe('W2 technician at creation and E2E-14 stale edit conflict (W2 part
 })
 
 test.describe('W3 status changes in the dashboard (W3-AC7)', () => {
-  test('after the technician starts, holds and resumes a job, a reload of the job detail shows Started, Put on hold with the note and Resumed; the In progress and On hold chips find the job; the dashboard never sends a status change', async ({
+  test('after the technician starts, holds and resumes a job, a reload of the job detail shows Started, Put on hold with the note and Resumed; the In progress and On hold chips find the job; the job page offers Cancel job as its only control and the dashboard never sends a status change', async ({
     adminPage: page,
     adminSession,
     api,
@@ -1016,7 +1026,7 @@ test.describe('W3 status changes in the dashboard (W3-AC7)', () => {
     await expect(historyItems(page)).toHaveCount(4)
     await expect(historyItems(page).last()).toContainText(historyCopy.putOnHold(lena.displayName))
     await expect(historyItems(page).last()).toContainText(historyCopy.note(note))
-    await expectNoControlsIn(page)
+    await expectOnlyCancelIn(page)
 
     const resumed = await lenaApi.resume(job.id)
     expect(resumed.status).toBe('InProgress')
@@ -1044,7 +1054,7 @@ test.describe('W3 status changes in the dashboard (W3-AC7)', () => {
     }
     await expect(historyItems(page).nth(3)).toContainText(historyCopy.note(note))
     await expect(page.getByText(historyCopy.note(note), { exact: true })).toHaveCount(1)
-    await expectNoControlsIn(page)
+    await expectOnlyCancelIn(page)
     const stored = await api.getJob(job.id)
     expect(stored.history.map((entry) => entry.action)).toEqual([
       'Created',

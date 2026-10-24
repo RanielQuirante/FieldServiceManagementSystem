@@ -209,6 +209,424 @@ public sealed class JobConcurrencyTests(DatabaseFixture fixture) : DatabaseTest(
         }
     }
 
+    [Fact]
+    public async Task AnAssignmentAndACancellationThatBothReachSaveChangesWithTheSameVersionGiveOne200AndOne409ConcurrencyConflict()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var barrier = new SaveChangesBarrier(participants: 2);
+            await using var factory = Fixture.CreateFactory(factory => factory.TestServices = services =>
+                services.ConfigureDbContext<FieldServiceDbContext>(options => options.AddInterceptors(barrier)));
+
+            await RaceAssignmentAgainstCancellationAsync(factory, bothLoadBeforeACommit: true);
+
+            Assert.Equal(2, barrier.Arrived);
+        }
+    }
+
+    [Fact]
+    public async Task AnAssignmentAndACancellationReleasedTogetherGiveOne200AndOne409AndNeverAnAssignedEntryAfterCancelled()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            Fixture.Factory.Events.Clear();
+
+            await RaceAssignmentAgainstCancellationAsync(Fixture.Factory, bothLoadBeforeACommit: false);
+        }
+    }
+
+    [Fact]
+    public async Task AStartAndACancellationThatBothReachSaveChangesWithTheSameVersionGiveOne200AndOne409ConcurrencyConflict()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var barrier = new SaveChangesBarrier(participants: 2);
+            await using var factory = Fixture.CreateFactory(factory => factory.TestServices = services =>
+                services.ConfigureDbContext<FieldServiceDbContext>(options => options.AddInterceptors(barrier)));
+
+            await RaceStartAgainstCancellationAsync(factory, bothLoadBeforeACommit: true);
+
+            Assert.Equal(2, barrier.Arrived);
+        }
+    }
+
+    [Fact]
+    public async Task AStartAndACancellationReleasedTogetherGiveOne200AndOne409AndNeverAStartedEntryAfterCancelled()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            Fixture.Factory.Events.Clear();
+
+            await RaceStartAgainstCancellationAsync(Fixture.Factory, bothLoadBeforeACommit: false);
+        }
+    }
+
+    [Fact]
+    public async Task ASubmissionAndACancellationThatBothReachSaveChangesGiveOne200AndOne409ConcurrencyConflict()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var barrier = new SaveChangesBarrier(participants: 2);
+            await using var factory = Fixture.CreateFactory(factory => factory.TestServices = services =>
+                services.ConfigureDbContext<FieldServiceDbContext>(options => options.AddInterceptors(barrier)));
+
+            await RaceSubmissionAgainstCancellationAsync(factory, bothLoadBeforeACommit: true);
+
+            Assert.Equal(2, barrier.Arrived);
+        }
+    }
+
+    [Fact]
+    public async Task ASubmissionAndACancellationReleasedTogetherGiveOne200AndOne409AndACancelledJobNeverHasASubmittedInspection()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            Fixture.Factory.Events.Clear();
+
+            await RaceSubmissionAgainstCancellationAsync(Fixture.Factory, bothLoadBeforeACommit: false);
+        }
+    }
+
+    [Fact]
+    public async Task AnInspectionSaveAndACancellationThatBothReachSaveChangesWithTheSameVersionGiveOne200AndOne409ConcurrencyConflict()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var barrier = new SaveChangesBarrier(participants: 2);
+            await using var factory = Fixture.CreateFactory(factory => factory.TestServices = services =>
+                services.ConfigureDbContext<FieldServiceDbContext>(options => options.AddInterceptors(barrier)));
+
+            await RaceSaveAgainstCancellationAsync(factory, bothLoadBeforeACommit: true);
+
+            Assert.Equal(2, barrier.Arrived);
+        }
+    }
+
+    [Fact]
+    public async Task AnInspectionSaveAndACancellationReleasedTogetherGiveOne200AndOne409AndACancelledJobKeepsItsDraftAsItWas()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            Fixture.Factory.Events.Clear();
+
+            await RaceSaveAgainstCancellationAsync(Fixture.Factory, bothLoadBeforeACommit: false);
+        }
+    }
+
+    [Fact]
+    public async Task TwoCancellationsThatBothReachSaveChangesWithTheSameVersionGiveOne200AndOne409WithOneCancelledEntryAndOneEvent()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            var barrier = new SaveChangesBarrier(participants: 2);
+            await using var factory = Fixture.CreateFactory(factory => factory.TestServices = services =>
+                services.ConfigureDbContext<FieldServiceDbContext>(options => options.AddInterceptors(barrier)));
+
+            var statuses = await RaceCancellationsAsync(factory);
+
+            Assert.Equal(2, barrier.Arrived);
+            Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], statuses.OrderBy(status => (int)status));
+        }
+    }
+
+    [Fact]
+    public async Task TwoCancellationsReleasedTogetherGiveOne200AndAnother200OrA409WithOneCancelledEntryAndOneEvent()
+    {
+        for (var round = 0; round < Rounds; round++)
+        {
+            Fixture.Factory.Events.Clear();
+
+            await RaceCancellationsAsync(Fixture.Factory);
+        }
+    }
+
+    private async Task RaceAssignmentAgainstCancellationAsync(ApiFactory factory, bool bothLoadBeforeACommit)
+    {
+        var earlier = Now.AddMinutes(-30);
+        var data = new TestData(Fixture, earlier);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await data.CreateJobAsync(administrator.Id, _hvacTemplateId, CancellationToken);
+
+        using var assigner = DeviceOf(factory, administrator);
+        using var canceller = DeviceOf(factory, administrator);
+        var responses = await SendTogetherAsync(
+            () => assigner.PutJsonAsync(AssignJobTests.PathOf(job.Id), AssignJobTests.Body(technician.UserId, job.Version)),
+            () => canceller.PostJsonAsync(CancelJobTests.PathOf(job.Id), CancelJobTests.Body(TestData.CancellationReason, job.Version)));
+
+        try
+        {
+            var cancelWon = await AssertOneWinnerAsync(
+                responses,
+                bothLoadBeforeACommit ? ["concurrency.conflict"] : ["concurrency.conflict", "job.not-assignable"],
+                ["concurrency.conflict"]);
+            var actions = await AssertEndsAsync(job.Id, cancelWon ? JobStatus.Cancelled : JobStatus.Assigned);
+            JobHistoryAction[] expected = cancelWon
+                ? [JobHistoryAction.Created, JobHistoryAction.Cancelled]
+                : [JobHistoryAction.Created, JobHistoryAction.Assigned];
+            Assert.Equal(expected, actions);
+            var recorded = Assert.Single(factory.Events.Events);
+            Assert.Equal(cancelWon ? JobEventTypes.StatusChanged : JobEventTypes.Assigned, recorded.Type);
+            Assert.Equal(cancelWon ? JobStatus.Cancelled : JobStatus.Assigned, recorded.Status);
+            Assert.Equal(JobStatus.Unassigned, recorded.PreviousStatus);
+        }
+        finally
+        {
+            DisposeAll(responses);
+        }
+    }
+
+    private async Task RaceStartAgainstCancellationAsync(ApiFactory factory, bool bothLoadBeforeACommit)
+    {
+        var (technician, job) = await ArrangeInspectionAsync(JobStatus.Assigned, answered: 0);
+        var administrator = await new TestData(Fixture, Now.AddMinutes(-30)).CreateAdministratorAsync(CancellationToken);
+
+        using var device = DeviceOf(factory, technician.User);
+        using var canceller = DeviceOf(factory, administrator);
+        var responses = await SendTogetherAsync(
+            () => device.PutJsonAsync(UpdateJobStatusTests.PathOf(job.Id), UpdateJobStatusTests.Body(JobStatus.InProgress, note: null, job.Version)),
+            () => canceller.PostJsonAsync(CancelJobTests.PathOf(job.Id), CancelJobTests.Body(TestData.CancellationReason, job.Version)));
+
+        try
+        {
+            var cancelWon = await AssertOneWinnerAsync(
+                responses,
+                bothLoadBeforeACommit ? ["concurrency.conflict"] : ["concurrency.conflict", "job.invalid-transition"],
+                ["concurrency.conflict"]);
+            var actions = await AssertEndsAsync(job.Id, cancelWon ? JobStatus.Cancelled : JobStatus.InProgress);
+            JobHistoryAction[] expected = cancelWon
+                ? [JobHistoryAction.Created, JobHistoryAction.Assigned, JobHistoryAction.Cancelled]
+                : [JobHistoryAction.Created, JobHistoryAction.Assigned, JobHistoryAction.Started];
+            Assert.Equal(expected, actions);
+            var recorded = Assert.Single(factory.Events.Events);
+            Assert.Equal(JobEventTypes.StatusChanged, recorded.Type);
+            Assert.Equal(cancelWon ? JobStatus.Cancelled : JobStatus.InProgress, recorded.Status);
+            Assert.Equal(JobStatus.Assigned, recorded.PreviousStatus);
+        }
+        finally
+        {
+            DisposeAll(responses);
+        }
+    }
+
+    private async Task RaceSubmissionAgainstCancellationAsync(ApiFactory factory, bool bothLoadBeforeACommit)
+    {
+        var (technician, job) = await ArrangeInspectionAsync(JobStatus.InProgress, answered: 10);
+        var administrator = await new TestData(Fixture, Now.AddMinutes(-30)).CreateAdministratorAsync(CancellationToken);
+        string[] codes = bothLoadBeforeACommit ? ["concurrency.conflict"] : ["concurrency.conflict", "job.invalid-transition"];
+
+        using var device = DeviceOf(factory, technician.User);
+        using var canceller = DeviceOf(factory, administrator);
+        var responses = await SendTogetherAsync(
+            () => device.PostJsonAsync(SubmitJobTests.PathOf(job.Id), SubmitJobTests.Body("Done", true, job.Version)),
+            () => canceller.PostJsonAsync(CancelJobTests.PathOf(job.Id), CancelJobTests.Body(TestData.CancellationReason, job.Version)));
+
+        try
+        {
+            var cancelWon = await AssertOneWinnerAsync(responses, codes, codes);
+            var actions = await AssertEndsAsync(job.Id, cancelWon ? JobStatus.Cancelled : JobStatus.Completed);
+            Assert.Equal(cancelWon ? JobHistoryAction.Cancelled : JobHistoryAction.Completed, actions[^1]);
+            Assert.DoesNotContain(cancelWon ? JobHistoryAction.Completed : JobHistoryAction.Cancelled, actions);
+            await using var db = Fixture.CreateAppDbContext();
+            var inspection = await db.Inspections.AsNoTracking().WithAnswersAndReadings().SingleAsync(entry => entry.JobId == job.Id, CancellationToken);
+            Assert.Equal(cancelWon, inspection.SubmittedAt is null);
+            Assert.Equal(cancelWon ? null : "Done", inspection.TechnicianNotes);
+            Assert.Equal(10, inspection.Answers.Count);
+            var recorded = Assert.Single(factory.Events.Events);
+            Assert.Equal(cancelWon ? JobStatus.Cancelled : JobStatus.Completed, recorded.Status);
+            Assert.Equal(JobStatus.InProgress, recorded.PreviousStatus);
+        }
+        finally
+        {
+            DisposeAll(responses);
+        }
+    }
+
+    private async Task RaceSaveAgainstCancellationAsync(ApiFactory factory, bool bothLoadBeforeACommit)
+    {
+        var (technician, job) = await ArrangeDraftAsync(answered: 6);
+        var administrator = await new TestData(Fixture, Now.AddMinutes(-30)).CreateAdministratorAsync(CancellationToken);
+        var draftBefore = await DraftOfAsync(job.Id);
+        var save = SaveInspectionTests.Body(
+            job.Version,
+            SaveInspectionTests.Answer(5, "Fail", "Bearing noise at start-up."),
+            SaveInspectionTests.Answer(7, "Pass"));
+
+        using var device = DeviceOf(factory, technician.User);
+        using var canceller = DeviceOf(factory, administrator);
+        var responses = await SendTogetherAsync(
+            () => device.PutJsonAsync(SaveInspectionTests.PathOf(job.Id), save),
+            () => canceller.PostJsonAsync(CancelJobTests.PathOf(job.Id), CancelJobTests.Body(TestData.CancellationReason, job.Version)));
+
+        try
+        {
+            var cancelWon = await AssertOneWinnerAsync(
+                responses,
+                bothLoadBeforeACommit ? ["concurrency.conflict"] : ["concurrency.conflict", "inspection.locked"],
+                ["concurrency.conflict"]);
+            var actions = await AssertEndsAsync(job.Id, cancelWon ? JobStatus.Cancelled : JobStatus.InProgress);
+            JobHistoryAction[] expected = cancelWon
+                ? [JobHistoryAction.Created, JobHistoryAction.Assigned, JobHistoryAction.Started, JobHistoryAction.Cancelled]
+                : [JobHistoryAction.Created, JobHistoryAction.Assigned, JobHistoryAction.Started];
+            Assert.Equal(expected, actions);
+            await using var db = Fixture.CreateAppDbContext();
+            var storedJob = await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == job.Id, CancellationToken);
+            var draft = await db.Inspections.AsNoTracking().WithAnswersAndReadings().SingleAsync(entry => entry.JobId == job.Id, CancellationToken);
+            Assert.Null(draft.SubmittedAt);
+            if (cancelWon)
+            {
+                var cancelled = await responses[1].Content.ReadFromJsonAsync<JobDetailsResponse>(ApiClient.Json, CancellationToken);
+                Assert.Equal(cancelled!.Version, storedJob.Version);
+                Assert.Equal(draftBefore, await DraftOfAsync(job.Id));
+                var recorded = Assert.Single(factory.Events.Events);
+                Assert.Equal(JobEventTypes.StatusChanged, recorded.Type);
+                Assert.Equal(JobStatus.Cancelled, recorded.Status);
+                Assert.Equal(JobStatus.InProgress, recorded.PreviousStatus);
+            }
+            else
+            {
+                var saved = await responses[0].Content.ReadFromJsonAsync<InspectionResponse>(ApiClient.Json, CancellationToken);
+                Assert.Equal(saved!.Version, storedJob.Version);
+                Assert.Equal(7, draft.Answers.Count);
+                var fanMotor = draft.Answers.Single(answer => answer.ChecklistItemId == SaveInspectionTests.Item(5));
+                Assert.Equal(InspectionResult.Fail, fanMotor.Result);
+                Assert.Equal("Bearing noise at start-up.", fanMotor.Note);
+                Assert.Equal(InspectionResult.Pass, draft.Answers.Single(answer => answer.ChecklistItemId == SaveInspectionTests.Item(7)).Result);
+                factory.Events.AssertEmpty();
+            }
+        }
+        finally
+        {
+            DisposeAll(responses);
+        }
+    }
+
+    private async Task<(Technician Technician, Job Job)> ArrangeDraftAsync(int answered)
+    {
+        var earlier = Now.AddMinutes(-30);
+        var administrator = await new TestData(Fixture, earlier).CreateAdministratorAsync(CancellationToken);
+        var technician = await new TestData(Fixture, earlier).CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var assigned = await new TestData(Fixture, earlier.AddMinutes(5)).MoveToAsync(
+            await new TestData(Fixture, earlier).CreateJobAsync(administrator.Id, _hvacTemplateId, CancellationToken),
+            technician,
+            JobStatus.Assigned,
+            CancellationToken);
+        var started = await new TestData(Fixture, earlier.AddMinutes(6)).ChangeStatusAsync(assigned, JobStatus.InProgress, CancellationToken);
+        await new TestData(Fixture, earlier.AddMinutes(10)).SaveInspectionAsync(
+            started,
+            TestData.PassingAnswers(TestData.ChecklistOf(_hvacTemplateId), answered),
+            CancellationToken);
+
+        await using var db = Fixture.CreateAppDbContext();
+        return (technician, await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == started.Id, CancellationToken));
+    }
+
+    private async Task<string> DraftOfAsync(Guid jobId)
+    {
+        await using var db = Fixture.CreateAppDbContext();
+        var draft = await db.Inspections.AsNoTracking().WithAnswersAndReadings().SingleAsync(entry => entry.JobId == jobId, CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            draft.Id,
+            draft.JobId,
+            draft.TechnicianId,
+            draft.CreatedAt,
+            draft.UpdatedAt,
+            draft.SubmittedAt,
+            draft.TechnicianNotes,
+            Answers = draft.Answers
+                .OrderBy(answer => answer.ChecklistItemId)
+                .Select(answer => new
+                {
+                    answer.ChecklistItemId,
+                    answer.Result,
+                    answer.Note,
+                    answer.AnsweredAt,
+                    Readings = answer.Readings
+                        .OrderBy(reading => reading.ReadingFieldId)
+                        .Select(reading => new { reading.ReadingFieldId, reading.Value }),
+                }),
+        });
+    }
+
+    private async Task<HttpStatusCode[]> RaceCancellationsAsync(ApiFactory factory)
+    {
+        var (_, job) = await ArrangeInspectionAsync(JobStatus.Assigned, answered: 0);
+        var administrator = await new TestData(Fixture, Now.AddMinutes(-30)).CreateAdministratorAsync(CancellationToken);
+
+        using var first = DeviceOf(factory, administrator);
+        using var second = DeviceOf(factory, administrator);
+        var responses = await SendTogetherAsync(
+            () => first.PostJsonAsync(CancelJobTests.PathOf(job.Id), CancelJobTests.Body("First reason.", job.Version)),
+            () => second.PostJsonAsync(CancelJobTests.PathOf(job.Id), CancelJobTests.Body("Second reason.", job.Version)));
+
+        try
+        {
+            Assert.Contains(responses, response => response.StatusCode == HttpStatusCode.OK);
+            foreach (var response in responses.Where(response => response.StatusCode != HttpStatusCode.OK))
+            {
+                await ApiClient.AssertProblemAsync(response, HttpStatusCode.Conflict, "concurrency.conflict");
+            }
+
+            var bodies = new List<JobDetailsResponse>();
+            foreach (var success in responses.Where(response => response.StatusCode == HttpStatusCode.OK))
+            {
+                bodies.Add((await success.Content.ReadFromJsonAsync<JobDetailsResponse>(ApiClient.Json, CancellationToken))!);
+            }
+
+            Assert.Single(bodies.Select(body => body.Version).Distinct());
+            var actions = await AssertEndsAsync(job.Id, JobStatus.Cancelled);
+            Assert.Equal([JobHistoryAction.Created, JobHistoryAction.Assigned, JobHistoryAction.Cancelled], actions);
+            await using var db = Fixture.CreateAppDbContext();
+            var note = (await db.JobHistory.AsNoTracking().SingleAsync(entry => entry.JobId == job.Id && entry.Action == JobHistoryAction.Cancelled, CancellationToken)).Note;
+            Assert.Contains(note, new[] { "First reason.", "Second reason." });
+            var recorded = Assert.Single(factory.Events.Events);
+            Assert.Equal(JobStatus.Cancelled, recorded.Status);
+            Assert.Equal(JobStatus.Assigned, recorded.PreviousStatus);
+            return [.. responses.Select(response => response.StatusCode)];
+        }
+        finally
+        {
+            DisposeAll(responses);
+        }
+    }
+
+    private static async Task<bool> AssertOneWinnerAsync(
+        HttpResponseMessage[] responses,
+        string[] otherLoserCodes,
+        string[] cancellationLoserCodes)
+    {
+        var (other, cancellation) = (responses[0], responses[1]);
+        Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], responses.Select(response => response.StatusCode).OrderBy(status => (int)status));
+        var cancelWon = cancellation.StatusCode == HttpStatusCode.OK;
+        var loser = cancelWon ? other : cancellation;
+        Assert.Contains(await CodeOfAsync(loser), cancelWon ? otherLoserCodes : cancellationLoserCodes);
+        return cancelWon;
+    }
+
+    private async Task<IReadOnlyList<JobHistoryAction>> AssertEndsAsync(Guid jobId, JobStatus status)
+    {
+        await using var db = Fixture.CreateAppDbContext();
+        var stored = await db.Jobs.AsNoTracking().SingleAsync(entry => entry.Id == jobId, CancellationToken);
+        Assert.Equal(status, stored.Status);
+        Assert.Equal(status == JobStatus.Cancelled, stored.CancelledAt is not null);
+        Assert.Equal(status == JobStatus.Cancelled ? stored.CancelledAt : stored.UpdatedAt, stored.UpdatedAt);
+        var history = await db.JobHistory.AsNoTracking()
+            .Where(entry => entry.JobId == jobId)
+            .OrderBy(entry => entry.OccurredAt)
+            .ThenBy(entry => entry.Action == JobHistoryAction.Created ? 0 : 1)
+            .ToListAsync(CancellationToken);
+        Assert.Equal(stored.Status, history[^1].ToStatus);
+        Assert.True(history.Count(entry => entry.Action == JobHistoryAction.Cancelled) <= 1);
+        var cancelledIndex = history.FindIndex(entry => entry.Action == JobHistoryAction.Cancelled);
+        if (cancelledIndex >= 0)
+        {
+            Assert.Equal(history.Count - 1, cancelledIndex);
+        }
+
+        return [.. history.Select(entry => entry.Action)];
+    }
+
     private async Task RaceFirstSavesAsync(ApiFactory factory)
     {
         var (technician, job) = await ArrangeInspectionAsync(JobStatus.InProgress, answered: 0);

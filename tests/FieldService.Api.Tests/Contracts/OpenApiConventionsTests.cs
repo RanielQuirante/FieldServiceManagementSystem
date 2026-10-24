@@ -11,6 +11,11 @@ public sealed partial class OpenApiConventionsTests(DatabaseFixture fixture) : D
 
     private const string TypeMember = "type";
 
+    private static readonly Dictionary<(string Schema, string Member), string> _idsWithAPattern = new()
+    {
+        [("ReportClientErrorRequest", "correlationId")] = "^[A-Za-z0-9._-]{1,64}$",
+    };
+
     [Fact]
     public async Task NoSchemaInTheSnapshotOrTheServedDocumentHasAFormatWithoutAType()
     {
@@ -259,39 +264,10 @@ public sealed partial class OpenApiConventionsTests(DatabaseFixture fixture) : D
     [Fact]
     public void InstantsAreDateTimeIdsAreUuidAndJobResponsesCarryAnIntegerVersion()
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(OpenApiSnapshotTests.SnapshotPath));
+        var json = File.ReadAllText(OpenApiSnapshotTests.SnapshotPath);
+        using var document = JsonDocument.Parse(json);
         var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
-        var findings = new List<string>();
-
-        foreach (var schema in schemas.EnumerateObject().Where(schema => !schema.Name.Contains("Problem", StringComparison.Ordinal)))
-        {
-            if (!schema.Value.TryGetProperty("properties", out var properties))
-            {
-                continue;
-            }
-
-            foreach (var member in properties.EnumerateObject())
-            {
-                var format = StringOf(member.Value, FormatMember);
-                if (IdPattern().IsMatch(member.Name) && format != "uuid")
-                {
-                    findings.Add($"{schema.Name}.{member.Name}: an id without format uuid");
-                }
-
-                if (InstantPattern().IsMatch(member.Name) && format != "date-time")
-                {
-                    findings.Add($"{schema.Name}.{member.Name}: an instant without format date-time");
-                }
-            }
-        }
-
-        foreach (var parameter in Operations().SelectMany(Parameters))
-        {
-            if (IdPattern().IsMatch(parameter.Name) && StringOf(parameter.Schema, FormatMember) != "uuid")
-            {
-                findings.Add($"parameter {parameter.Name}: an id without format uuid");
-            }
-        }
+        var findings = IdAndInstantFindings(json);
 
         foreach (var name in new[] { "JobDetailsResponse", "JobSummaryResponse" })
         {
@@ -303,6 +279,132 @@ public sealed partial class OpenApiConventionsTests(DatabaseFixture fixture) : D
         }
 
         Assert.True(findings.Count == 0, string.Join("\n", findings));
+    }
+
+    [Fact]
+    public void TheIdRuleExemptsOnlyTheClientErrorCorrelationIdAndOnlyAsThePatternStringOfTheContract()
+    {
+        const string Document = """
+            {
+              "openapi": "3.1.1",
+              "paths": {
+                "/api/probe/{correlationId}": {
+                  "get": {
+                    "parameters": [ { "name": "correlationId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" } } ],
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                }
+              },
+              "components": {
+                "schemas": {
+                  "ReportClientErrorRequest": {
+                    "type": "object",
+                    "properties": {
+                      "correlationId": { "pattern": "^[A-Za-z0-9._-]{1,64}$", "type": [ "null", "string" ] },
+                      "reportId": { "type": "string" },
+                      "occurredAt": { "type": "string", "format": "date-time" }
+                    }
+                  },
+                  "OtherRequest": {
+                    "type": "object",
+                    "properties": {
+                      "correlationId": { "pattern": "^[A-Za-z0-9._-]{1,64}$", "type": [ "string", "null" ] },
+                      "jobId": { "type": "string", "format": "uuid" }
+                    }
+                  }
+                }
+              }
+            }
+            """;
+        string[] expected =
+        [
+            "OtherRequest.correlationId: an id without format uuid",
+            "ReportClientErrorRequest.reportId: an id without format uuid",
+            "parameter correlationId: an id without format uuid",
+        ];
+
+        var findings = IdAndInstantFindings(Document);
+        var widened = IdAndInstantFindings(Document.Replace(
+            "\"correlationId\": { \"pattern\": \"^[A-Za-z0-9._-]{1,64}$\", \"type\": [ \"null\", \"string\" ] }",
+            "\"correlationId\": { \"pattern\": \"^.*$\", \"type\": [ \"null\", \"string\" ] }",
+            StringComparison.Ordinal));
+
+        Assert.Equal(expected, findings.Order(StringComparer.Ordinal));
+        Assert.Contains("ReportClientErrorRequest.correlationId: an exempt id without the pattern ^[A-Za-z0-9._-]{1,64}$", widened);
+        Assert.Equal(expected.Length + 1, widened.Count);
+    }
+
+    [Fact]
+    public void TheExemptCorrelationIdIsTheClientErrorRequestMemberAsANullablePatternStringWithoutAFormat()
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(OpenApiSnapshotTests.SnapshotPath));
+        var request = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty("ReportClientErrorRequest");
+        var body = document.RootElement.GetProperty("paths").GetProperty("/api/client-errors").GetProperty("post")
+            .GetProperty("requestBody").GetProperty("content").GetProperty("application/json").GetProperty("schema");
+
+        var (schema, member) = Assert.Single(_idsWithAPattern.Keys);
+        var correlationId = request.GetProperty("properties").GetProperty(member);
+
+        Assert.Equal(("ReportClientErrorRequest", "correlationId"), (schema, member));
+        Assert.Equal("#/components/schemas/ReportClientErrorRequest", StringOf(body, "$ref"));
+        Assert.Equal(_idsWithAPattern[(schema, member)], StringOf(correlationId, "pattern"));
+        Assert.Equal("^[A-Za-z0-9._-]{1,64}$", StringOf(correlationId, "pattern"));
+        Assert.False(correlationId.TryGetProperty(FormatMember, out _), "The client-error correlation id gained a format.");
+        Assert.Equal(
+            new[] { "null", "string" },
+            correlationId.GetProperty(TypeMember).EnumerateArray().Select(type => type.GetString() ?? string.Empty));
+        Assert.DoesNotContain("correlationId", request.GetProperty("required").EnumerateArray().Select(name => name.GetString() ?? string.Empty));
+    }
+
+    public static List<string> IdAndInstantFindings(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var findings = new List<string>();
+        if (document.RootElement.TryGetProperty("components", out var components)
+            && components.TryGetProperty("schemas", out var schemas))
+        {
+            foreach (var schema in schemas.EnumerateObject().Where(schema => !schema.Name.Contains("Problem", StringComparison.Ordinal)))
+            {
+                if (!schema.Value.TryGetProperty("properties", out var properties))
+                {
+                    continue;
+                }
+
+                foreach (var member in properties.EnumerateObject())
+                {
+                    var format = StringOf(member.Value, FormatMember);
+                    if (IdPattern().IsMatch(member.Name) && format != "uuid")
+                    {
+                        if (_idsWithAPattern.TryGetValue((schema.Name, member.Name), out var pattern))
+                        {
+                            if (format is not null || StringOf(member.Value, "pattern") != pattern)
+                            {
+                                findings.Add($"{schema.Name}.{member.Name}: an exempt id without the pattern {pattern}");
+                            }
+                        }
+                        else
+                        {
+                            findings.Add($"{schema.Name}.{member.Name}: an id without format uuid");
+                        }
+                    }
+
+                    if (InstantPattern().IsMatch(member.Name) && format != "date-time")
+                    {
+                        findings.Add($"{schema.Name}.{member.Name}: an instant without format date-time");
+                    }
+                }
+            }
+        }
+
+        foreach (var parameter in Operations(json).SelectMany(Parameters))
+        {
+            if (IdPattern().IsMatch(parameter.Name) && StringOf(parameter.Schema, FormatMember) != "uuid")
+            {
+                findings.Add($"parameter {parameter.Name}: an id without format uuid");
+            }
+        }
+
+        return findings;
     }
 
     public static List<string> WriteOperationsWithInputWithout400(string json) =>

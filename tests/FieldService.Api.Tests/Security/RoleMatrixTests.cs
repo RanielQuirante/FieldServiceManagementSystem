@@ -1,6 +1,8 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using FieldService.Api.Domain;
+using FieldService.Api.Shared.Security;
 using FieldService.Api.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,7 +37,43 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
 
     private const string SocketTicketsRoute = "/api/auth/socket-tickets";
 
+    private const string DashboardRoute = "/api/dashboard/summary";
+
+    private const string CancellationRoute = "/api/jobs/{jobId:guid}/cancellation";
+
+    private const string ClientErrorsRoute = "/api/client-errors";
+
     private static readonly string[] _callers = [Anonymous, AssignedTechnician, OtherTechnician, Administrator];
+
+    private static readonly Dictionary<string, string[]> _invalidAdministratorRequests = new(StringComparer.Ordinal)
+    {
+        ["GetDashboardSummary without from and to"] = ["from", "to"],
+        ["GetDashboardSummary with to before from"] = ["to"],
+        ["CancelJob with an empty object"] = ["reason", "version"],
+        ["CancelJob with a body that is not JSON"] = ["body"],
+        ["CancelJob with a reason of 501 characters"] = ["reason"],
+        ["CancelJob without a body"] = ["body"],
+        ["ReportClientError with an empty object"] = ["message", "occurredAt", "source"],
+        ["ReportClientError with a route holding a query string"] = ["route"],
+        ["ReportClientError with a body that is not JSON"] = ["body"],
+    };
+
+    public static TheoryData<string, string, int, string> InvalidAdministratorRequests
+    {
+        get
+        {
+            var data = new TheoryData<string, string, int, string>();
+            foreach (var request in _invalidAdministratorRequests.Keys)
+            {
+                data.Add(request, Anonymous, 401, "auth.unauthenticated");
+                data.Add(request, AssignedTechnician, 403, "auth.forbidden");
+                data.Add(request, OtherTechnician, 403, "auth.forbidden");
+                data.Add(request, Administrator, 400, "request.validation-failed");
+            }
+
+            return data;
+        }
+    }
 
     public static TheoryData<string, string, string, int, string?> Matrix => new()
     {
@@ -55,6 +93,10 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "POST", SocketTicketsRoute, AssignedTechnician, 403, "auth.forbidden" },
         { "POST", SocketTicketsRoute, OtherTechnician, 403, "auth.forbidden" },
         { "POST", SocketTicketsRoute, Administrator, 200, null },
+        { "GET", DashboardRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "GET", DashboardRoute, AssignedTechnician, 403, "auth.forbidden" },
+        { "GET", DashboardRoute, OtherTechnician, 403, "auth.forbidden" },
+        { "GET", DashboardRoute, Administrator, 200, null },
         { "GET", "/api/checklist-templates", Anonymous, 401, "auth.unauthenticated" },
         { "GET", "/api/checklist-templates", AssignedTechnician, 403, "auth.forbidden" },
         { "GET", "/api/checklist-templates", OtherTechnician, 403, "auth.forbidden" },
@@ -91,6 +133,10 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "POST", SubmissionRoute, AssignedTechnician, 200, null },
         { "POST", SubmissionRoute, OtherTechnician, 404, "job.not-found" },
         { "POST", SubmissionRoute, Administrator, 403, "auth.forbidden" },
+        { "POST", CancellationRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "POST", CancellationRoute, AssignedTechnician, 403, "auth.forbidden" },
+        { "POST", CancellationRoute, OtherTechnician, 403, "auth.forbidden" },
+        { "POST", CancellationRoute, Administrator, 200, null },
         { "GET", InspectionRoute, Anonymous, 401, "auth.unauthenticated" },
         { "GET", InspectionRoute, AssignedTechnician, 200, null },
         { "GET", InspectionRoute, OtherTechnician, 404, "job.not-found" },
@@ -99,6 +145,10 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         { "PUT", InspectionRoute, AssignedTechnician, 200, null },
         { "PUT", InspectionRoute, OtherTechnician, 404, "job.not-found" },
         { "PUT", InspectionRoute, Administrator, 403, "auth.forbidden" },
+        { "POST", ClientErrorsRoute, Anonymous, 401, "auth.unauthenticated" },
+        { "POST", ClientErrorsRoute, AssignedTechnician, 403, "auth.forbidden" },
+        { "POST", ClientErrorsRoute, OtherTechnician, 403, "auth.forbidden" },
+        { "POST", ClientErrorsRoute, Administrator, 202, null },
         { "GET", "/health/live", Anonymous, 200, null },
         { "GET", "/health/live", AssignedTechnician, 200, null },
         { "GET", "/health/live", OtherTechnician, 200, null },
@@ -174,6 +224,39 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
         }
     }
 
+    [Theory]
+    [MemberData(nameof(InvalidAdministratorRequests))]
+    public async Task AnInvalidRequestToAnAdministratorOnlyRouteGets401Or403BeforeValidationAndChangesNothing(
+        string request,
+        string caller,
+        int expectedStatus,
+        string expectedCode)
+    {
+        var world = await ArrangeAsync(Fixture);
+        using var client = Fixture.Factory.CreateApiClient();
+        client.AccessToken = world.TokenFor(Fixture.Factory, caller);
+        var before = await LoadJobAsync(world.JobId);
+
+        using var response = await SendInvalidAsync(client, request, world);
+
+        using var problem = await ApiClient.AssertProblemAsync(response, (HttpStatusCode)expectedStatus, expectedCode);
+        if (expectedStatus == 400)
+        {
+            Assert.Equal(
+                _invalidAdministratorRequests[request],
+                problem.RootElement.GetProperty("errors").EnumerateObject().Select(member => member.Name).Order(StringComparer.Ordinal));
+        }
+        else
+        {
+            Assert.False(problem.RootElement.TryGetProperty("errors", out _), $"{request} as {caller} reached validation.");
+        }
+
+        var after = await LoadJobAsync(world.JobId);
+        Assert.Equal((JobStatus.Assigned, before.Version), (after.Status, after.Version));
+        Assert.Empty(Fixture.Factory.LogSink.Named(SecurityLog.ClientErrorReportedEvent));
+        Fixture.Factory.Events.AssertEmpty();
+    }
+
     [Fact]
     public async Task AnAdministratorTokenWithoutALiveSessionGets401SessionExpiredFromTheSocketTicketEndpoint()
     {
@@ -230,6 +313,23 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
             checklistTemplateId = TestData.HvacTemplateId,
         };
     }
+
+    public static string DashboardWindow(DateTimeOffset now)
+    {
+        var from = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        return $"from={ApiClient.WireInstant(from)}&to={ApiClient.WireInstant(from.AddDays(1))}";
+    }
+
+    public static object ClientErrorBody(DateTimeOffset now) => new
+    {
+        message = "Cannot read properties of undefined (reading 'number')",
+        source = "app.errorHandler",
+        route = "/jobs",
+        correlationId = (string?)null,
+        stack = (string?)null,
+        occurredAt = ApiClient.WireInstant(now),
+        appVersion = "1.0.0",
+    };
 
     public static async Task<World> ArrangeAsync(DatabaseFixture fixture)
     {
@@ -290,6 +390,9 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
             ("POST", "/api/auth/refresh") => client.PostAsync(path),
             ("POST", "/api/auth/sign-out") => client.PostAsync(path),
             ("POST", SocketTicketsRoute) => client.PostAsync(path),
+            ("GET", DashboardRoute) => client.GetAsync($"{path}?{DashboardWindow(world.Now)}"),
+            ("POST", CancellationRoute) => client.PostJsonAsync(path, new { reason = TestData.CancellationReason, version = world.JobVersion }),
+            ("POST", ClientErrorsRoute) => client.PostJsonAsync(path, ClientErrorBody(world.Now)),
             ("POST", "/api/jobs") => client.PostJsonAsync(path, CreateJobBody(world.Now, Guid.NewGuid().ToString("N")[..8])),
             ("PUT", AssignmentRoute) => client.PutJsonAsync(path, new { technicianId = world.AssignedTechnician.Id, version = 0u }),
             ("PUT", StatusRoute) => client.PutJsonAsync(path, new { status = "InProgress", note = (string?)null, version = world.JobVersion }),
@@ -303,6 +406,36 @@ public sealed class RoleMatrixTests(DatabaseFixture fixture) : DatabaseTest(fixt
             _ => throw new ArgumentOutOfRangeException(nameof(route), $"{method} {route} has no request in the role matrix."),
         };
     }
+
+    private static Task<HttpResponseMessage> SendInvalidAsync(ApiClient client, string request, World world)
+    {
+        var cancellation = CancellationRoute.Replace("{jobId:guid}", world.JobId.ToString(), StringComparison.Ordinal);
+        var dayStart = new DateTimeOffset(world.Now.UtcDateTime.Date, TimeSpan.Zero);
+        return request switch
+        {
+            "GetDashboardSummary without from and to" => client.GetAsync(DashboardRoute),
+            "GetDashboardSummary with to before from" => client.GetAsync(
+                $"{DashboardRoute}?from={ApiClient.WireInstant(dayStart.AddDays(1))}&to={ApiClient.WireInstant(dayStart)}"),
+            "CancelJob with an empty object" => client.PostAsync(cancellation, JsonText("{}")),
+            "CancelJob with a body that is not JSON" => client.PostAsync(cancellation, JsonText("{\"reason\":\"The customer cancelled the visit.\",")),
+            "CancelJob with a reason of 501 characters" => client.PostJsonAsync(
+                cancellation,
+                new { reason = new string('r', 501), version = world.JobVersion }),
+            "CancelJob without a body" => client.PostAsync(cancellation),
+            "ReportClientError with an empty object" => client.PostAsync(ClientErrorsRoute, JsonText("{}")),
+            "ReportClientError with a route holding a query string" => client.PostJsonAsync(ClientErrorsRoute, new
+            {
+                message = "Cannot read properties of undefined (reading 'number')",
+                source = "app.errorHandler",
+                route = "/jobs?status=Assigned",
+                occurredAt = ApiClient.WireInstant(world.Now),
+            }),
+            "ReportClientError with a body that is not JSON" => client.PostAsync(ClientErrorsRoute, JsonText("message=Boom")),
+            _ => throw new ArgumentOutOfRangeException(nameof(request), request, "Unknown invalid request."),
+        };
+    }
+
+    private static StringContent JsonText(string body) => new(body, Encoding.UTF8, "application/json");
 
     public sealed record World(
         User Administrator,

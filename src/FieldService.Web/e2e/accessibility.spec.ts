@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 
-import { AxeBuilder } from '@axe-core/playwright'
 import type { Locator, Page, TestInfo } from '@playwright/test'
 
 import {
@@ -38,10 +37,9 @@ import {
   rowNamed,
   seededJobInStatus,
 } from './support/jobs.ts'
-import { e2eTitle, openInApp, readJsonFile, resultsFile, writeJsonFile } from './support/run.ts'
+import { audit } from './support/axe.ts'
+import { e2eTitle, openInApp, resultsFile, writeJsonFile } from './support/run.ts'
 import { SocketGate } from './support/websocket.ts'
-
-const axeTags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
 
 const widths = [
   { width: 1280, height: 800 },
@@ -72,44 +70,6 @@ const teal = 'rgb(15, 118, 110)'
 const errorRed = 'rgb(180, 35, 24)'
 
 const disabledText = 'rgb(124, 140, 161)'
-
-interface AuditRecord {
-  readonly test: string
-  readonly state: string
-  readonly violations: number
-  readonly needsReview: readonly string[]
-}
-
-function recordAudit(runId: string, record: AuditRecord): void {
-  const file = resultsFile('axe', `${runId}-audits.json`)
-  writeJsonFile(file, [...readJsonFile<AuditRecord[]>(file, []), record])
-}
-
-async function audit(page: Page, testInfo: TestInfo, runId: string, state: string): Promise<void> {
-  const results = await new AxeBuilder({ page }).withTags(axeTags).analyze()
-  const needsReview = results.incomplete.map((item) => ({
-    rule: item.id,
-    impact: item.impact,
-    nodes: item.nodes.map((node) => node.target.join(' ')),
-  }))
-  await testInfo.attach(`axe needs review: ${state}`, {
-    body: JSON.stringify(needsReview, null, 2),
-    contentType: 'application/json',
-  })
-  recordAudit(runId, {
-    test: testInfo.title,
-    state,
-    violations: results.violations.length,
-    needsReview: results.incomplete.map((item) => item.id),
-  })
-  const violations = results.violations.map(
-    (violation) =>
-      `${violation.id} (${violation.impact ?? 'no impact'}): ${violation.nodes
-        .map((node) => node.target.join(' '))
-        .join(' | ')}`,
-  )
-  expect(violations, `axe violations in the state "${state}"`).toEqual([])
-}
 
 async function pageScrollWidth(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth)
@@ -192,7 +152,7 @@ async function shiftTabCoverage(page: Page, start: Locator, limit: number): Prom
     const sample = await page.evaluate(
       ({ notifications, skipLink }) => {
         const host = document.querySelector(`[aria-label="${notifications}"]`)
-        const toasts = host === null ? [] : [...host.querySelectorAll('[role="alert"]')]
+        const toasts = host === null ? [] : [...host.querySelectorAll('[data-toast-id]')]
         const measured = toasts.some((toast) => toast.getBoundingClientRect().height > 0)
         const active = document.activeElement
         if (!(active instanceof HTMLElement) || active === document.body) {

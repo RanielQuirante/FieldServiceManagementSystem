@@ -135,6 +135,26 @@ describe('the toast queue', () => {
     })
   })
 
+  it('adds a reference only to a shown error toast that has none', () => {
+    const toasts = useToasts()
+    const pending = toasts.showError(null)
+    const failedCall = toasts.showError(reference)
+    const event = toasts.show({ title: 'Tom Becker put a job on hold' })
+    const accepted = '927ba8e3-24aa-4d0e-8ef1-d8c4203c37fe'
+
+    expect(toasts.attachReference(pending, accepted)).toBe(true)
+    expect(toasts.attachReference(pending, reference)).toBe(false)
+    expect(toasts.attachReference(failedCall, accepted)).toBe(false)
+    expect(toasts.attachReference(event, accepted)).toBe(false)
+    expect(toasts.attachReference(9_999, accepted)).toBe(false)
+
+    expect(toasts.toasts.map((toast) => [toast.id, toast.reference])).toEqual([
+      [pending, accepted],
+      [failedCall, reference],
+      [event, null],
+    ])
+  })
+
   it('removes a dismissed toast, and every toast on clear', () => {
     const toasts = useToasts()
     const id = toasts.show({ title: 'Tom Becker put a job on hold' })
@@ -378,16 +398,74 @@ describe('Toast', () => {
     }
 
     const wrapper = mount(Toast, { props: { toast } })
+    const alert = wrapper.find('[role="alert"]')
 
-    expect(wrapper.attributes('role')).toBe('alert')
     expect(wrapper.attributes('data-surface')).toBe('dark')
-    expect(wrapper.find('.toast__title').text()).toBe('Something went wrong')
-    expect(wrapper.find('.toast__body').text()).toBe(
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1)
+    expect(alert.find('.toast__title').text()).toBe('Something went wrong')
+    expect(alert.find('.toast__body').text()).toBe(
       'Your last action may not have finished. Check the page, then try again.',
     )
-    expect(wrapper.find('.toast__reference').text()).toBe(`Reference ${reference}`)
-    expect(wrapper.find('.toast__tile').attributes('aria-hidden')).toBe('true')
-    expect(wrapper.find('button').attributes('aria-label')).toBe('Dismiss notification')
+    expect(alert.find('.toast__reference').text()).toBe(`Reference ${reference}`)
+    expect(alert.find('.toast__tile').attributes('aria-hidden')).toBe('true')
+    expect(alert.find('button').attributes('aria-label')).toBe('Dismiss notification')
+  })
+
+  it('announces the error once: a reference that arrives later joins outside the alert', async () => {
+    const toasts = useToasts()
+    const id = toasts.showError(null)
+    const shown = toasts.toasts[0]
+    if (shown === undefined) {
+      throw new Error('No toast queued')
+    }
+    const wrapper = mount(Toast, { props: { toast: shown } })
+    const alert = wrapper.find('[role="alert"]')
+    const announcedBefore = alert.element.innerHTML
+
+    toasts.attachReference(id, reference)
+    const updated = toasts.toasts[0]
+    if (updated === undefined) {
+      throw new Error('No toast queued')
+    }
+    await wrapper.setProps({ toast: updated })
+
+    const later = wrapper.find('.toast__reference--later')
+    expect(later.text()).toBe(`Reference ${reference}`)
+    expect(alert.element.contains(later.element)).toBe(false)
+    expect(alert.element.innerHTML).toBe(announcedBefore)
+    expect(later.element.closest('[aria-live], [role="status"], [role="alert"]')).toBeNull()
+    expect(wrapper.findAll('.toast__reference')).toHaveLength(1)
+  })
+
+  it('keeps a reference known at once inside the alert, where it is read with the error', () => {
+    const toasts = useToasts()
+    toasts.showError(reference)
+    const shown = toasts.toasts[0]
+    if (shown === undefined) {
+      throw new Error('No toast queued')
+    }
+
+    const wrapper = mount(Toast, { props: { toast: shown } })
+
+    expect(wrapper.find('[role="alert"] .toast__reference').text()).toBe(`Reference ${reference}`)
+    expect(wrapper.find('.toast__reference--later').exists()).toBe(false)
+  })
+
+  it('lines a later reference up with the text column under the body', () => {
+    expect(ruleDeclarations('shared/ui/Toast.vue', '.toast__reference--later')).toEqual({
+      margin: '0',
+      padding: '0 calc(2.25rem + var(--spacing-fs-12)) 0 calc(32px + var(--spacing-fs-12))',
+    })
+    expect(ruleDeclarations('shared/ui/Toast.vue', '.toast')).toMatchObject({
+      'flex-direction': 'column',
+      gap: 'var(--spacing-fs-4)',
+    })
+    expect(ruleDeclarations('shared/ui/Toast.vue', '.toast__text')).toMatchObject({
+      gap: 'var(--spacing-fs-4)',
+    })
+    expect(ruleDeclarations('shared/ui/Toast.vue', '.toast__tile')).toMatchObject({
+      width: '32px',
+    })
   })
 
   it('leaves out the reference line when there is no reference', () => {
@@ -401,6 +479,23 @@ describe('Toast', () => {
     const wrapper = mount(Toast, { props: { toast } })
 
     expect(wrapper.find('.toast__reference').exists()).toBe(false)
+  })
+
+  it('adds the reference line in place once the reference arrives, keeping focus where it was', async () => {
+    const toasts = useToasts()
+    const host = mountHost()
+    const id = toasts.showError(null)
+    await nextTick()
+    const dismiss = host.find<HTMLButtonElement>(`[data-toast-id="${id}"] button`)
+    dismiss.element.focus()
+
+    toasts.attachReference(id, reference)
+    await nextTick()
+
+    const shown = host.find(`[data-toast-id="${id}"]`)
+    expect(shown.find('.toast__reference').text()).toBe(`Reference ${reference}`)
+    expect(host.findAll('.toast')).toHaveLength(1)
+    expect(document.activeElement).toBe(dismiss.element)
   })
 
   it('shows an event without a live role, with the hidden separator and the note, and never takes focus', () => {
@@ -423,7 +518,8 @@ describe('Toast', () => {
     expect(wrapper.attributes('role')).toBeUndefined()
     expect(wrapper.findAll('[role]')).toHaveLength(0)
     const meta = wrapper.find('.toast__meta')
-    expect(meta.text()).toBe('JOB-1044 · , 10:31 AM')
+    expect(meta.text()).toBe('JOB-1044\u{00a0}\u{00b7} , 10:31 AM')
+    expect(meta.find('[aria-hidden="true"]').element.textContent).toBe('\u{00a0}\u{00b7} ')
     expect(meta.find('[aria-hidden="true"]').text()).toBe('·')
     expect(meta.find('.visually-hidden').text()).toBe(',')
     expect(wrapper.find('.toast__note').text()).toBe('“Waiting for replacement gas valve”')

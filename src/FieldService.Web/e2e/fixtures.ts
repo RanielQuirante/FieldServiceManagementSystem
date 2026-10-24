@@ -87,6 +87,9 @@ export const consolePatterns = {
   assignmentRejected: failedResource(400, '/assignment'),
   techniciansServerError: failedResource(500, '/api/technicians'),
   templatesServerError: failedResource(500, '/api/checklist-templates'),
+  dashboardServerError: failedResource(500, '/api/dashboard/summary'),
+  cancellationConflict: failedResource(409, '/cancellation'),
+  cancellationRejected: failedResource(400, '/cancellation'),
   reportedError: (marker: string): RegExp => new RegExp(escapeForPattern(marker)),
 } as const
 

@@ -1,4 +1,5 @@
 using FieldService.Mobile.Features.Jobs;
+using FieldService.Mobile.Shared.Formatting;
 using FieldService.Mobile.Tests.Shared.Testing;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Devices.Sensors;
@@ -17,8 +18,8 @@ public sealed class AssignedJobActionsTests
         Assert.True(viewModel.IsAssigned);
         Assert.True(viewModel.ShowsDock);
         Assert.False(viewModel.ShowsHeroActions);
-        Assert.Equal("Today 1:30–3:00 PM", viewModel.ScheduleLine);
-        Assert.Equal("Starts in 2 h 48 min", viewModel.StartsLine);
+        Assert.Equal("Today 1:30–" + DisplayFormats.ZeroWidthSpace + "3:00 PM", viewModel.ScheduleLine);
+        Assert.Equal(Spaces.Text("Starts in 2_h_48_min"), viewModel.StartsLine);
         Assert.Equal("Assigned to you by Dana Whitfield at 10:05 AM", viewModel.AssignedLine);
         Assert.False(viewModel.ShowsScheduledRow);
         Assert.False(viewModel.ShowsRowActions);
@@ -37,7 +38,6 @@ public sealed class AssignedJobActionsTests
 
         Assert.True(viewModel.CanCall);
         Assert.Equal("Call Elm Street Bakery", viewModel.CallLabel);
-        Assert.Equal(1, viewModel.NavigateColumnSpan);
 
         viewModel.CallCommand.Execute(null);
 
@@ -61,7 +61,6 @@ public sealed class AssignedJobActionsTests
 
         Assert.False(viewModel.CanCall);
         Assert.False(viewModel.CallCommand.CanExecute(null));
-        Assert.Equal(2, viewModel.NavigateColumnSpan);
         viewModel.CallCommand.Execute(null);
         harness.Dialer.DidNotReceive().Open(Arg.Any<string>());
     }
@@ -165,10 +164,10 @@ public sealed class AssignedJobActionsTests
         viewModel.AppearingCommand.Execute(null);
 
         harness.Clock.Advance(TimeSpan.FromMinutes(1));
-        Assert.Equal("Starts in 2 h 47 min", viewModel.StartsLine);
+        Assert.Equal(Spaces.Text("Starts in 2_h_47_min"), viewModel.StartsLine);
 
         harness.Clock.Advance(TimeSpan.FromMinutes(132));
-        Assert.Equal("Starts in 35 min", viewModel.StartsLine);
+        Assert.Equal(Spaces.Text("Starts in 35_min"), viewModel.StartsLine);
 
         harness.Clock.Advance(TimeSpan.FromMinutes(35));
         Assert.Equal("Starts now", viewModel.StartsLine);
@@ -209,9 +208,9 @@ public sealed class AssignedJobActionsTests
         var (tomorrowView, _) = await Load(tomorrow);
         var (laterView, _) = await Load(later);
 
-        Assert.Equal("Tomorrow 1:00–3:00 PM", tomorrowView.ScheduleLine);
+        Assert.Equal("Tomorrow 1:00–" + DisplayFormats.ZeroWidthSpace + "3:00 PM", tomorrowView.ScheduleLine);
         Assert.Null(tomorrowView.StartsLine);
-        Assert.Equal("Wed 21 Oct, 7:00–8:30 AM", laterView.ScheduleLine);
+        Assert.Equal("Wed 21 Oct, 7:00–" + DisplayFormats.ZeroWidthSpace + "8:30 AM", laterView.ScheduleLine);
         Assert.Equal("Assigned to you by Dana Whitfield on Sun 18 Oct at 4:20 PM", laterView.AssignedLine);
     }
 

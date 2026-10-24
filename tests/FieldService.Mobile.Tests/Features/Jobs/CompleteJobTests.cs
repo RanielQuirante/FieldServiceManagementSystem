@@ -48,7 +48,7 @@ public sealed class CompleteJobTests
             harness.Store.Put(JobDtoBuilder.Job1042, InspectionDtoBuilder.ItemId(position), new DraftAnswer(InspectionResult.Pass, string.Empty, new Dictionary<Guid, string>()));
         }
 
-        Assert.Equal("6 of 10 answered · 4 not saved", viewModel.ChecklistSubline);
+        Assert.Equal(Spaces.Text("6 of 10 answered_· 4 not saved"), viewModel.ChecklistSubline);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class CompleteJobTests
         var job = JobDtoBuilder.Details1036();
         var (viewModel, _) = await OpenAsync(job with { Affordances = job.Affordances with { CanSubmit = new SubmitAffordance(false, SubmitAffordance.InvalidTransitionCode, 6, 10) } });
 
-        Assert.Equal("6 of 10 answered · not submitted", viewModel.ChecklistSubline);
+        Assert.Equal(Spaces.Text("6 of 10 answered_· not submitted"), viewModel.ChecklistSubline);
         Assert.False(viewModel.ShowsDock);
     }
 

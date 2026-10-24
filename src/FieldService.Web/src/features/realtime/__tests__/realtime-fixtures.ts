@@ -104,6 +104,7 @@ export interface RecordingView {
 
 export const jobsPageCopy: LivePageCopy = {
   refreshFailedTitle: 'Jobs could not be refreshed.',
+  refreshedLabel: 'Jobs refreshed at',
   showingFrom: (time) => `Showing jobs from ${time}.`,
 }
 

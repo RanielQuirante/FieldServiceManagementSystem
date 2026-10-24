@@ -1,7 +1,17 @@
-import type { Locator } from '@playwright/test'
+import type { APIResponse, Locator } from '@playwright/test'
 
 import { seededJobNumbers } from '../fixtures.ts'
-import type { AdminApi, JobDetails, JobStatus, Technician, TechnicianApi, Trade } from './api.ts'
+import {
+  readProblem,
+  type AdminApi,
+  type Inspection,
+  type JobDetails,
+  type JobStatus,
+  type JobSummary,
+  type Technician,
+  type TechnicianApi,
+  type Trade,
+} from './api.ts'
 import { assignCopy, openJobsLabel, tradeLabels } from './copy.ts'
 import { e2eTitle } from './run.ts'
 
@@ -56,12 +66,20 @@ export async function createUnassignedJob(
   })
 }
 
+async function jobsOutsideTheRuns(api: AdminApi, status: JobStatus): Promise<JobSummary[]> {
+  const found: JobSummary[] = []
+  for (let page = 1; ; page += 1) {
+    const list = await api.getJobs({ status, page, pageSize: 100 })
+    found.push(...list.items.filter((job) => !job.title.startsWith('E2E ')))
+    if (list.items.length === 0 || page * list.pageSize >= list.totalCount) {
+      return found
+    }
+  }
+}
+
 export async function seededJobInStatus(api: AdminApi, status: JobStatus): Promise<JobDetails> {
-  const match = (await api.getJobs({ status, pageSize: 100 })).items.find(
-    (job) =>
-      !job.title.startsWith('E2E ') &&
-      job.number >= seededJobNumbers.first &&
-      job.number <= seededJobNumbers.last,
+  const match = (await jobsOutsideTheRuns(api, status)).find(
+    (job) => job.number >= seededJobNumbers.first && job.number <= seededJobNumbers.last,
   )
   if (match === undefined) {
     throw new Error(`No seeded job is ${status}.`)
@@ -74,9 +92,9 @@ export function titleLinkPath(job: Pick<JobDetails, 'id' | 'status'>): string {
 }
 
 export async function jobWithDraftInspection(api: AdminApi): Promise<JobDetails> {
-  const candidates = (await api.getJobs({ status: 'InProgress', pageSize: 100 })).items
-    .filter((job) => !job.title.startsWith('E2E '))
-    .sort((first, second) => first.number - second.number)
+  const candidates = (await jobsOutsideTheRuns(api, 'InProgress')).sort(
+    (first, second) => first.number - second.number,
+  )
   for (const candidate of candidates) {
     const inspection = await api.getInspection(candidate.id)
     if (inspection.submittedAt === null && inspection.progress.answered > 0) {
@@ -99,6 +117,44 @@ export async function createAssignedJob(
     )
   }
   return job
+}
+
+async function readOk<T>(response: APIResponse, what: string): Promise<T> {
+  if (!response.ok()) {
+    const problem = await readProblem(response)
+    throw new Error(`${what} failed with ${problem.status} ${problem.code}.`)
+  }
+  return (await response.json()) as T
+}
+
+export async function completeJob(technician: TechnicianApi, jobId: string): Promise<JobDetails> {
+  const opened = await readOk<Inspection>(await technician.getInspection(jobId), 'GetInspection')
+  const saved = await readOk<Inspection>(
+    await technician.saveInspection(jobId, {
+      answers: opened.items.map((item) => ({
+        checklistItemId: item.checklistItemId,
+        result: 'Pass',
+        note: null,
+        readings:
+          item.readingFields.length === 0
+            ? null
+            : item.readingFields.map((field) => ({
+                readingFieldId: field.readingFieldId,
+                value: 12,
+              })),
+      })),
+      version: opened.version,
+    }),
+    'SaveInspection',
+  )
+  return readOk<JobDetails>(
+    await technician.submitJob(jobId, {
+      technicianNotes: null,
+      siteSafetyConfirmed: true,
+      version: saved.version,
+    }),
+    'SubmitJob',
+  )
 }
 
 export async function createOnHoldJob(
@@ -178,10 +234,10 @@ export function assignRowName(technician: Technician, trade: Trade): RegExp {
   const tradeText = tradeLabels[technician.trade]
   const shift = technician.isOnShift ? assignCopy.onShift : assignCopy.offShift
   const detail = technician.availableForAssignment
-    ? `${tradeText} · ${openJobsLabel(technician.openJobCount)}`
-    : `${tradeText} · ${unavailableReason(technician)}`
+    ? `${escapeForPattern(tradeText)}\\s*·\\s*${escapeForPattern(openJobsLabel(technician.openJobCount))}`
+    : `${escapeForPattern(tradeText)}\\s*·\\s*${escapeForPattern(unavailableReason(technician))}`
   return new RegExp(
-    `^${escapeForPattern(technician.displayName)}\\s*${shift}\\s*${escapeForPattern(detail)}${scheduleClausePattern(technician, trade)}\\s*$`,
+    `^${escapeForPattern(technician.displayName)}\\s*${shift}\\s*${detail}${scheduleClausePattern(technician, trade)}\\s*$`,
   )
 }
 

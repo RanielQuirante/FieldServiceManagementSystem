@@ -263,6 +263,7 @@ test.describe('E2E-09 socket drop, reconnect and refetch (W4-AC5)', () => {
     await recordTextAppearances(page, [reconnectingLead, backOnlineLead])
     expect(gate.counts().passed).toBe(1)
 
+    const droppedInPageAt = await page.evaluate(() => Date.now())
     const droppedAt = Date.now()
     expect(await gate.drop()).toBe(1)
 
@@ -275,7 +276,10 @@ test.describe('E2E-09 socket drop, reconnect and refetch (W4-AC5)', () => {
     })
     const bannerAt = await firstSeen(page, reconnectingLead)
     expect(bannerAt).toBeDefined()
-    expect((bannerAt ?? 0) - droppedAt).toBeGreaterThanOrEqual(bannerDelayMilliseconds)
+    expect(
+      (bannerAt ?? 0) - droppedInPageAt,
+      'the banner time and the drop time, both read from the page clock',
+    ).toBeGreaterThanOrEqual(bannerDelayMilliseconds)
     await expect(row).toContainText(statusLabels.InProgress)
     await delay(Math.max(dropHoldMilliseconds - (Date.now() - droppedAt), 0))
     await expect(connectionNotice(page)).toHaveText(liveCopy.reconnectingBanner)
@@ -303,7 +307,7 @@ test.describe('E2E-09 socket drop, reconnect and refetch (W4-AC5)', () => {
     note(
       testInfo,
       'drop',
-      `banner after ${(bannerAt ?? 0) - droppedAt} ms; drop held ${restoredAt - droppedAt} ms; back online ${(backOnlineAt ?? 0) - restoredAt} ms after the gate opened; ${counts.refused} refused attempts`,
+      `banner after ${(bannerAt ?? 0) - droppedInPageAt} ms; drop held ${restoredAt - droppedAt} ms; back online ${(backOnlineAt ?? 0) - restoredAt} ms after the gate opened; ${counts.refused} refused attempts`,
     )
 
     await expect(connectionNotice(page)).toHaveText('', {

@@ -4,6 +4,8 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using FieldService.Api.Domain;
 using FieldService.Api.Persistence.Seeding;
 using FieldService.Api.Shared.Realtime;
@@ -16,8 +18,28 @@ using Serilog.Events;
 namespace FieldService.Api.Tests.Security;
 
 [Collection(DatabaseCollection.Name)]
-public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : DatabaseTest(fixture)
+public sealed partial class LogRedactionSentinelTests(DatabaseFixture fixture) : DatabaseTest(fixture)
 {
+    private const string ClientErrorsPath = "/api/client-errors";
+
+    private const int ClientErrorFlowAccepted = 4;
+
+    private const string QueryStringKind = "the query string pattern";
+
+    private static readonly string[] _unknownMembers = ["password", "token", "authorization", "email", "extra", "nested"];
+
+    private static readonly string[] _scrubbedProperties = ["ErrorMessage", "ErrorSource", "ErrorStack", "Route", "ReportedCorrelationId", "AppVersion"];
+
+    private static readonly (string Kind, Regex Pattern)[] _scrubberPatterns =
+    [
+        ("the JWT pattern", JsonWebTokenPattern()),
+        ("the bearer pattern", BearerPattern()),
+        ("the webhook secret pattern", WebhookSecretPattern()),
+        ("the refresh-token pattern", RefreshTokenPattern()),
+        ("the email pattern", EmailPattern()),
+        (QueryStringKind, QueryStringPattern()),
+    ];
+
     private static readonly string[] _clientIpEvents =
     [
         SecurityLog.SignInFailedEvent,
@@ -134,6 +156,283 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
         Assert.Contains(flow.FileLines, line => line.Contains($"\"Name\":\"{RealtimeLog.DispatchedEvent}\"", StringComparison.Ordinal));
         Assert.True(flow.Secrets.Count >= 20, $"Only {flow.Secrets.Count} sentinel values were scanned for.");
     }
+
+    [Fact]
+    public async Task AClientErrorFlowAtFullCaptureLeavesNoScrubbedValueOrUnknownMemberInAnyLogEventOrTheLogFile()
+    {
+        var flow = await RunClientErrorFlowAsync();
+
+        var findings = flow.Secrets
+            .SelectMany(secret => flow.Records
+                .Where(record => record.Text.Contains(secret.Value, StringComparison.OrdinalIgnoreCase))
+                .Select(record => $"{secret.Label} appears in {record.Location}"))
+            .Distinct()
+            .ToList();
+
+        Assert.True(findings.Count == 0, "Log redaction failures:\n" + string.Join("\n", findings));
+        Assert.Contains(flow.Events, logEvent => logEvent.Level == LogEventLevel.Verbose);
+        Assert.Contains(flow.Events, logEvent => logEvent.Level == LogEventLevel.Debug);
+        Assert.Contains(flow.Events, logEvent => CapturingLogSink.Scalar(logEvent, "SourceContext") is { } source
+            && source.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal)
+            && logEvent.Level < LogEventLevel.Information);
+        Assert.Contains(flow.FileLines, line => line.Contains("\"@l\":\"Verbose\"", StringComparison.Ordinal));
+        Assert.Equal(
+            ClientErrorFlowAccepted,
+            flow.FileLines.Count(line => line.Contains($"\"Name\":\"{SecurityLog.ClientErrorReportedEvent}\"", StringComparison.Ordinal)
+                && line.Contains("\"@l\":\"Warning\"", StringComparison.Ordinal)));
+        Assert.True(flow.Secrets.Count >= 30, $"Only {flow.Secrets.Count} sentinel values were scanned for.");
+    }
+
+    [Fact]
+    public async Task NoClientErrorScrubberPatternReachesTheClientErrorWarningAndEverySentinelKindIsRedacted()
+    {
+        var flow = await RunClientErrorFlowAsync();
+
+        var reported = flow.Events.Where(logEvent => CapturingLogSink.HasEventName(logEvent, SecurityLog.ClientErrorReportedEvent)).ToList();
+
+        Assert.Equal(ClientErrorFlowAccepted, reported.Count);
+        Assert.All(reported, logEvent =>
+        {
+            Assert.Equal(LogEventLevel.Warning, logEvent.Level);
+            Assert.Equal("web", CapturingLogSink.Scalar(logEvent, "Source"));
+            Assert.Equal(flow.AdministratorId, CapturingLogSink.Scalar(logEvent, "UserId"));
+            Assert.DoesNotContain(logEvent.Properties.Keys, name => _unknownMembers.Contains(name, StringComparer.OrdinalIgnoreCase));
+            var values = _scrubbedProperties
+                .Select(name => (Name: name, Value: CapturingLogSink.Scalar(logEvent, name)))
+                .Where(property => property.Value is not null)
+                .ToList();
+            var text = CapturingLogSink.Text(logEvent);
+            var leaks = _scrubberPatterns
+                .SelectMany(pattern => values
+                    .SelectMany(property => pattern.Pattern.Matches(property.Value!)
+                        .Where(match => match.Value != "?[redacted]")
+                        .Select(match => $"{pattern.Kind} matches {match.Length} characters of {property.Name}")))
+                .Concat(_scrubberPatterns
+                    .Where(pattern => pattern.Kind != QueryStringKind)
+                    .SelectMany(pattern => pattern.Pattern.Matches(text)
+                        .Select(match => $"{pattern.Kind} matches {match.Length} characters of the rendered event")))
+                .ToList();
+            Assert.Contains(values, property => property.Name == "ErrorMessage");
+            Assert.True(leaks.Count == 0, "Scrubber patterns in a client-error.reported event:\n" + string.Join("\n", leaks));
+        });
+        var first = reported[0];
+        Assert.Equal(flow.ScrubbedMessage, CapturingLogSink.Scalar(first, "ErrorMessage"));
+        Assert.Equal(flow.ScrubbedStack, CapturingLogSink.Scalar(first, "ErrorStack"));
+        Assert.Equal("k1 [redacted] k2 [redacted] k3 [redacted]", CapturingLogSink.Scalar(first, "ErrorSource"));
+        Assert.Equal("/reset/[redacted]", CapturingLogSink.Scalar(first, "Route"));
+        Assert.Equal("[redacted]", CapturingLogSink.Scalar(first, "ReportedCorrelationId"));
+        Assert.Equal("[redacted]", CapturingLogSink.Scalar(first, "AppVersion"));
+        var second = reported[1];
+        Assert.Equal("k4 [redacted] k4b [redacted] k5 [redacted] k6 /jobs?[redacted]", CapturingLogSink.Scalar(second, "ErrorSource"));
+        Assert.Equal("/hooks/[redacted]/[redacted]", CapturingLogSink.Scalar(second, "Route"));
+        Assert.Equal("[redacted]", CapturingLogSink.Scalar(second, "ReportedCorrelationId"));
+        Assert.Equal("[redacted]", CapturingLogSink.Scalar(second, "AppVersion"));
+        var third = reported[2];
+        Assert.Equal("[redacted]", CapturingLogSink.Scalar(third, "ReportedCorrelationId"));
+        Assert.Equal("/[redacted]", CapturingLogSink.Scalar(third, "Route"));
+        Assert.Equal("at fetch ([redacted])\nat load (/jobs?[redacted])", CapturingLogSink.Scalar(third, "ErrorStack"));
+        Assert.Equal("Request failed", CapturingLogSink.Scalar(reported[3], "ErrorMessage"));
+    }
+
+    private async Task<ClientErrorFlow> RunClientErrorFlowAsync()
+    {
+        var marker = Marker();
+        var jwt = $"eyJ{Base64Url(18)}.eyJ{Base64Url(30)}.{Base64Url(32)}";
+        var correlationJwt = $"eyJ{Alphanumeric(20)}.eyJ{Alphanumeric(20)}.{Alphanumeric(10)}";
+        var versionJwt = $"eyJ{Alphanumeric(6)}.{Alphanumeric(6)}.{Alphanumeric(4)}";
+        var secondVersionJwt = $"eyJ{Alphanumeric(7)}.{Alphanumeric(7)}.{Alphanumeric(5)}";
+        var bearerToken = Base64Url(24);
+        var bearer = $"Bearer {bearerToken}";
+        var webhookSecret = $"whsec_{Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))}";
+        var routeWebhookSecret = $"whsec_{Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(20))}";
+        var refresh = Alphanumeric(43);
+        var dashRefresh = $"-{Alphanumeric(42)}";
+        var routeRefresh = Alphanumeric(43);
+        var correlationRefresh = Alphanumeric(43);
+        var email = $"qa.{marker}@fieldservice.example";
+        var querySecret = $"search=query-{marker}";
+        var unknownPassword = $"Unknown-password-{Marker()}";
+        var unknownToken = $"eyJ{Base64Url(12)}.eyJ{Base64Url(12)}.{Base64Url(24)}";
+        var unknownBearer = Base64Url(30);
+        var unknownEmail = $"unknown.{Marker()}@fieldservice.example";
+        var unknownNested = $"nested-{Marker()}";
+        var longMessageMarker = $"long-{Marker()}";
+        var refusedRouteToken = $"refused-{Marker()}";
+        var secrets = new List<(string Label, string Value)>
+        {
+            ("the shared marker", marker),
+            ("the JWT", jwt),
+            ("the JWT signature", jwt[(jwt.LastIndexOf('.') + 1)..]),
+            ("the correlation id JWT", correlationJwt),
+            ("the app version JWT", versionJwt),
+            ("the second app version JWT", secondVersionJwt),
+            ("the bearer token", bearerToken),
+            ("the webhook secret", webhookSecret),
+            ("the key part of the webhook secret", webhookSecret["whsec_".Length..]),
+            ("the route webhook secret", routeWebhookSecret),
+            ("the refresh-shaped value", refresh),
+            ("the refresh-shaped value starting with a hyphen", dashRefresh),
+            ("the part after the hyphen of the refresh-shaped value", dashRefresh[1..]),
+            ("the route refresh-shaped value", routeRefresh),
+            ("the correlation id refresh-shaped value", correlationRefresh),
+            ("the email", email),
+            ("the query string", querySecret),
+            ("the unknown password member", unknownPassword),
+            ("the unknown token member", unknownToken),
+            ("the unknown authorization member", unknownBearer),
+            ("the unknown email member", unknownEmail),
+            ("the unknown nested member", unknownNested),
+            ("the long message marker", longMessageMarker),
+            ("the refused route token", refusedRouteToken),
+        };
+        var occurredAt = ApiClient.WireInstant(Fixture.Factory.Clock.GetUtcNow());
+        var message = $"m1 {jwt} m2 {bearer} m3 {webhookSecret} m4 {refresh} m4b {dashRefresh} m5 {email} m6 /jobs?{querySecret} m7";
+        var stack = $"at a ({jwt})\nat b ({bearer})\nat c ({webhookSecret})\nat d ({refresh})\nat d2 ({dashRefresh})\nat e ({email})\nat f (/jobs?{querySecret})";
+        var scrubbedMessage = "m1 [redacted] m2 [redacted] m3 [redacted] m4 [redacted] m4b [redacted] m5 [redacted] m6 /jobs?[redacted] m7";
+        var scrubbedStack = "at a ([redacted])\nat b ([redacted])\nat c ([redacted])\nat d ([redacted])\nat d2 ([redacted])\nat e ([redacted])\nat f (/jobs?[redacted])";
+
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var factory = Fixture.CreateFactory(factory =>
+        {
+            factory.Settings["Logs:FileEnabled"] = "true";
+            factory.Settings["Serilog:MinimumLevel:Default"] = "Verbose";
+            foreach (var source in new[] { "Microsoft", "Microsoft.AspNetCore", "Microsoft.AspNetCore.Hosting.Diagnostics", "Microsoft.EntityFrameworkCore", "System", "System.Net.Http", "Npgsql" })
+            {
+                factory.Settings[$"Serilog:MinimumLevel:Override:{source}"] = "Verbose";
+            }
+        });
+        foreach (var name in new[] { AuthOptions.AccessTokenKeyName, AuthOptions.SocketTicketKeyName, NotificationsOptions.WebhookSecretName })
+        {
+            var value = factory.Settings[name]!;
+            secrets.Add(($"the configured {name}", value));
+            secrets.Add(($"the key part of {name}", value[(value.IndexOf('_', StringComparison.Ordinal) + 1)..]));
+        }
+
+        try
+        {
+            using var web = factory.CreateApiClient();
+            web.AccessToken = TestTokens.For(factory, administrator);
+            using var anonymous = factory.CreateApiClient();
+            using var mobile = factory.CreateApiClient();
+            mobile.AccessToken = TestTokens.For(factory, technician.User);
+            secrets.Add(("the administrator access token", web.AccessToken));
+            secrets.Add(("the technician access token", mobile.AccessToken));
+            var full = new JsonObject
+            {
+                ["message"] = message,
+                ["source"] = $"k1 {correlationJwt} k2 {bearer} k3 {webhookSecret}",
+                ["route"] = $"/reset/{jwt}",
+                ["correlationId"] = correlationRefresh,
+                ["stack"] = stack,
+                ["occurredAt"] = occurredAt,
+                ["appVersion"] = versionJwt,
+            };
+
+            using var first = await PostClientErrorAsync(web, full);
+            using var second = await PostClientErrorAsync(web, new JsonObject
+            {
+                ["message"] = "Second report",
+                ["source"] = $"k4 {refresh} k4b {dashRefresh} k5 {email} k6 /jobs?{querySecret}",
+                ["route"] = $"/hooks/{routeRefresh}/{routeWebhookSecret}",
+                ["correlationId"] = routeWebhookSecret,
+                ["occurredAt"] = occurredAt,
+                ["appVersion"] = secondVersionJwt,
+            });
+            using var third = await PostClientErrorAsync(web, new JsonObject
+            {
+                ["message"] = "Third report",
+                ["source"] = "router.onError",
+                ["route"] = $"/{routeRefresh}",
+                ["correlationId"] = correlationJwt,
+                ["stack"] = $"at fetch ({bearer})\nat load (/jobs?{querySecret})",
+                ["occurredAt"] = occurredAt,
+            });
+            using var unknown = await PostClientErrorAsync(web, new JsonObject
+            {
+                ["message"] = "Request failed",
+                ["source"] = "window.onunhandledrejection",
+                ["occurredAt"] = occurredAt,
+                ["password"] = unknownPassword,
+                ["token"] = unknownToken,
+                ["authorization"] = $"Bearer {unknownBearer}",
+                ["email"] = unknownEmail,
+                ["extra"] = new JsonObject { ["nested"] = unknownNested },
+            });
+            foreach (var accepted in new[] { first, second, third, unknown })
+            {
+                Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+                Assert.Empty(await accepted.Content.ReadAsByteArrayAsync(CancellationToken));
+            }
+
+            var longMessage = (JsonObject)full.DeepClone();
+            longMessage["message"] = $"{longMessageMarker} {message} {new string('x', 501)}";
+            longMessage["route"] = $"/jobs?{querySecret}";
+            using var tooLong = await PostClientErrorAsync(web, longMessage);
+            await AssertClientErrorRefusedAsync(tooLong, HttpStatusCode.BadRequest, secrets, "message", "route");
+            using var refusedRoute = await PostClientErrorAsync(web, new JsonObject
+            {
+                ["message"] = "Route refused",
+                ["source"] = "router.onError",
+                ["route"] = $"/jobs?token={refusedRouteToken}&{querySecret}",
+                ["correlationId"] = email,
+                ["appVersion"] = webhookSecret,
+                ["occurredAt"] = occurredAt,
+            });
+            await AssertClientErrorRefusedAsync(refusedRoute, HttpStatusCode.BadRequest, secrets, "appVersion", "correlationId", "route");
+            using var anonymousReport = await PostClientErrorAsync(anonymous, full);
+            await AssertClientErrorRefusedAsync(anonymousReport, HttpStatusCode.Unauthorized, secrets);
+            using var technicianReport = await PostClientErrorAsync(mobile, full);
+            await AssertClientErrorRefusedAsync(technicianReport, HttpStatusCode.Forbidden, secrets);
+            Assert.Equal(ClientErrorFlowAccepted, factory.LogSink.Named(SecurityLog.ClientErrorReportedEvent).Count);
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+
+        var lines = ReadLogFiles(factory.LogsDirectory);
+        var records = factory.LogSink.Events
+            .Select(logEvent => new LogRecord($"captured {logEvent.Level} event \"{logEvent.MessageTemplate.Text}\"", CapturingLogSink.Text(logEvent)))
+            .Concat(lines.Select((line, index) => new LogRecord($"log file line {index + 1}", DecodedText(line))))
+            .ToList();
+        return new ClientErrorFlow(
+            secrets,
+            records,
+            factory.LogSink.Events,
+            lines,
+            administrator.Id.ToString(),
+            scrubbedMessage,
+            scrubbedStack);
+    }
+
+    private static Task<HttpResponseMessage> PostClientErrorAsync(ApiClient client, JsonObject body) =>
+        client.PostAsync(ClientErrorsPath, new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"));
+
+    private static async Task AssertClientErrorRefusedAsync(
+        HttpResponseMessage response,
+        HttpStatusCode status,
+        List<(string Label, string Value)> secrets,
+        params string[] keys)
+    {
+        Assert.Equal(status, response.StatusCode);
+        var text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.All(secrets, secret => Assert.DoesNotContain(secret.Value, text, StringComparison.OrdinalIgnoreCase));
+        if (keys.Length > 0)
+        {
+            using var problem = JsonDocument.Parse(text);
+            Assert.Equal(
+                keys.Order(StringComparer.Ordinal),
+                problem.RootElement.GetProperty("errors").EnumerateObject().Select(member => member.Name).Order(StringComparer.Ordinal));
+        }
+    }
+
+    private static string Base64Url(int bytes) =>
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(bytes)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static string Alphanumeric(int length) =>
+        RandomNumberGenerator.GetString("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", length);
 
     private async Task<Flow> RunInspectionFlowAsync()
     {
@@ -640,6 +939,33 @@ public sealed class LogRedactionSentinelTests(DatabaseFixture fixture) : Databas
         List<string> Addresses,
         string StatusPath,
         int Webhooks);
+
+    private sealed record ClientErrorFlow(
+        List<(string Label, string Value)> Secrets,
+        List<LogRecord> Records,
+        IReadOnlyList<LogEvent> Events,
+        List<string> FileLines,
+        string AdministratorId,
+        string ScrubbedMessage,
+        string ScrubbedStack);
+
+    [GeneratedRegex(@"eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*", RegexOptions.CultureInvariant)]
+    private static partial Regex JsonWebTokenPattern();
+
+    [GeneratedRegex(@"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", RegexOptions.CultureInvariant)]
+    private static partial Regex BearerPattern();
+
+    [GeneratedRegex("whsec_[A-Za-z0-9+/=]+", RegexOptions.CultureInvariant)]
+    private static partial Regex WebhookSecretPattern();
+
+    [GeneratedRegex("(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])", RegexOptions.CultureInvariant)]
+    private static partial Regex RefreshTokenPattern();
+
+    [GeneratedRegex(@"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", RegexOptions.CultureInvariant)]
+    private static partial Regex EmailPattern();
+
+    [GeneratedRegex(@"\?[^\s)]*", RegexOptions.CultureInvariant)]
+    private static partial Regex QueryStringPattern();
 
     private sealed record Webhook(string Signature, string Body)
     {

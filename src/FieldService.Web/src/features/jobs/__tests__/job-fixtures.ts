@@ -18,7 +18,12 @@ export function administratorSubmit(answered = 0, total = 8): SubmitAffordance {
 }
 
 export function readOnlyAffordances(): JobDetails['affordances'] {
-  return { allowedStatusChanges: [], canSubmit: administratorSubmit(), canAssign: false }
+  return {
+    allowedStatusChanges: [],
+    canSubmit: administratorSubmit(),
+    canAssign: false,
+    canCancel: false,
+  }
 }
 
 export function onDemoDay(dayOffset: number, hours: number, minutes: number): string {
@@ -275,7 +280,12 @@ export function jobDetails(overrides: Partial<JobDetails> = {}): JobDetails {
     cancelledAt: null,
     history: [historyEntry()],
     version: 48101,
-    affordances: { allowedStatusChanges: [], canSubmit: administratorSubmit(), canAssign: true },
+    affordances: {
+      allowedStatusChanges: [],
+      canSubmit: administratorSubmit(),
+      canAssign: true,
+      canCancel: true,
+    },
     ...overrides,
   }
 }
@@ -330,6 +340,7 @@ export function assignedInProgressJob(): JobDetails {
       allowedStatusChanges: [],
       canSubmit: administratorSubmit(6, 10),
       canAssign: false,
+      canCancel: true,
     },
   })
 }
@@ -386,7 +397,7 @@ export function onHoldJob(): JobDetails {
         occurredAt: onDemoDay(-3, 13, 50),
       }),
     ],
-    affordances: readOnlyAffordances(),
+    affordances: { ...readOnlyAffordances(), canCancel: true },
   })
 }
 
@@ -460,6 +471,7 @@ export function statusChangedJob(note: string = holdNote): JobDetails {
       allowedStatusChanges: [],
       canSubmit: administratorSubmit(0, 10),
       canAssign: false,
+      canCancel: true,
     },
   })
 }

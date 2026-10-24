@@ -184,12 +184,112 @@ export const reportCopy = {
 export const notFoundCopy = {
   heading: 'Page not found',
   title: 'Nothing is at this address',
-  goToJobs: 'Go to jobs',
+  goToDashboard: 'Go to dashboard',
 } as const
 
 export const toastCopy = {
   errorTitle: 'Something went wrong',
+  errorBody: 'Your last action may not have finished. Check the page, then try again.',
   dismiss: 'Dismiss notification',
+  reference: 'Reference',
+} as const
+
+function escapeForPattern(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
+}
+
+export const clockPattern = '\\d{1,2}:\\d{2}\\s[AP]M'
+
+export const dashboardTiles = [
+  { status: 'Unassigned', label: 'Unassigned' },
+  { status: 'Assigned', label: 'Assigned' },
+  { status: 'InProgress', label: 'In progress' },
+  { status: 'OnHold', label: 'On hold' },
+  { status: 'Completed', label: 'Completed today' },
+  { status: 'Cancelled', label: 'Cancelled' },
+] as const
+
+export const dashboardCopy = {
+  heading: 'Dashboard',
+  greeting: (name: string): RegExp =>
+    new RegExp(`^Good (?:morning|afternoon|evening), ${escapeForPattern(name)}$`),
+  onShiftCaption: 'technicians on shift',
+  assignedCaption: 'open jobs assigned',
+  jobsByStatus: 'Jobs by status',
+  needsTechnician: 'Needs a technician',
+  liveActivity: 'Live activity',
+  workload: 'Technician workload',
+  loadingCounts: 'Loading job counts',
+  loadingTechnicians: 'Loading technicians',
+  countsFailed: 'Job counts could not be loaded.',
+  techniciansFailed: 'Technicians could not be loaded.',
+  failureMessage: 'Check your connection, then try again.',
+  needsFailed: 'This list could not be loaded.',
+  activityFailed: 'Activity could not be loaded.',
+  needsEmpty: 'Every open job has a technician',
+  activityEmpty: 'No activity yet today',
+  workloadEmpty: 'No technicians yet',
+  tryAgain: 'Try again',
+  newTag: 'New',
+  assign: (jobNumber: string): string => `Assign ${jobNumber}`,
+  viewAll: (count: number): string =>
+    count === 1 ? 'View all 1 unassigned job' : `View all ${count} unassigned jobs`,
+  statusSubline: (open: number, completed: number, cancelled: number): string =>
+    `${open} open, ${completed} completed and ${cancelled} cancelled today`,
+  tileName: (label: string, value: number, subline: string | null): RegExp =>
+    subline === null
+      ? new RegExp(`^${escapeForPattern(label)}, ${value}$`)
+      : new RegExp(`^${escapeForPattern(label)}, ${value}, ${subline}$`),
+  backOnline: new RegExp(`^Back online\\. The dashboard was refreshed at ${clockPattern}\\.$`),
+} as const
+
+export const techniciansCopy = {
+  heading: 'Technicians',
+  shiftFilter: 'Filter by shift',
+  search: 'Search technicians',
+  table: 'Technicians',
+  all: 'All',
+  onShift: 'On shift',
+  offShift: 'Off shift',
+  inactive: 'Inactive',
+  subline: (onShift: number, total: number): string => `${onShift} of ${total} on shift`,
+  showing: (shown: number, total: number): string => `Showing ${shown} of ${total} technicians`,
+  noMatchesTitle: 'No technicians match these filters',
+  noTechniciansTitle: 'No technicians yet',
+  clearFilters: 'Clear filters',
+  loading: 'Loading technicians',
+  loadFailed: 'Technicians could not be loaded.',
+  tryAgain: 'Try again',
+  call: (name: string, phone: string): string => `Call ${name}, ${phone}`,
+} as const
+
+export const cancelCopy = {
+  trigger: 'Cancel job',
+  dialogTitle: 'Cancel this job?',
+  reason: 'Reason for cancelling',
+  reasonHelp: "The reason is saved in the job's status history.",
+  keep: 'Keep job',
+  confirm: 'Cancel job',
+  rule: 'Cancelled jobs are read-only. This cannot be undone.',
+  consequence: (technician: string | null): string =>
+    technician === null
+      ? 'Cancelled jobs are read-only. This cannot be undone.'
+      : `${technician} sees it as cancelled in the technician app. Cancelled jobs are read-only. This cannot be undone.`,
+  blankReason: 'Enter a reason for cancelling the job.',
+  controlCharacters: 'Remove control characters other than line breaks and tabs.',
+  changed: (jobNumber: string): string => `${jobNumber} changed after you opened it.`,
+  changedMessage: 'Its current status is shown above. Cancel it again if you still want to.',
+  notCancellable: (jobNumber: string): string => `${jobNumber} can no longer be cancelled.`,
+  notCancellableMessage: 'Its status changed after you opened it. The latest version is shown.',
+  alreadyCancelled: (jobNumber: string): string => `${jobNumber} was already cancelled.`,
+  alreadyCancelledMessage: 'The status history shows who cancelled it and why.',
+  notice: (actor: string): RegExp =>
+    new RegExp(
+      `^Cancelled (?:at|on [A-Z][a-z]{2}\\s\\d{1,2}\\s[A-Z][a-z]{2} at) ${clockPattern} by ${escapeForPattern(actor)}\\.$`,
+    ),
+  announcement: (jobNumber: string): string => `${jobNumber} cancelled.`,
+  history: (actor: string): string => `Cancelled by ${actor}`,
+  liveLine: 'Status changes from the technician app appear here in real time.',
 } as const
 
 export const liveCopy = {
@@ -201,8 +301,8 @@ export const liveCopy = {
   pillPaused: 'Live updates paused',
   reconnectingBanner: 'Reconnecting to live updates. Job statuses on this page may be out of date.',
   pausedLead: 'Live updates are paused.',
-  pausedBanner: /^Live updates are paused\.(?: Showing data from \d{1,2}:\d{2} [AP]M\.)?$/,
-  backOnlineBanner: /^Back online\. Jobs refreshed at \d{1,2}:\d{2} [AP]M\.$/,
+  pausedBanner: /^Live updates are paused\.(?: Showing data from \d{1,2}:\d{2}\s[AP]M\.)?$/,
+  backOnlineBanner: /^Back online\. Jobs refreshed at \d{1,2}:\d{2}\s[AP]M\.$/,
   refreshNow: 'Refresh now',
   justNow: 'Just now',
   started: (actor: string): string => `${actor} started work`,

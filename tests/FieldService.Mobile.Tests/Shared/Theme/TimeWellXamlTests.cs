@@ -13,45 +13,46 @@ public sealed class TimeWellXamlTests
     private static readonly XNamespace _controls = "clr-namespace:FieldService.Mobile.Shared.Controls";
 
     [Fact]
-    public void TheWellGridHasTwoAutoRowsAndTheChevronSpansThemCentred()
+    public void TheWellHoldsATimeWellLayoutOfTheTimeGroupThePriorityAndTheChevronCentred()
     {
         var card = Load("Shared/Controls/JobCard.xaml");
         var well = Named(card, "Well");
-        var grid = Named(card, "WellGrid");
-        var chevron = grid.Elements(_controls + "Icon").Single();
+        var layout = Named(card, "WellContent");
+        var children = layout.Elements().ToList();
+        var chevron = children[TimeWellLayout.ChevronIndex];
 
-        Assert.Same(well, grid.Parent);
-        Assert.Equal("Auto,Auto", grid.Attribute("RowDefinitions")?.Value);
-        Assert.Equal("*,Auto,Auto", grid.Attribute("ColumnDefinitions")?.Value);
-        Assert.Equal("{StaticResource FsSpace10}", grid.Attribute("ColumnSpacing")?.Value);
-        Assert.Equal("{StaticResource FsSpace4}", grid.Attribute("RowSpacing")?.Value);
-        Assert.Equal("Center", grid.Attribute("VerticalOptions")?.Value);
+        Assert.Equal(_controls + "TimeWellLayout", layout.Name);
+        Assert.Same(well, layout.Parent);
+        Assert.Equal("Center", layout.Attribute("VerticalOptions")?.Value);
+        Assert.Equal(3, children.Count);
+        Assert.Equal("TimeGroup", children[TimeWellLayout.TimeIndex].Attribute(_xaml + "Name")?.Value);
+        Assert.Equal("WellPriority", children[TimeWellLayout.PriorityIndex].Attribute(_xaml + "Name")?.Value);
+        Assert.Equal(_controls + "Icon", chevron.Name);
         Assert.Equal("{StaticResource FsIconChevronRight}", chevron.Attribute("PathData")?.Value);
-        Assert.Equal("2", chevron.Attribute("Grid.Column")?.Value);
-        Assert.Equal("2", chevron.Attribute("Grid.RowSpan")?.Value);
+        Assert.Equal("20", chevron.Attribute("Size")?.Value);
         Assert.Equal("Center", chevron.Attribute("VerticalOptions")?.Value);
+        Assert.All(children, child => Assert.DoesNotContain(child.Attributes(), attribute => attribute.Name.LocalName.StartsWith("Grid.", StringComparison.Ordinal)));
         Assert.Null(well.Attribute("Padding"));
-        Assert.Contains("ApplyWellRows(twoRows: false);", Source(), StringComparison.Ordinal);
-        Assert.Contains("Well.SetDynamicResource(Border.PaddingProperty, rows.PaddingKey);", Source(), StringComparison.Ordinal);
+        Assert.Null(layout.Attribute("Padding"));
+        Assert.DoesNotContain(card.Descendants(), element => element.Attribute(_xaml + "Name")?.Value == "WellGrid");
     }
 
     [Fact]
-    public void AsBuiltTheTimeGroupAndThePrioritySitOnOneRow()
+    public void AsBuiltTheTimeGroupIsTheClockCellAndTheTimeLabel()
     {
         var card = Load("Shared/Controls/JobCard.xaml");
         var time = Named(card, "TimeGroup");
         var priority = Named(card, "WellPriority");
         var label = Named(card, "TimeLabel");
 
-        Assert.Null(time.Attribute("Grid.Row"));
-        Assert.Null(time.Attribute("Grid.Column"));
         Assert.Equal("Auto,*", time.Attribute("ColumnDefinitions")?.Value);
         Assert.Equal("{StaticResource FsSpace8}", time.Attribute("ColumnSpacing")?.Value);
+        Assert.Equal("Center", time.Attribute("VerticalOptions")?.Value);
+        Assert.Same(time, label.Parent);
         Assert.Equal("{Binding WellTime}", label.Attribute("Text")?.Value);
         Assert.Equal("{StaticResource FsTextWell}", label.Attribute("Style")?.Value);
         Assert.Equal("PriorityLabel", priority.Name.LocalName);
-        Assert.Equal("1", priority.Attribute("Grid.Column")?.Value);
-        Assert.Null(priority.Attribute("Grid.Row"));
+        Assert.Null(priority.Attribute("Margin"));
     }
 
     [Fact]
@@ -102,17 +103,21 @@ public sealed class TimeWellXamlTests
     }
 
     [Fact]
-    public void TheModeIsSetFromTheWellWidthTheTimeTextAndTheCompactLook()
+    public void TheCardKeepsNoLayoutCodeAndNothingMeasuresAWellChildOutsideTheLayoutPass()
     {
         var source = Source();
 
-        Assert.Contains("Well.SizeChanged += (_, _) => UpdateWellRows();", source, StringComparison.Ordinal);
+        Assert.Contains("public bool IsTwoRowWell => WellContent.IsTwoRows;", source, StringComparison.Ordinal);
+        Assert.Contains("private void OnTimeWindowChanged() => WellTime = DisplayFormats.BreakAfterEnDash(TimeWindow);", source, StringComparison.Ordinal);
         Assert.Contains("propertyChanged: (bindable, _, _) => ((JobCard)bindable).OnTimeWindowChanged());", source, StringComparison.Ordinal);
-        Assert.Contains("        WellTime = DisplayFormats.BreakAfterEnDash(TimeWindow);\n        ScheduleWellRows();\n    }", source, StringComparison.Ordinal);
-        Assert.Contains("((IView)TimeLabel).InvalidateMeasure();", source, StringComparison.Ordinal);
-        Assert.Contains("        ScheduleWellRows();\n    }", source, StringComparison.Ordinal);
-        Assert.Contains("TimeLabel.Measure(double.PositiveInfinity, double.PositiveInfinity)", source, StringComparison.Ordinal);
-        Assert.Contains("WellPriority.Measure(double.PositiveInfinity, double.PositiveInfinity).Width - WellPriority.Margin.HorizontalThickness", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Measure(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SizeChanged", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Dispatch", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Grid.Set", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyWellRows", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("UpdateWellRows", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ScheduleWellRows", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Well.SetDynamicResource(Border.PaddingProperty", source, StringComparison.Ordinal);
     }
 
     private static string Source() =>

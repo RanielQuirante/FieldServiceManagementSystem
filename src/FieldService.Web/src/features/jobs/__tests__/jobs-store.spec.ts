@@ -16,6 +16,7 @@ import { jobEvent, ticketReply, ticketRoute } from '@/features/realtime/__tests_
 import { listDebounceMilliseconds } from '@/features/realtime/live-refetch'
 import { rowFlashMilliseconds } from '@/features/realtime/realtime-store'
 import { lastFakeSocket, type FakeSocket } from '@/shared/testing/fake-socket'
+import { noBreakSpace as noBreak } from '@/shared/format/date-time'
 import type { JobHistoryAction } from '@/shared/format/labels'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import type { IconName } from '@/shared/ui/icons'
@@ -842,18 +843,18 @@ describe('the job detail page', () => {
     expect(wrapper.find('.page-header__number').text()).toBe('JOB-1042')
     expect(wrapper.find('h1').text()).toBe('Rooftop HVAC unit not cooling')
     expect(wrapper.find('.page-header__meta').text()).toBe(
-      'In progressHighCreated 8:14 AM by Dana Whitfield',
+      `In progressHighCreated 8:14${noBreak}AM by Dana Whitfield`,
     )
     expect(rows).toEqual([
       ['Customer', 'Brightwater Medical Clinic'],
       ['Site', '214 Harbor Road, Suite 3'],
       ['Access', 'Roof access through the east stairwell. Ask reception for the roof key.'],
       ['Contact', 'Nina Alvarez(555) 014-6620'],
-      ['Scheduled', 'Mon 19 Oct, 9:00–11:00 AM'],
+      ['Scheduled', `Mon${noBreak}19${noBreak}Oct, 9:00–11:00${noBreak}AM`],
       ['Equipment', 'RTU-2, 10-ton packaged rooftop unit'],
-      ['Technician', 'MRMarco ReyesHVAC · Assigned 8:20 AM'],
+      ['Technician', `MRMarco ReyesHVAC${noBreak}· Assigned 8:20${noBreak}AM`],
       ['Checklist', 'Rooftop HVAC service'],
-      ['Created', '8:14 AM by Dana Whitfield'],
+      ['Created', `8:14${noBreak}AM by Dana Whitfield`],
     ])
     expect(wrapper.find('.job-detail__description').text()).toBe(job.description)
     expect(wrapper.findAll('.status-timeline__entry').map((entry) => entry.text())).toEqual([
@@ -921,8 +922,49 @@ describe('the job detail page', () => {
       'Fri 16 Oct, 1:50 PMPut on hold by Tom Becker“Waiting for the gas utility to restore supply to the boiler room.”',
     ])
     expect(wrapper.find('.page-header__meta').text()).toBe(
-      'On holdNormalCreated Thu 15 Oct, 10:15 AM by Dana Whitfield',
+      `On holdNormalCreated Thu${noBreak}15${noBreak}Oct, 10:15${noBreak}AM by Dana Whitfield`,
     )
+  })
+
+  it('keeps the Assigned and Created moments whole inside their dates and times, breaking only after the comma', async () => {
+    const job = onHoldJob()
+    const { wrapper } = await openApp(`/jobs/${job.id}`, { [`GET /api/jobs/${job.id}`]: json(job) })
+    const value = (term: string): string =>
+      wrapper
+        .findAll('dl > div')
+        .find((row) => row.find('dt').text() === term)
+        ?.find('dd')
+        .text() ?? ''
+    const created = `Thu${noBreak}15${noBreak}Oct, 10:15${noBreak}AM`
+
+    expect(value('Technician')).toBe(
+      `TBTom BeckerPlumbing${noBreak}· Assigned Thu${noBreak}15${noBreak}Oct, 10:20${noBreak}AM`,
+    )
+    expect(value('Created')).toBe(`${created} by Dana Whitfield`)
+    expect(wrapper.find('.page-header__meta').text()).toContain(`Created ${created} by`)
+  })
+
+  it('keeps each date and time of a schedule across midnight whole, breaking only after a comma or the dash', async () => {
+    const job = jobDetails({
+      scheduledStart: new Date(2026, 9, 19, 23, 0).toISOString(),
+      scheduledEnd: new Date(2026, 9, 20, 1, 0).toISOString(),
+    })
+    const { wrapper } = await openApp(`/jobs/${job.id}`, { [`GET /api/jobs/${job.id}`]: json(job) })
+    const scheduled =
+      wrapper
+        .findAll('dl > div')
+        .find((row) => row.find('dt').text() === 'Scheduled')
+        ?.find('dd')
+        .text() ?? ''
+
+    expect(scheduled).toBe(
+      `Mon${noBreak}19${noBreak}Oct, 11:00${noBreak}PM–Tue${noBreak}20${noBreak}Oct, 1:00${noBreak}AM`,
+    )
+    expect(scheduled.split(' ')).toEqual([
+      `Mon${noBreak}19${noBreak}Oct,`,
+      `11:00${noBreak}PM–Tue${noBreak}20${noBreak}Oct,`,
+      `1:00${noBreak}AM`,
+    ])
   })
 
   it("shows the technician's start, hold with its reason, and resume in API order, newest last", async () => {
@@ -955,7 +997,7 @@ describe('the job detail page', () => {
       'status-timeline__dot--newest',
     )
     expect(wrapper.find('.page-header__meta').text()).toBe(
-      'In progressUrgentCreated 8:47 AM by Dana Whitfield',
+      `In progressUrgentCreated 8:47${noBreak}AM by Dana Whitfield`,
     )
   })
 
@@ -1007,6 +1049,7 @@ describe('the job detail page', () => {
         allowedStatusChanges: [{ status: 'OnHold', requiresNote: true }],
         canSubmit: administratorSubmit(0, 10),
         canAssign: false,
+        canCancel: false,
       },
     }
     const { wrapper, stub } = await openApp(`/jobs/${job.id}`, {
@@ -1411,7 +1454,9 @@ describe('live updates on the jobs pages', () => {
     })
 
     const banner = wrapper.find('.connection-banner__banner')
-    expect(banner.text()).toContain('Jobs could not be refreshed. Showing jobs from 10:42 AM.')
+    expect(banner.text()).toContain(
+      `Jobs could not be refreshed. Showing jobs from 10:42${noBreak}AM.`,
+    )
     expect(banner.text()).toMatch(/Reference [0-9a-f-]{36}/)
     expect(wrapper.findAll('tbody tr')).toHaveLength(12)
     expect(wrapper.find('table').attributes('aria-busy')).toBeUndefined()
@@ -1469,7 +1514,12 @@ describe('live updates on the jobs pages', () => {
 
     expect(wrapper.find('.page-header__meta').text()).toContain('In progress')
     expect(wrapper.find('.status-timeline').text()).toContain('Started by Priya Natarajan')
-    expect(wrapper.find('main [role="status"].visually-hidden').exists()).toBe(false)
+    expect(
+      wrapper
+        .findAll('main [role="status"].visually-hidden')
+        .map((status) => status.text())
+        .filter((text) => text.length > 0),
+    ).toEqual([])
     expect(document.activeElement).toBe(heading)
     expect(wrapper.find('[aria-label="Notifications"] .toast__title').text()).toBe(
       'Priya Natarajan started work',
@@ -1546,5 +1596,24 @@ describe('live updates on the jobs pages', () => {
     await flushPromises()
     expect(stub.requestsTo(`GET /api/jobs/${eventRowId}`)).toHaveLength(1)
     expect(wrapper.find('[aria-label="Notifications"] .toast').exists()).toBe(false)
+  })
+})
+
+describe('the jobs table at laptop widths', () => {
+  it('wraps the customer and the site at their spaces and keeps the schedule, technician and updated cells whole', async () => {
+    const { wrapper } = await openApp('/jobs', { [listRoute]: firstPage() })
+    const file = 'features/jobs/components/JobsTable.vue'
+
+    expect(wrapper.find('tbody td .jobs-table__customer').exists()).toBe(true)
+    expect(declarationsOf(file, '.jobs-table__customer')).toEqual({
+      'white-space': 'normal',
+      'text-wrap': 'pretty',
+    })
+    expect(declarationsOf(file, '.jobs-table__stack')).toEqual({ 'white-space': 'nowrap' })
+    expect(declarationsOf(file, '.jobs-table__technician')).toMatchObject({
+      'white-space': 'nowrap',
+    })
+    expect(declarationsOf(file, '.jobs-table__updated')).toMatchObject({ 'white-space': 'nowrap' })
+    expect(declarationsOf(file, '.jobs-table__job')).toEqual({ 'min-width': '11.25rem' })
   })
 })

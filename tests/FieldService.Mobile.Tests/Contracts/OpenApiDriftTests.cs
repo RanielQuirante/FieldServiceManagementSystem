@@ -182,6 +182,33 @@ public sealed class OpenApiDriftTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TheCancelledJobComesFromTheStatusTheCancelTimeAndTheHistoryNoteAndTheAppLeavesCanCancelUnread()
+    {
+        var affordances = Schemas().GetProperty("JobAffordances");
+        var history = Schemas().GetProperty("JobHistoryEntryResponse");
+        var note = history.GetProperty("properties").GetProperty("note");
+        var actions = Schemas().GetProperty("JobHistoryAction").GetProperty("enum").EnumerateArray().Select(value => value.GetString());
+        var statuses = Schemas().GetProperty("JobStatus").GetProperty("enum").EnumerateArray().Select(value => value.GetString());
+        var affordanceCheck = DriftChecker.Check(Schemas(), DtoSchemaMap.Entries.Single(entry => entry.Dto == typeof(JobAffordances)), DtoSchemaMap.SchemaFor);
+
+        Assert.Equal("boolean", affordances.GetProperty("properties").GetProperty("canCancel").GetProperty("type").GetString());
+        Assert.Contains("canCancel", affordances.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
+        Assert.DoesNotContain(MobileJsonContext.Default.GetTypeInfo(typeof(JobAffordances))!.Properties, property => property.Name == "canCancel");
+        Assert.Empty(affordanceCheck.Failures);
+        Assert.Contains("JobAffordances: schema property canCancel is not read by the app", affordanceCheck.Infos);
+        Assert.Contains("Cancelled", actions);
+        Assert.Contains("Cancelled", statuses);
+        Assert.Equal(["null", "string"], note.GetProperty("type").EnumerateArray().Select(value => value.GetString()));
+        Assert.Contains("note", history.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
+        Assert.All(new[] { "AssignedJobResponse", "JobDetailsResponse" }, schema =>
+        {
+            var cancelledAt = Schemas().GetProperty(schema).GetProperty("properties").GetProperty("cancelledAt");
+            Assert.Equal("date-time", cancelledAt.GetProperty("format").GetString());
+            Assert.Equal(["null", "string"], cancelledAt.GetProperty("type").EnumerateArray().Select(value => value.GetString()));
+        });
+    }
+
+    [Fact]
     public void TheCheckerCatchesAWrongTypeAMissingMemberAndANullabilityMismatch()
     {
         var entry = new DtoSchema(typeof(DriftedUserReference), "UserReference", DtoDirection.Response);

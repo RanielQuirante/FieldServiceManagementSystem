@@ -3,6 +3,7 @@ using System.Text.Json;
 using FieldService.Mobile.Features.Inspection;
 using FieldService.Mobile.Features.Jobs;
 using FieldService.Mobile.Shared.Controls;
+using FieldService.Mobile.Shared.Formatting;
 using FieldService.Mobile.Shared.Navigation;
 using FieldService.Mobile.Shared.Screens;
 using FieldService.Mobile.Tests.Shared.Testing;
@@ -67,29 +68,29 @@ public sealed class ReviewAndSubmitViewModelTests
     }
 
     [Theory]
-    [InlineData(19, 10, 58, "9:12–10:58 AM · 1 h 46 min")]
-    [InlineData(19, 9, 12, "9:12–9:12 AM · Less than a minute")]
-    [InlineData(19, 9, 57, "9:12–9:57 AM · 45 min")]
-    [InlineData(19, 13, 5, "9:12 AM–1:05 PM · 3 h 53 min")]
+    [InlineData(19, 10, 58, "9:12–|10:58_AM_· 1_h_46_min")]
+    [InlineData(19, 9, 12, "9:12–|9:12_AM_· Less than a minute")]
+    [InlineData(19, 9, 57, "9:12–|9:57_AM_· 45_min")]
+    [InlineData(19, 13, 5, "9:12_AM–|1:05_PM_· 3_h_53_min")]
     public void TimeOnSiteRunsFromTheStartToNow(int day, int hour, int minute, string expected)
     {
         var start = JobDtoBuilder.Local(10, 19, 9, 12);
         var now = JobDtoBuilder.Local(10, day, hour, minute);
 
-        Assert.Equal(expected, ReviewAndSubmitViewModel.TimeOnSite(start, now, JobDtoBuilder.Zone, DateOnly.FromDateTime(now.DateTime)));
+        Assert.Equal(Spaces.Text(expected), ReviewAndSubmitViewModel.TimeOnSite(start, now, JobDtoBuilder.Zone, DateOnly.FromDateTime(now.DateTime)));
     }
 
     [Theory]
-    [InlineData(21, 42, 50, 21, 58, 10, "9:42–9:58 PM · 16 min")]
-    [InlineData(22, 16, 59, 22, 19, 1, "10:16–10:19 PM · 3 min")]
-    [InlineData(21, 42, 10, 21, 42, 50, "9:42–9:42 PM · Less than a minute")]
-    [InlineData(21, 42, 59, 21, 43, 0, "9:42–9:43 PM · 1 min")]
+    [InlineData(21, 42, 50, 21, 58, 10, "9:42–|9:58_PM_· 16_min")]
+    [InlineData(22, 16, 59, 22, 19, 1, "10:16–|10:19_PM_· 3_min")]
+    [InlineData(21, 42, 10, 21, 42, 50, "9:42–|9:42_PM_· Less than a minute")]
+    [InlineData(21, 42, 59, 21, 43, 0, "9:42–|9:43_PM_· 1_min")]
     public void TimeOnSiteIsTheDifferenceOfTheTwoShownMomentsEachTruncatedToItsMinute(int startHour, int startMinute, int startSecond, int nowHour, int nowMinute, int nowSecond, string expected)
     {
         var start = JobDtoBuilder.Local(10, 19, startHour, startMinute).AddSeconds(startSecond);
         var now = JobDtoBuilder.Local(10, 19, nowHour, nowMinute).AddSeconds(nowSecond);
 
-        Assert.Equal(expected, ReviewAndSubmitViewModel.TimeOnSite(start, now, JobDtoBuilder.Zone, new DateOnly(2026, 10, 19)));
+        Assert.Equal(Spaces.Text(expected), ReviewAndSubmitViewModel.TimeOnSite(start, now, JobDtoBuilder.Zone, new DateOnly(2026, 10, 19)));
         Assert.Equal(0, ReviewAndSubmitViewModel.ToMinute(now).Second);
         Assert.Equal(now.Offset, ReviewAndSubmitViewModel.ToMinute(now).Offset);
     }
@@ -101,7 +102,7 @@ public sealed class ReviewAndSubmitViewModelTests
         var now = JobDtoBuilder.Local(10, 19, 10, 58);
 
         Assert.Equal(
-            "Fri 16 Oct, 3:40 PM – 10:58 AM · 67 h 18 min",
+            Spaces.Text("Fri_16_Oct, 3:40_PM_– 10:58_AM_· 67_h_18_min"),
             ReviewAndSubmitViewModel.TimeOnSite(start, now, JobDtoBuilder.Zone, new DateOnly(2026, 10, 19)));
     }
 
@@ -116,8 +117,8 @@ public sealed class ReviewAndSubmitViewModelTests
 
         harness.Clock.Advance(TimeSpan.FromMinutes(1));
 
-        Assert.Equal("9:12–10:42 AM · 1 h 30 min", before);
-        Assert.Equal("9:12–10:43 AM · 1 h 31 min", viewModel.TimeOnSiteText);
+        Assert.Equal(Spaces.Text("9:12–|10:42_AM_· 1_h_30_min"), before);
+        Assert.Equal(Spaces.Text("9:12–|10:43_AM_· 1_h_31_min"), viewModel.TimeOnSiteText);
     }
 
     [Fact]

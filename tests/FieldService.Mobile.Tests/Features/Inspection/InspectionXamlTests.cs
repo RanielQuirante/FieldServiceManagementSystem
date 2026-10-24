@@ -91,19 +91,50 @@ public sealed class InspectionXamlTests
     }
 
     [Fact]
-    public void AnOptionKeepsSidePadding6AndTheOptionsStackWhenOneIsNarrowerThanALabel()
+    public void AnOptionKeepsSidePadding6AndTheOptionsStackWhenOneIsNarrowerThanTheWidestLabelPlus4()
     {
         var metrics = Load("Shared/Theme/Metrics.xaml").Root!.Elements().ToDictionary(element => element.Attribute(_xaml + "Key")?.Value ?? string.Empty, element => element.Value);
         var row = AnswerControl.OptionInnerWidth(PhoneControlWidth, stacked: false);
+        var fitToWidth = Method(Source("Shared/Controls/AnswerControl.xaml.cs"), "private void FitToWidth(");
 
         Assert.Equal("6,0", metrics["FsPaddingAnswerOption"]);
         Assert.Equal(6, AnswerControl.OptionPadding);
+        Assert.Equal(4, AnswerControl.StackMargin);
         Assert.Equal(64.365, row, 3);
         Assert.Equal(239.095, AnswerControl.OptionInnerWidth(PhoneControlWidth, stacked: true), 3);
         Assert.True(AnswerControl.ShowsIcon(row, 64.365 - 24));
         Assert.False(AnswerControl.ShowsIcon(row, 64.366 - 24));
-        Assert.False(AnswerControl.Stacks(row, 64.0));
-        Assert.True(AnswerControl.Stacks(row, 64.37));
+        Assert.True(AnswerControl.Stacks(64.37, 64.0));
+        Assert.False(AnswerControl.Stacks(64.37, 60.19));
+        Assert.False(AnswerControl.Stacks(64.5, 60.5));
+        Assert.True(AnswerControl.Stacks(64.5, 60.51));
+        Assert.Contains("var stacked = Stacks(OptionInnerWidth(Width, stacked: false), widths.Max());", fitToWidth, StringComparison.Ordinal);
+        Assert.Contains("var inner = OptionInnerWidth(Width, stacked);", fitToWidth, StringComparison.Ordinal);
+        Assert.Equal(1, fitToWidth.Split("Stacks(").Length - 1);
+    }
+
+    [Theory]
+    [InlineData(254.095, 36.952, false, true)]
+    [InlineData(254.095, 46.476, false, false)]
+    [InlineData(254.095, 60.19, false, false)]
+    [InlineData(254.095, 62.095, true, true)]
+    [InlineData(254.095, 64.0, true, true)]
+    [InlineData(253.926, 37.037, false, true)]
+    [InlineData(253.926, 46.815, false, false)]
+    [InlineData(253.926, 59.556, false, false)]
+    [InlineData(253.926, 62.222, true, true)]
+    [InlineData(253.926, 64.593, true, true)]
+    [InlineData(345.524, 36.952, false, true)]
+    [InlineData(345.524, 46.476, false, true)]
+    [InlineData(345.524, 60.19, false, true)]
+    [InlineData(345.524, 62.095, false, true)]
+    [InlineData(345.524, 64.0, false, true)]
+    public void AtA320PhoneTheOptionsStackWithIconsFrom1Point9AtEveryDensityAndAt411TheyNeverStack(double controlWidth, double widestLabel, bool stacked, bool showsIcons)
+    {
+        var stacks = AnswerControl.Stacks(AnswerControl.OptionInnerWidth(controlWidth, stacked: false), widestLabel);
+
+        Assert.Equal(stacked, stacks);
+        Assert.Equal(showsIcons, AnswerControl.ShowsIcon(AnswerControl.OptionInnerWidth(controlWidth, stacks), widestLabel));
     }
 
     [Theory]

@@ -1,21 +1,37 @@
 import { describe, expect, it } from 'vitest'
 
+import { listSourceFiles, readSource } from '@/app/styles/__tests__/stylesheet-source'
+
 import {
   dayOffset,
   formatDuration,
   formatLongDate,
   formatMoment,
+  formatMomentUnbroken,
   formatRelativeDay,
   formatScheduleDay,
   formatScheduled,
+  formatScheduledUnbroken,
   formatShortDate,
   formatTime,
   formatTimeWindow,
   formatUpdated,
+  formatWeekday,
   isSameLocalDay,
   localDateTimeToInstant,
+  noBreakSpace,
+  separator,
+  unbroken,
 } from '../date-time'
 import { formatJobNumber } from '../job-number'
+import {
+  currentOrNextJob,
+  emailParts,
+  openJobsLabel,
+  startsWhen,
+  telephoneHref,
+  type TechnicianJob,
+} from '../technician-job'
 import {
   historyActionLabel,
   isJobPriority,
@@ -27,6 +43,8 @@ import {
 } from '../labels'
 
 const today = new Date(2026, 9, 19, 10, 42)
+
+const keptSpace = '\u{00a0}'
 
 function at(dayShift: number, hours: number, minutes: number): Date {
   return new Date(2026, 9, 19 + dayShift, hours, minutes)
@@ -126,9 +144,16 @@ describe('durations', () => {
     [120 * 60_000, '2 h'],
     [45 * 60_000, '45 min'],
     [-5_000, '0 min'],
-  ])('write %i ms as %s', (milliseconds, expected) => {
-    expect(formatDuration(milliseconds)).toBe(expected)
-  })
+    [2_970 * 60_000, '49 h 30 min'],
+  ])(
+    'write %i ms as %s, joining every number and unit with a no-break space',
+    (milliseconds, read) => {
+      const duration = formatDuration(milliseconds)
+
+      expect(duration).toBe(read.split(' ').join(keptSpace))
+      expect(duration).not.toContain(' ')
+    },
+  )
 })
 
 describe('local date and time to an instant', () => {
@@ -193,5 +218,172 @@ describe('labels', () => {
     expect(isJobStatus(1)).toBe(false)
     expect(isJobPriority('Urgent')).toBe(true)
     expect(isJobPriority('urgent')).toBe(false)
+  })
+})
+
+describe('text that never breaks inside', () => {
+  it('joins the parts of a time or a date with no-break spaces', () => {
+    expect(noBreakSpace).toBe('\u{00a0}')
+    expect(unbroken('1:50 PM')).toBe(`1:50${keptSpace}PM`)
+    expect(unbroken('Tue 20 Oct')).toBe(`Tue${keptSpace}20${keptSpace}Oct`)
+    expect(unbroken('9:00–11:00 AM')).toBe(`9:00–11:00${keptSpace}AM`)
+  })
+
+  it('keeps a moment whole inside its time today', () => {
+    expect(formatMomentUnbroken(at(0, 9, 45), today)).toBe(`9:45${noBreakSpace}AM`)
+    expect(formatMomentUnbroken(at(0, 9, 45), today)).not.toContain(' ')
+  })
+
+  it('keeps a moment on another day whole inside its date and its time, with an ordinary space after the comma', () => {
+    const moment = formatMomentUnbroken(at(1, 9, 45), today)
+
+    expect(moment).toBe(`Tue${noBreakSpace}20${noBreakSpace}Oct, 9:45${noBreakSpace}AM`)
+    expect(moment.split(' ')).toEqual([
+      `Tue${noBreakSpace}20${noBreakSpace}Oct,`,
+      `9:45${noBreakSpace}AM`,
+    ])
+    expect(formatMomentUnbroken(new Date(2027, 0, 5, 13, 5), today)).toBe(
+      `Tue${noBreakSpace}5${noBreakSpace}Jan${noBreakSpace}2027, 1:05${noBreakSpace}PM`,
+    )
+  })
+
+  it('reads the same as the moment it keeps whole', () => {
+    for (const value of [at(0, 9, 45), at(-1, 13, 20), new Date(2027, 0, 5, 13, 5)]) {
+      expect(formatMomentUnbroken(value, today).split(noBreakSpace).join(' ')).toBe(
+        formatMoment(value, today),
+      )
+    }
+  })
+
+  it('keeps the date and the window of a schedule whole, with an ordinary space after the comma', () => {
+    const schedule = formatScheduledUnbroken(at(0, 15, 30), at(0, 17, 0), today)
+
+    expect(schedule).toBe(`Mon${keptSpace}19${keptSpace}Oct, 3:30–5:00${keptSpace}PM`)
+    expect(schedule.split(' ')).toEqual([
+      `Mon${keptSpace}19${keptSpace}Oct,`,
+      `3:30–5:00${keptSpace}PM`,
+    ])
+  })
+
+  it('keeps each date and time of a schedule across midnight whole, breaking only after a comma or the dash', () => {
+    const schedule = formatScheduledUnbroken(at(0, 23, 0), at(1, 1, 0), today)
+
+    expect(schedule).toBe(
+      `Mon${keptSpace}19${keptSpace}Oct, 11:00${keptSpace}PM–Tue${keptSpace}20${keptSpace}Oct, 1:00${keptSpace}AM`,
+    )
+    expect(schedule.split(' ')).toEqual([
+      `Mon${keptSpace}19${keptSpace}Oct,`,
+      `11:00${keptSpace}PM–Tue${keptSpace}20${keptSpace}Oct,`,
+      `1:00${keptSpace}AM`,
+    ])
+    expect(
+      formatScheduledUnbroken(new Date(2027, 0, 5, 9, 0), new Date(2027, 0, 5, 10, 0), today),
+    ).toBe(`Tue${keptSpace}5${keptSpace}Jan${keptSpace}2027, 9:00–10:00${keptSpace}AM`)
+  })
+
+  it('reads the same as the schedule it keeps whole', () => {
+    for (const [start, end] of [
+      [at(0, 15, 30), at(0, 17, 0)],
+      [at(0, 23, 0), at(1, 1, 0)],
+      [at(-1, 11, 0), at(-1, 13, 0)],
+    ] as const) {
+      expect(formatScheduledUnbroken(start, end, today).split(keptSpace).join(' ')).toBe(
+        formatScheduled(start, end, today),
+      )
+    }
+  })
+
+  it('joins a no-break space, the middle dot and an ordinary space into the separator', () => {
+    expect(separator).toBe('\u{00a0}\u{00b7} ')
+    expect(noBreakSpace).toBe(keptSpace)
+  })
+
+  it('names the short weekday of an instant', () => {
+    expect(formatWeekday(new Date(2026, 9, 16, 13, 50))).toBe('Fri')
+    expect(formatWeekday(today)).toBe('Mon')
+  })
+})
+
+describe('a technician’s current or next job', () => {
+  function reference(start: Date, status: TechnicianJob['status'] = 'Assigned'): TechnicianJob {
+    return {
+      id: '01a15400-0000-7000-8000-000000001055',
+      number: 1055,
+      status,
+      scheduledStart: start.toISOString(),
+      scheduledEnd: new Date(start.getTime() + 90 * 60_000).toISOString(),
+    }
+  }
+
+  it('prefers the current job, then the next one, then none', () => {
+    const current = reference(new Date(2026, 9, 19, 9, 0), 'InProgress')
+    const next = reference(new Date(2026, 9, 19, 13, 0))
+
+    expect(currentOrNextJob({ currentJob: current, nextJob: next }, today)).toEqual({
+      kind: 'current',
+      job: current,
+    })
+    expect(currentOrNextJob({ currentJob: null, nextJob: next }, today)).toEqual({
+      kind: 'next',
+      job: next,
+      when: `at 1:00${keptSpace}PM`,
+    })
+    expect(currentOrNextJob({ currentJob: null, nextJob: null }, today)).toEqual({ kind: 'none' })
+  })
+
+  it('names a next start on another day by its date and time', () => {
+    expect(startsWhen(new Date(2026, 9, 20, 9, 0), today)).toBe(
+      `on Tue${keptSpace}20${keptSpace}Oct at 9:00${keptSpace}AM`,
+    )
+  })
+
+  it('breaks an email only before its @ and keeps an address without one whole', () => {
+    expect(emailParts('aisha.karim@fieldservice.example')).toEqual({
+      local: 'aisha.karim',
+      domain: '@fieldservice.example',
+    })
+    expect(emailParts('no-at-sign')).toEqual({ local: 'no-at-sign', domain: '' })
+  })
+
+  it('dials the digits of a phone number, keeping a leading plus', () => {
+    expect(telephoneHref('(555) 014-7810')).toBe('tel:5550147810')
+    expect(telephoneHref('+1 (555) 014-7810')).toBe('tel:+15550147810')
+    expect(telephoneHref('n/a')).toBeNull()
+  })
+
+  it('counts open jobs in the singular for one', () => {
+    expect(openJobsLabel(1)).toBe('open job')
+    expect(openJobsLabel(0)).toBe('open jobs')
+    expect(openJobsLabel(3)).toBe('open jobs')
+  })
+})
+
+describe('separators and no-break spaces in the source', () => {
+  const applicationFiles = [...listSourceFiles('.ts'), ...listSourceFiles('.vue')].filter(
+    (file) =>
+      !file.includes('__tests__/') &&
+      !file.startsWith('shared/testing/') &&
+      file !== 'shared/api/schema.gen.ts',
+  )
+
+  const middleDotEscape = /\\u00b7|\\u\{0*b7\}|\\xb7|&middot;|&#183;|&#x0*b7;/i
+
+  const noBreakEscape = /\\u00a0|\\u\{0*a0\}|\\xa0|&nbsp;|&#160;|&#x0*a0;/i
+
+  it('takes every middle-dot separator from separator, leaving only the document title its own', () => {
+    expect(applicationFiles.length).toBeGreaterThan(0)
+    expect(applicationFiles.filter((file) => readSource(file).includes('\u{00b7}'))).toEqual([
+      'shared/composables/use-page-title.ts',
+    ])
+    expect(applicationFiles.filter((file) => middleDotEscape.test(readSource(file)))).toEqual([
+      'shared/format/date-time.ts',
+    ])
+  })
+
+  it('writes no invisible no-break space into the code, taking it from noBreakSpace', () => {
+    expect(applicationFiles.filter((file) => readSource(file).includes(keptSpace))).toEqual([])
+    expect(applicationFiles.filter((file) => noBreakEscape.test(readSource(file)))).toEqual([
+      'shared/format/date-time.ts',
+    ])
   })
 })

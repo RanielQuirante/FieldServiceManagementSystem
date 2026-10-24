@@ -96,11 +96,73 @@ export interface JobDetails extends JobSummary {
   readonly assignedAt: string | null
   readonly startedAt: string | null
   readonly completedAt: string | null
+  readonly cancelledAt: string | null
   readonly history: readonly JobHistoryEntry[]
   readonly affordances: {
     readonly allowedStatusChanges: readonly AllowedStatusChange[]
     readonly canAssign: boolean
+    readonly canCancel: boolean
   }
+}
+
+export interface DashboardOpenJobs {
+  readonly total: number
+  readonly unassigned: number
+  readonly assigned: number
+  readonly inProgress: number
+  readonly onHold: number
+  readonly withTechnician: number
+  readonly inProgressTechnicianCount: number
+  readonly nextAssignedStart: string | null
+  readonly onHoldSince: string | null
+}
+
+export interface DashboardRange {
+  readonly from: string
+  readonly to: string
+  readonly created: number
+  readonly completed: number
+  readonly cancelled: number
+  readonly unassignedScheduled: number
+  readonly lastCompletedAt: string | null
+}
+
+export interface DashboardUnassignedJob {
+  readonly id: string
+  readonly number: number
+  readonly title: string
+  readonly priority: JobPriority
+  readonly customerName: string
+  readonly siteAddress: string
+  readonly scheduledStart: string
+  readonly scheduledEnd: string
+}
+
+export interface DashboardActivityEntry {
+  readonly id: string
+  readonly occurredAt: string
+  readonly action: string
+  readonly jobId: string
+  readonly jobNumber: number
+  readonly fromStatus: JobStatus | null
+  readonly toStatus: JobStatus
+  readonly actor: PersonReference
+  readonly technician: PersonReference | null
+  readonly note: string | null
+}
+
+export interface DashboardSummary {
+  readonly generatedAt: string
+  readonly openJobs: DashboardOpenJobs
+  readonly range: DashboardRange
+  readonly technicians: { readonly total: number; readonly onShift: number }
+  readonly needsTechnician: readonly DashboardUnassignedJob[]
+  readonly recentActivity: readonly DashboardActivityEntry[]
+}
+
+export interface DayWindow {
+  readonly from: string
+  readonly to: string
 }
 
 export interface TechnicianJobReference {
@@ -468,6 +530,15 @@ export class AdminApi {
       technicianId,
       version,
     })
+  }
+
+  cancelJob(jobId: string, reason: string, version: number): Promise<JobDetails> {
+    return this.read<JobDetails>('POST', `/api/jobs/${jobId}/cancellation`, { reason, version })
+  }
+
+  dashboardSummary(window: DayWindow): Promise<DashboardSummary> {
+    const query = new URLSearchParams({ from: window.from, to: window.to }).toString()
+    return this.read<DashboardSummary>('GET', `/api/dashboard/summary?${query}`)
   }
 }
 

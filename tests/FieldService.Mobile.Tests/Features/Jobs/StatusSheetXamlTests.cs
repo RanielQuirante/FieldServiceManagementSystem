@@ -373,7 +373,7 @@ public sealed class StatusSheetXamlTests
         Assert.Equal("{StaticResource FsMarginHeroReason}", reason.Attribute("Margin")?.Value);
         Assert.Equal("24,0,0,0", Metric(metrics, "FsMarginHeroReason"));
         Assert.Equal("{StaticResource FsSpace4}", reason.Parent!.Attribute("Spacing")?.Value);
-        Assert.Equal("{Binding HoldReasonLine}", details.Attribute("ReasonText")?.Value);
+        Assert.Equal("{Binding ReasonLine}", details.Attribute("ReasonText")?.Value);
         Assert.Equal("{Binding TitleFocusRequest}", details.Attribute("SummaryFocusRequest")?.Value);
     }
 

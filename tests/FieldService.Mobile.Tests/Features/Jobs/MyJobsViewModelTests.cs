@@ -30,12 +30,12 @@ public sealed class MyJobsViewModelTests
         Assert.Equal("/api/technicians/me/jobs", request.Path);
         Assert.Equal("?view=active", request.Query);
         Assert.Equal(ScreenState.Content, viewModel.State);
-        Assert.Equal(["Today · Mon 19 Oct", "Tomorrow · Tue 20 Oct"], viewModel.Groups.Select(group => group.Heading));
+        Assert.Equal([Spaces.Text("Today_· Mon_19_Oct"), Spaces.Text("Tomorrow_· Tue_20_Oct")], viewModel.Groups.Select(group => group.Heading));
         Assert.Equal(["JOB-1042", "JOB-1047"], viewModel.Groups[0].Select(job => job.JobNumber));
         Assert.Equal(["JOB-1053"], viewModel.Groups[1].Select(job => job.JobNumber));
         Assert.Equal(3, viewModel.ActiveCount);
         Assert.Equal("Monday 19 October", viewModel.Eyebrow);
-        Assert.Equal("Updated 10:42 AM · pull down to refresh", viewModel.SyncText);
+        Assert.Equal(Spaces.Text("Updated 10:42_AM_· pull down to refresh"), viewModel.SyncText);
         Assert.Equal(SyncIndicator.Updated, viewModel.SyncIndicator);
         Assert.Equal("MR", viewModel.Initials);
     }
@@ -84,7 +84,7 @@ public sealed class MyJobsViewModelTests
 
         await viewModel.AppearingCommand.ExecuteAsync(null);
 
-        Assert.Equal(["Fri 16 Oct", "Today · Mon 19 Oct"], viewModel.Groups.Select(group => group.Heading));
+        Assert.Equal([Spaces.Text("Fri_16_Oct"), Spaces.Text("Today_· Mon_19_Oct")], viewModel.Groups.Select(group => group.Heading));
     }
 
     [Fact]

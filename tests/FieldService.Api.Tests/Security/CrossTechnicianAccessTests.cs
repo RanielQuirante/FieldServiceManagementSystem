@@ -29,6 +29,8 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
 
     public static TheoryData<JobStatus> ChangeableStatuses => [JobStatus.Assigned, JobStatus.InProgress, JobStatus.OnHold];
 
+    public static TheoryData<JobStatus> CancellableStatuses => [JobStatus.Assigned, JobStatus.InProgress, JobStatus.OnHold];
+
     public static TheoryData<string?, bool> MyJobsQueries => new()
     {
         { null, false },
@@ -316,7 +318,58 @@ public sealed class CrossTechnicianAccessTests(DatabaseFixture fixture) : Databa
         Fixture.Factory.Events.AssertEmpty();
     }
 
+    [Theory]
+    [MemberData(nameof(CancellableStatuses))]
+    public async Task ATechniciansCancelGets403BeforeValidationForTheirOwnJobAnotherTechniciansJobAndAMissingJobAndNothingChanges(JobStatus status)
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var intruder = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await ArrangeJobAsync(data, administrator, owner, status);
+        var before = await ReadRowAsync(job.Id);
+        Fixture.Factory.Events.Clear();
+        using var ownerClient = Fixture.Factory.CreateApiClient();
+        ownerClient.AccessToken = TestTokens.For(Fixture.Factory, owner.User);
+        using var intruderClient = Fixture.Factory.CreateApiClient();
+        intruderClient.AccessToken = TestTokens.For(Fixture.Factory, intruder.User);
+        var bodies = new Func<HttpContent?>[]
+        {
+            () => JsonContent.Create(new { reason = TestData.CancellationReason, version = job.Version }, options: ApiClient.Json),
+            () => JsonContent.Create(new { reason = new string('r', 501), version = job.Version }, options: ApiClient.Json),
+            () => new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
+            () => new StringContent("{\"reason\":\"The customer cancelled the visit.\",", System.Text.Encoding.UTF8, "application/json"),
+            () => null,
+        };
+        var problems = new List<string>();
+
+        foreach (var client in new[] { ownerClient, intruderClient })
+        {
+            foreach (var jobId in new[] { job.Id, Guid.CreateVersion7() })
+            {
+                foreach (var body in bodies)
+                {
+                    using var response = await client.PostAsync(CancellationPath(jobId), body());
+                    using var problem = await ApiClient.AssertProblemAsync(response, HttpStatusCode.Forbidden, "auth.forbidden");
+                    Assert.False(problem.RootElement.TryGetProperty("errors", out _), "A technician's cancellation reached validation.");
+                    problems.Add(WithoutRequestMembers(problem));
+                }
+            }
+        }
+
+        Assert.Equal(20, problems.Count);
+        Assert.Single(problems.Distinct(StringComparer.Ordinal));
+        Assert.Equal(before, await ReadRowAsync(job.Id));
+        Fixture.Factory.Events.AssertEmpty();
+        await using var db = Fixture.CreateAppDbContext();
+        Assert.False(
+            await db.JobHistory.AsNoTracking().AnyAsync(entry => entry.JobId == job.Id && entry.Action == JobHistoryAction.Cancelled, CancellationToken),
+            "A technician's request left a Cancelled history entry.");
+    }
+
     private static bool IsFinished(JobStatus status) => status is JobStatus.Completed or JobStatus.Cancelled;
+
+    private static string CancellationPath(Guid jobId) => $"/api/jobs/{jobId}/cancellation";
 
     private static string StatusPath(Guid jobId) => $"/api/jobs/{jobId}/status";
 

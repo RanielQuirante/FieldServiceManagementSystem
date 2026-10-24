@@ -42,7 +42,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public string LogsDirectory { get; }
 
-    public FakeTimeProvider Clock { get; } = new(TruncateToSeconds(DateTimeOffset.UtcNow));
+    public FakeTimeProvider Clock { get; set; } = new(TruncateToSeconds(DateTimeOffset.UtcNow));
 
     public CapturingLogSink LogSink { get; } = new();
 

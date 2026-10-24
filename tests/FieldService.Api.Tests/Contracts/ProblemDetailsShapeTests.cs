@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using FieldService.Api.Domain;
 using FieldService.Api.Shared.Observability;
+using FieldService.Api.Shared.Security;
 using FieldService.Api.Tests.Infrastructure;
 using FieldService.Api.Tests.Security;
 using Microsoft.AspNetCore.Builder;
@@ -22,6 +23,12 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
     public const string ProblemMediaType = "application/problem+json";
 
     private const string TypePrefix = "https://tools.ietf.org/html/";
+
+    private const string DashboardPath = "/api/dashboard/summary";
+
+    private const string ClientErrorsPath = "/api/client-errors";
+
+    private const int ClientErrorBodyLimit = 8 * 1024;
 
     private static readonly string[] _serverErrorMembers =
         ["type", "title", "status", "instance", "code", "correlationId", "traceId"];
@@ -87,6 +94,22 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         { "a job request of 1 MB + 1", "request.too-large", "" },
         { "CreateJob with a text/plain body", "request.unsupported-media-type", "" },
         { "the eleventh sign-in in a minute", "rate-limit.exceeded", "" },
+        { "GetDashboardSummary with to not after from", "request.validation-failed", "to" },
+        { "GetDashboardSummary with a window over 31 days", "request.validation-failed", "to" },
+        { "GetDashboardSummary without from", "request.validation-failed", "from" },
+        { "GetDashboardSummary as a technician", "auth.forbidden", "" },
+        { "CancelJob without a reason", "request.validation-failed", "reason" },
+        { "CancelJob with a reason over 500 characters", "request.validation-failed", "reason" },
+        { "CancelJob on a Completed job", "job.invalid-transition", "" },
+        { "CancelJob on a Completed job with a stale version", "job.invalid-transition", "" },
+        { "CancelJob with a stale version", "concurrency.conflict", "" },
+        { "CancelJob with an unknown id", "job.not-found", "" },
+        { "CancelJob as the assigned technician", "auth.forbidden", "" },
+        { "ReportClientError with a route holding a query string", "request.validation-failed", "route" },
+        { "ReportClientError without a source and with a stack over 2000 characters", "request.validation-failed", "source,stack" },
+        { "ReportClientError as a technician", "auth.forbidden", "" },
+        { "a client error report of 8 KB + 1", "request.too-large", "" },
+        { "the eleventh client error report in a minute", "rate-limit.exceeded", "" },
     };
 
     [Theory]
@@ -218,6 +241,17 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
             var oversized = new StringContent($$"""{"title":"{{new string('a', 1024 * 1024)}}"}""", Encoding.UTF8, "application/json");
             using var tooLarge = await kestrelClient.PostAsync("/api/jobs", oversized);
             return await ObservedProblem.ReadAsync(tooLarge, kestrelClient, "/api/jobs", marker);
+        }
+
+        if (request == "a client error report of 8 KB + 1")
+        {
+            await using var kestrel = Fixture.CreateFactory(factory => factory.UseKestrel(0));
+            using var kestrelClient = kestrel.CreateApiClient();
+            kestrelClient.AccessToken = TestTokens.For(kestrel, UserRole.Administrator);
+            using var tooLarge = await kestrelClient.PostAsync($"{ClientErrorsPath}?probe={marker}", ClientErrorBodyOfLength(ClientErrorBodyLimit + 1, marker));
+            var observed = await ObservedProblem.ReadAsync(tooLarge, kestrelClient, ClientErrorsPath, marker);
+            Assert.Empty(kestrel.LogSink.Named(SecurityLog.ClientErrorReportedEvent));
+            return observed;
         }
 
         using var client = Fixture.Factory.CreateApiClient();
@@ -403,6 +437,107 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
 
                 response = await client.PostJsonAsync(path, new { });
                 break;
+            case "GetDashboardSummary with to not after from":
+                client.AccessToken = administratorToken;
+                path = DashboardPath;
+                response = await client.GetAsync($"{path}?from={ApiClient.WireInstant(now)}&to={ApiClient.WireInstant(now)}&probe={marker}");
+                break;
+            case "GetDashboardSummary with a window over 31 days":
+                client.AccessToken = administratorToken;
+                path = DashboardPath;
+                response = await client.GetAsync(
+                    $"{path}?from={ApiClient.WireInstant(now)}&to={ApiClient.WireInstant(now.AddDays(31).AddMilliseconds(1))}&probe={marker}");
+                break;
+            case "GetDashboardSummary without from":
+                client.AccessToken = administratorToken;
+                path = DashboardPath;
+                response = await client.GetAsync($"{path}?to={ApiClient.WireInstant(now)}&probe={marker}");
+                break;
+            case "GetDashboardSummary as a technician":
+                client.AccessToken = TestTokens.For(Fixture.Factory, UserRole.Technician);
+                path = DashboardPath;
+                response = await client.GetAsync($"{path}?{RoleMatrixTests.DashboardWindow(now)}&probe={marker}");
+                break;
+            case "CancelJob without a reason":
+                (path, response) = await CancelAsync(client, data, JobStatus.Assigned, CancelCaller.Administrator, marker, (current, _) => new { version = current });
+                break;
+            case "CancelJob with a reason over 500 characters":
+                (path, response) = await CancelAsync(client, data, JobStatus.InProgress, CancelCaller.Administrator, marker, (current, _) => new
+                {
+                    reason = new string('r', 501),
+                    version = current,
+                });
+                break;
+            case "CancelJob on a Completed job":
+                (path, response) = await CancelAsync(client, data, JobStatus.Completed, CancelCaller.Administrator, marker, (current, _) => new
+                {
+                    reason = TestData.CancellationReason,
+                    version = current,
+                });
+                break;
+            case "CancelJob on a Completed job with a stale version":
+                (path, response) = await CancelAsync(client, data, JobStatus.Completed, CancelCaller.Administrator, marker, (_, stale) => new
+                {
+                    reason = TestData.CancellationReason,
+                    version = stale,
+                });
+                break;
+            case "CancelJob with a stale version":
+                (path, response) = await CancelAsync(client, data, JobStatus.OnHold, CancelCaller.Administrator, marker, (_, stale) => new
+                {
+                    reason = TestData.CancellationReason,
+                    version = stale,
+                });
+                break;
+            case "CancelJob with an unknown id":
+                client.AccessToken = administratorToken;
+                path = $"/api/jobs/{Guid.CreateVersion7()}/cancellation";
+                response = await client.PostJsonAsync($"{path}?probe={marker}", new { reason = TestData.CancellationReason, version = 1u });
+                break;
+            case "CancelJob as the assigned technician":
+                (path, response) = await CancelAsync(client, data, JobStatus.Assigned, CancelCaller.Assignee, marker, (current, _) => new
+                {
+                    reason = TestData.CancellationReason,
+                    version = current,
+                });
+                break;
+            case "ReportClientError with a route holding a query string":
+                client.AccessToken = administratorToken;
+                path = ClientErrorsPath;
+                response = await client.PostJsonAsync($"{path}?probe={marker}", new
+                {
+                    message = "Cannot read properties of undefined (reading 'number')",
+                    source = "app.errorHandler",
+                    route = $"/jobs?search={marker}",
+                    occurredAt = ApiClient.WireInstant(now),
+                });
+                break;
+            case "ReportClientError without a source and with a stack over 2000 characters":
+                client.AccessToken = administratorToken;
+                path = ClientErrorsPath;
+                response = await client.PostJsonAsync($"{path}?probe={marker}", new
+                {
+                    message = "Cannot read properties of undefined (reading 'number')",
+                    stack = marker + new string('k', 2001),
+                    occurredAt = ApiClient.WireInstant(now),
+                });
+                break;
+            case "ReportClientError as a technician":
+                client.AccessToken = TestTokens.For(Fixture.Factory, UserRole.Technician);
+                path = ClientErrorsPath;
+                response = await client.PostJsonAsync($"{path}?probe={marker}", RoleMatrixTests.ClientErrorBody(now));
+                break;
+            case "the eleventh client error report in a minute":
+                client.AccessToken = administratorToken;
+                path = ClientErrorsPath;
+                for (var attempt = 1; attempt <= 10; attempt++)
+                {
+                    using var accepted = await client.PostJsonAsync($"{path}?probe={marker}", RoleMatrixTests.ClientErrorBody(now));
+                    Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+                }
+
+                response = await client.PostJsonAsync($"{path}?probe={marker}", RoleMatrixTests.ClientErrorBody(now));
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(request), request, "Unknown problem request.");
         }
@@ -458,6 +593,36 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
         var version = staleVersion ? created.Version : job.Version;
         var response = await client.PutJsonAsync($"{path}?probe={marker}", new { status = target, note, version });
         return (path, response);
+    }
+
+    private async Task<(string Path, HttpResponseMessage Response)> CancelAsync(
+        ApiClient client,
+        TestData data,
+        JobStatus status,
+        CancelCaller caller,
+        string marker,
+        Func<uint, uint, object> body)
+    {
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var owner = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var created = await data.CreateJobAsync(administrator.Id, TestData.HvacTemplateId, CancellationToken);
+        var job = await data.MoveToAsync(created, owner, status, CancellationToken);
+        Assert.NotEqual(created.Version, job.Version);
+        client.AccessToken = caller == CancelCaller.Assignee
+            ? TestTokens.For(Fixture.Factory, owner.User)
+            : TestTokens.For(Fixture.Factory, administrator);
+        var path = $"/api/jobs/{job.Id}/cancellation";
+        var response = await client.PostJsonAsync($"{path}?probe={marker}", body(job.Version, created.Version));
+        return (path, response);
+    }
+
+    private static StringContent ClientErrorBodyOfLength(int length, string marker)
+    {
+        const string Template = """{"message":"m","source":"app.errorHandler","occurredAt":"2026-10-19T14:43:10.214Z","stack":""}""";
+        var padding = marker + new string('k', length - Template.Length - marker.Length);
+        var body = Template.Insert(Template.Length - 2, padding);
+        Assert.Equal(length, Encoding.UTF8.GetByteCount(body));
+        return new StringContent(body, Encoding.UTF8, "application/json");
     }
 
     private static Guid ItemOf(int position) => TestData.ChecklistOf(TestData.HvacTemplateId).Items[position - 1].Id;
@@ -520,6 +685,12 @@ public sealed partial class ProblemDetailsShapeTests(DatabaseFixture fixture) : 
     {
         Assignee,
         OtherTechnician,
+        Administrator,
+    }
+
+    private enum CancelCaller
+    {
+        Assignee,
         Administrator,
     }
 

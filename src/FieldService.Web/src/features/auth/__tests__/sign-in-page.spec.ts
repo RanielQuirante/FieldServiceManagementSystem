@@ -30,6 +30,7 @@ const signInRoute = 'POST /api/auth/sign-in'
 const emptyPage = { render: () => null }
 
 const workflowRoutes: RouteRecordRaw[] = [
+  { path: '/', name: 'dashboard', component: emptyPage, meta: { requiresAdministrator: true } },
   { path: '/jobs', name: 'jobs', component: emptyPage, meta: { requiresAdministrator: true } },
 ]
 
@@ -151,7 +152,20 @@ describe('the sign-in page', () => {
 
     await submitCredentials(wrapper, demoAdministratorEmail, password())
 
-    expect(router.currentRoute.value.fullPath).toBe('/jobs')
+    expect(router.currentRoute.value.fullPath).toBe('/')
+    expect(router.currentRoute.value.name).toBe('dashboard')
+  })
+
+  it('lands on the dashboard after a sign-in without a redirect', async () => {
+    const { wrapper, router } = await openSignIn(
+      { [signInRoute]: json(sessionResponse()) },
+      '/sign-in',
+    )
+
+    await submitCredentials(wrapper, demoAdministratorEmail, password())
+
+    expect(router.currentRoute.value.fullPath).toBe('/')
+    expect(router.currentRoute.value.name).toBe('dashboard')
   })
 
   it('shows the invalid-credentials message for a 401', async () => {

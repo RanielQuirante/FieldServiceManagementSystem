@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using FieldService.Mobile.Shared.Formatting;
+using FieldService.Mobile.Tests.Shared.Testing;
 
 namespace FieldService.Mobile.Tests.Shared.Formatting;
 
@@ -64,7 +65,7 @@ public sealed partial class DisplayFormatsTests
 
         Assert.Equal("Wed 21 Oct, 9:00–11:00 AM", lines[4]);
         Assert.Equal("on Fri 16 Oct at 9:20 AM", lines[8]);
-        Assert.Equal("Tomorrow · Tue 20 Oct", lines[10]);
+        Assert.Equal(Spaces.Text("Tomorrow_· Tue_20_Oct"), lines[10]);
         Assert.All(lines, line =>
         {
             Assert.DoesNotMatch(BrokenTime(), line);

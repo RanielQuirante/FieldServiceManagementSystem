@@ -355,3 +355,107 @@ describe('Pagination', () => {
     expect(rangeSummary(2, 12, 13, 'jobs', 'job')).toBe('Showing 13 of 13 jobs')
   })
 })
+
+describe('a table with a people list for narrow regions', () => {
+  function showWithList(listBelow: 0 | 640 | 900, state: DataTableState = 'content'): VueWrapper {
+    mounted = mount(DataTable<Row>, {
+      props: {
+        caption: 'Technicians',
+        columns,
+        rows,
+        rowKey: (row: Row) => row.id,
+        state,
+        minWidth: 900,
+        listBelow,
+        loadingLabel: 'Loading technicians',
+      },
+      slots: {
+        cell: ({ row, column }: { row: Row; column: DataTableColumn }) =>
+          h('span', column.key === 'title' ? row.title : row.customer),
+        list: () => h('ul', { 'aria-label': 'Technicians' }, [h('li', 'Aisha Karim')]),
+      },
+      attachTo: document.body,
+    })
+    return mounted
+  }
+
+  it('renders the list inside the same surface, after the scroll region, from the list slot', () => {
+    const wrapper = showWithList(900)
+    const root = wrapper.find('.data-table')
+
+    expect(root.classes()).toContain('data-table--list-below-900')
+    expect(Array.from(root.element.children, (child) => child.className)).toEqual([
+      'data-table__scroll',
+      'data-table__list',
+    ])
+    expect(wrapper.find('.data-table__list ul').attributes('aria-label')).toBe('Technicians')
+  })
+
+  it('renders no list and no switch without a threshold', () => {
+    const wrapper = showWithList(0)
+
+    expect(wrapper.find('.data-table__list').exists()).toBe(false)
+    expect(wrapper.find('.data-table').classes().join(' ')).not.toContain('list-below')
+  })
+
+  it('keeps one hidden loading status for both forms', () => {
+    const wrapper = showWithList(640, 'loading')
+
+    expect(
+      wrapper
+        .findAll('[role="status"]')
+        .map((status) => status.text())
+        .filter(Boolean),
+    ).toEqual(['Loading technicians'])
+  })
+
+  it('shows one form at a time by a container query on the surface, so the tree holds one', () => {
+    const file = 'shared/ui/DataTable.vue'
+
+    expect(
+      ruleDeclarations(file, '.data-table--list-below-640,\n.data-table--list-below-900'),
+    ).toEqual({ 'container-type': 'inline-size' })
+    for (const width of [640, 900]) {
+      const query = `@container (width < ${width}px)`
+      expect(
+        ruleDeclarations(file, `.data-table--list-below-${width} > .data-table__scroll`, query),
+      ).toEqual({ display: 'none' })
+      expect(
+        ruleDeclarations(file, `.data-table--list-below-${width} > .data-table__list`, query),
+      ).toEqual({ display: 'block' })
+    }
+    expect(ruleDeclarations(file, '.data-table__list')).toEqual({ display: 'none' })
+  })
+
+  it('draws an avatar skeleton beside a column of two lines when a column asks for it', () => {
+    mounted = mount(DataTable<Row>, {
+      props: {
+        caption: 'Technicians',
+        columns: [
+          {
+            key: 'title',
+            label: 'Technician',
+            skeleton: ['avatar-medium', 'technician-name', 'trade'],
+            skeletonLayout: 'avatar-column',
+          },
+        ],
+        rows: [],
+        rowKey: (row: Row) => row.id,
+        state: 'loading',
+      },
+    })
+    const cell = mounted.find('tbody td')
+    const pair = cell.find('.data-table__skeleton-pair')
+
+    expect(pair.findAll('.loading-state')).toHaveLength(2)
+    expect(
+      pair
+        .findAll('.loading-state__block')
+        .map((block) => block.classes().find((name) => name.startsWith('loading-state__block--'))),
+    ).toEqual([
+      'loading-state__block--avatar-medium',
+      'loading-state__block--technician-name',
+      'loading-state__block--trade',
+    ])
+  })
+})

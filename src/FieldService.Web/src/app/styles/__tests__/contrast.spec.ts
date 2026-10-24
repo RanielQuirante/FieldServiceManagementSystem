@@ -541,6 +541,48 @@ const recipePairs: ContrastCase[] = [
     layers: [backdrop, webGlass, color('--color-fs-row-hover')],
     minimum: TEXT,
   },
+  ...(
+    [
+      ['teal-700 job number link', teal700],
+      ['muted meta, time, None and email', muted],
+      ['ink-2 page notice reason and people list detail', ink2],
+    ] as const
+  ).map(([role, text]): ContrastCase => ({
+    pair: `${role} on G1`,
+    text,
+    layers: [backdrop, webGlass],
+    minimum: TEXT,
+  })),
+  ...(
+    [
+      ['teal-700 job number link', teal700],
+      ['muted time', muted],
+      ['ink sentence', ink],
+      ['ink-2 note', ink2],
+    ] as const
+  ).map(([role, text]): ContrastCase => ({
+    pair: `${role} on a New activity entry`,
+    text,
+    layers: [backdrop, webGlass, gradient('--fs-flash-row')],
+    minimum: TEXT,
+  })),
+  ...([['ink New tag', ink]] as const).map(([role, text]): ContrastCase => ({
+    pair: `${role} on the accent gradient`,
+    text,
+    layers: [gradient('--fs-gradient-accent')],
+    minimum: TEXT,
+  })),
+  ...(
+    [
+      ['on-dark-2 eyebrow, sentence and caption', onDark2],
+      ['on-dark greeting and value', onDark],
+    ] as const
+  ).map(([role, text]): ContrastCase => ({
+    pair: `${role} on a hero tile at the teal end`,
+    text,
+    layers: [heroTealEnd, tile],
+    minimum: TEXT,
+  })),
 ]
 
 describe('contrast arithmetic', () => {

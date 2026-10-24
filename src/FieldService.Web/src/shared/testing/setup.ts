@@ -4,6 +4,7 @@ import { afterEach, beforeEach, vi } from 'vitest'
 import { connectSessionAccess } from '@/shared/api/auth-fetch'
 
 import { createInProcessBroadcastChannel } from './broadcast-channel'
+import { installDialogStandIn, removeDialogStandIn } from './dialog'
 import { resetFakeSockets } from './fake-socket'
 import { installLockManager, removeLockManager } from './web-locks'
 
@@ -18,6 +19,7 @@ beforeEach(() => {
   resetFakeSockets()
   vi.stubGlobal('BroadcastChannel', createInProcessBroadcastChannel())
   installLockManager()
+  installDialogStandIn()
 })
 
 afterEach(() => {
@@ -26,4 +28,5 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   removeLockManager()
+  removeDialogStandIn()
 })

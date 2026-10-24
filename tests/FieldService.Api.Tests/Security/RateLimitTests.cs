@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text.Json;
 using FieldService.Api.Domain;
 using FieldService.Api.Shared.Security;
@@ -21,6 +22,10 @@ public sealed class RateLimitTests(DatabaseFixture fixture) : DatabaseTest(fixtu
     private const int AnonymousLimit = 60;
 
     private const int UserLimit = 300;
+
+    private const int ClientErrorLimit = 10;
+
+    private const string ClientErrorsPath = "/api/client-errors";
 
     [Fact]
     public async Task TheEleventhSignInWithinAMinuteFromOneAddressGets429AndAnotherAddressDoesNot()
@@ -180,6 +185,86 @@ public sealed class RateLimitTests(DatabaseFixture fixture) : DatabaseTest(fixtu
         Assert.Equal(HttpStatusCode.TooManyRequests, nextWindow.StatusCode);
         Assert.Equal(2, rejected.Count(logEvent => CapturingLogSink.Scalar(logEvent, "ClientIp") == client.RemoteAddress.ToString()));
         Assert.Single(rejected, logEvent => CapturingLogSink.Scalar(logEvent, "ClientIp") == otherAddress.RemoteAddress.ToString());
+    }
+
+    [Fact]
+    public async Task TheEleventhClientErrorReportOfOneAdministratorWithinAMinuteGets429FromAnyAddressWhileAnotherAdministratorIsNotAffected()
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var otherAdministrator = await data.CreateAdministratorAsync(CancellationToken);
+        using var client = Fixture.Factory.CreateApiClient();
+        using var sameUserElsewhere = Fixture.Factory.CreateApiClient();
+        using var otherUser = Fixture.Factory.CreateApiClient();
+        client.AccessToken = TestTokens.For(Fixture.Factory, administrator);
+        sameUserElsewhere.AccessToken = TestTokens.For(Fixture.Factory, administrator);
+        otherUser.AccessToken = TestTokens.For(Fixture.Factory, otherAdministrator);
+        var statuses = new List<HttpStatusCode>();
+
+        for (var attempt = 1; attempt <= ClientErrorLimit; attempt++)
+        {
+            using var response = await client.PostJsonAsync(ClientErrorsPath, RoleMatrixTests.ClientErrorBody(data.Now));
+            statuses.Add(response.StatusCode);
+        }
+
+        using var limited = await client.PostJsonAsync(ClientErrorsPath, RoleMatrixTests.ClientErrorBody(data.Now));
+        using var limitedElsewhere = await sameUserElsewhere.PostJsonAsync(ClientErrorsPath, RoleMatrixTests.ClientErrorBody(data.Now));
+        using var unaffected = await otherUser.PostJsonAsync(ClientErrorsPath, RoleMatrixTests.ClientErrorBody(data.Now));
+        using var otherEndpoint = await client.GetAsync(ProtectedPath);
+
+        Assert.Equal(Enumerable.Repeat(HttpStatusCode.Accepted, ClientErrorLimit), statuses);
+        await AssertRateLimitedAsync(limited);
+        await AssertRateLimitedAsync(limitedElsewhere);
+        Assert.Equal(HttpStatusCode.Accepted, unaffected.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, otherEndpoint.StatusCode);
+        var rejected = Assert.Single(Fixture.Factory.LogSink.Named(SecurityLog.RateLimitRejectedEvent));
+        Assert.Equal(LogEventLevel.Warning, rejected.Level);
+        Assert.Equal("client-errors", CapturingLogSink.Scalar(rejected, "Policy"));
+        Assert.Equal("user", CapturingLogSink.Scalar(rejected, "PartitionKind"));
+        Assert.Equal(administrator.Id.ToString(), CapturingLogSink.Scalar(rejected, "UserId"));
+        Assert.Equal(ClientErrorsPath, CapturingLogSink.Scalar(rejected, "RoutePattern"));
+        Assert.True(IsAbsentOrNull(rejected, "ClientIp"), "A user partition rejection carries a client address.");
+        Assert.Equal(ClientErrorLimit + 1, Fixture.Factory.LogSink.Named(SecurityLog.ClientErrorReportedEvent).Count);
+    }
+
+    [Fact]
+    public async Task AClientErrorReportRefusedWith429IsNeverLoggedOrEchoedAndTheRejectionIsLoggedOnceForThePartition()
+    {
+        var data = new TestData(Fixture, Fixture.Factory.Clock.GetUtcNow());
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        using var client = Fixture.Factory.CreateApiClient();
+        client.AccessToken = TestTokens.For(Fixture.Factory, administrator);
+        var marker = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(8));
+        var refused = new
+        {
+            message = $"Refused report {marker} for qa.{marker}@fieldservice.example",
+            source = $"app.errorHandler {marker}",
+            route = $"/refused/{marker}",
+            stack = $"at refused ({marker})",
+            occurredAt = ApiClient.WireInstant(data.Now),
+        };
+
+        for (var attempt = 1; attempt <= ClientErrorLimit; attempt++)
+        {
+            using var accepted = await client.PostJsonAsync(ClientErrorsPath, RoleMatrixTests.ClientErrorBody(data.Now));
+            Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        }
+
+        var texts = new List<string>();
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            using var limited = await client.PostJsonAsync(ClientErrorsPath, refused);
+            texts.Add(await limited.Content.ReadAsStringAsync(CancellationToken));
+            await AssertRateLimitedAsync(limited);
+        }
+
+        Assert.All(texts, text => Assert.DoesNotContain(marker, text, StringComparison.Ordinal));
+        Assert.Equal(ClientErrorLimit, Fixture.Factory.LogSink.Named(SecurityLog.ClientErrorReportedEvent).Count);
+        Assert.All(Fixture.Factory.LogSink.Events, logEvent =>
+            Assert.DoesNotContain(marker, CapturingLogSink.Text(logEvent), StringComparison.Ordinal));
+        var rejected = Assert.Single(Fixture.Factory.LogSink.Named(SecurityLog.RateLimitRejectedEvent));
+        Assert.Equal("client-errors", CapturingLogSink.Scalar(rejected, "Policy"));
+        Assert.Equal(administrator.Id.ToString(), CapturingLogSink.Scalar(rejected, "UserId"));
     }
 
     internal static async Task AssertRateLimitedAsync(HttpResponseMessage response)

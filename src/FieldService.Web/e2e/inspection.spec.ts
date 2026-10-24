@@ -176,7 +176,7 @@ function expectedTimeOnSite(job: JobDetails): string | RegExp {
   if (minutes === 0) {
     return reportCopy.lessThanAMinute
   }
-  return minutes < 60 ? `${minutes} min` : /^\d+ h( \d+ min)?$/
+  return minutes < 60 ? `${minutes} min` : /^\d+\sh(\s\d+\smin)?$/
 }
 
 interface ReadingLayout {

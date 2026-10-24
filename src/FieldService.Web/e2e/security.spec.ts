@@ -1,7 +1,7 @@
 import type { Page, Response } from '@playwright/test'
 
 import { expect, test } from './fixtures.ts'
-import { jobsCopy } from './support/copy.ts'
+import { dashboardCopy } from './support/copy.ts'
 import { apiCacheControl, serverSecurityHeaders } from './support/headers.ts'
 
 function collectApiResponses(page: Page): Response[] {
@@ -38,6 +38,10 @@ test.describe('E2E-16 CSP and headers', () => {
     baseURL,
   }) => {
     const apiResponses = collectApiResponses(page)
+    await page.route(
+      (url) => url.pathname === '/',
+      (route) => route.continue(),
+    )
 
     const served = await page.goto('/')
 
@@ -47,10 +51,18 @@ test.describe('E2E-16 CSP and headers', () => {
       expect(headers[name], `${name} on /`).toBe(value)
     }
     expect(String(headers.server), 'Server header on /').not.toMatch(/\d/)
-    await expect(page).toHaveURL('/jobs')
+    await expect(page).toHaveURL('/')
     await expect(
-      page.getByRole('region', { name: jobsCopy.table }).locator('tbody tr'),
-    ).toHaveCount(12)
+      page
+        .getByRole('region', { name: dashboardCopy.jobsByStatus })
+        .getByRole('link', { name: /, \d+(?:, .+)?$/ }),
+    ).toHaveCount(6)
+    const workloadRows = page.getByRole('table', { name: dashboardCopy.workload }).getByRole('row')
+    await expect.poll(() => workloadRows.count()).toBeGreaterThan(1)
+    expect(
+      apiResponses.map((response) => new URL(response.url()).pathname),
+      'the dashboard read its summary and the technicians',
+    ).toEqual(expect.arrayContaining(['/api/dashboard/summary', '/api/technicians']))
     const families = await loadedFontFamilies(page)
     expect(families).toEqual(expect.arrayContaining(['Geist', 'Geist Mono']))
     const fonts = await fontResources(page)

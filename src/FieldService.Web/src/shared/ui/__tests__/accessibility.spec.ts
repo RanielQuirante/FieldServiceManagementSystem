@@ -1152,9 +1152,9 @@ describe('PageHeader', () => {
     const eyebrow = wrapper.find('.page-header__eyebrow')
 
     expect(eyebrow.find('.page-header__number').text()).toBe('JOB-1039')
-    expect(eyebrow.find('[aria-hidden="true"]').element.textContent).toBe(' · ')
+    expect(eyebrow.find('[aria-hidden="true"]').element.textContent).toBe('\u{00a0}\u{00b7} ')
     expect(eyebrow.find('.visually-hidden').element.textContent).toBe(', ')
-    expect(eyebrow.element.textContent).toBe('JOB-1039 · , Inspection report')
+    expect(eyebrow.element.textContent).toBe('JOB-1039\u{00a0}\u{00b7} , Inspection report')
     expect(wrapper.findAll('.page-header__number')).toHaveLength(1)
     expect(ruleDeclarations('shared/ui/PageHeader.vue', '.page-header__eyebrow')).toEqual({
       color: 'var(--color-fs-muted)',

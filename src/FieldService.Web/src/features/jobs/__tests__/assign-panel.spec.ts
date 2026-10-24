@@ -6,6 +6,7 @@ import App from '@/app/App.vue'
 import { createAppRouter, installNavigationGuards } from '@/app/router'
 import { readTokens, ruleDeclarations } from '@/app/styles/__tests__/stylesheet-source'
 import { sessionResponse } from '@/features/auth/__tests__/session-fixtures'
+import { noBreakSpace } from '@/shared/format/date-time'
 import {
   deferred,
   json,
@@ -16,6 +17,7 @@ import {
   type Reply,
   type RouteTable,
 } from '@/shared/testing/fetch-stub'
+import { kept, keptSpace } from '@/shared/testing/kept-text'
 
 import type { JobDetails, Technician } from '../jobs-api'
 import { assignOrder, assignRowDetail, type DetailPart } from '../technician-options'
@@ -240,13 +242,30 @@ describe('the assign row detail', () => {
     const today = assignRowDetail(priyaTechnician, 'Electrical', demoToday)
     const tomorrow = assignRowDetail(tomTechnician, 'Plumbing', demoToday)
 
-    expect(textOf(today)).toBe('Electrical · 2 open jobs · finishes JOB-1049 by 12:00 PM')
+    expect(textOf(today)).toBe(kept('Electrical~· 2 open jobs~· finishes JOB-1049 by 12:00 PM'))
     expect(moments(today)).toEqual(['12:00 PM'])
-    expect(textOf(tomorrow)).toBe('Plumbing · 4 open jobs · next JOB-1048 on Tue 20 Oct at 8:00 AM')
+    expect(textOf(tomorrow)).toBe(
+      kept('Plumbing~· 4 open jobs~· next JOB-1048 on Tue 20 Oct at 8:00 AM'),
+    )
     expect(moments(tomorrow)).toEqual(['Tue 20 Oct', '8:00 AM'])
     expect(
       [...plainTexts(today), ...plainTexts(tomorrow)].filter((text) => timeOrDate.test(text)),
     ).toEqual([])
+  })
+
+  it('puts a no-break space before each separator dot and an ordinary space after it', () => {
+    const details = [
+      assignRowDetail(priyaTechnician, 'Electrical', demoToday),
+      assignRowDetail(tomTechnician, 'Plumbing', demoToday),
+      assignRowDetail(marcoTechnician, 'Hvac', new Date(2026, 9, 19, 11, 5)),
+      assignRowDetail(lenaTechnician, 'Electrical', demoToday),
+    ].map(textOf)
+
+    const dots = details.flatMap((text) => Array.from(text.matchAll(/(.)\u{00b7}(.)/gu)))
+    expect(dots.length).toBeGreaterThanOrEqual(7)
+    expect(dots.map(([, before, after]) => [before, after])).toEqual(
+      dots.map(() => [keptSpace, ' ']),
+    )
   })
 
   it('says still on a job that has run past its end, with the day when it ended before today', () => {
@@ -254,29 +273,29 @@ describe('the assign row detail', () => {
     const overrun = assignRowDetail(marcoTechnician, 'Hvac', afterEleven)
     const sinceSunday = assignRowDetail(runningSince(-1, 8, 10), 'Hvac', demoToday)
 
-    expect(textOf(overrun)).toBe('HVAC · 3 open jobs · still on JOB-1042, due 11:00 AM')
+    expect(textOf(overrun)).toBe(kept('HVAC~· 3 open jobs~· still on JOB-1042, due 11:00 AM'))
     expect(moments(overrun)).toEqual(['11:00 AM'])
     expect(overrun.filter((part) => part.kind === 'job-number').map((part) => part.text)).toEqual([
       'JOB-1042',
     ])
     expect(textOf(sinceSunday)).toBe(
-      'HVAC · 3 open jobs · still on JOB-1042, due Sun 18 Oct at 10:00 AM',
+      kept('HVAC~· 3 open jobs~· still on JOB-1042, due Sun 18 Oct at 10:00 AM'),
     )
     expect(moments(sinceSunday)).toEqual(['Sun 18 Oct', '10:00 AM'])
   })
 
   it('says finishes by up to the minute a running job is due to end', () => {
     expect(textOf(assignRowDetail(marcoTechnician, 'Hvac', new Date(2026, 9, 19, 11, 0)))).toBe(
-      'HVAC · 3 open jobs · finishes JOB-1042 by 11:00 AM',
+      kept('HVAC~· 3 open jobs~· finishes JOB-1042 by 11:00 AM'),
     )
     expect(textOf(assignRowDetail(runningSince(1, 9, 12), 'Hvac', demoToday))).toBe(
-      'HVAC · 3 open jobs · finishes JOB-1042 on Tue 20 Oct at 12:00 PM',
+      kept('HVAC~· 3 open jobs~· finishes JOB-1042 on Tue 20 Oct at 12:00 PM'),
     )
   })
 
   it('names the next job, never an overrun, when the current job is on hold past its end', () => {
     expect(textOf(assignRowDetail(tomTechnician, 'Plumbing', demoToday))).toBe(
-      'Plumbing · 4 open jobs · next JOB-1048 on Tue 20 Oct at 8:00 AM',
+      kept('Plumbing~· 4 open jobs~· next JOB-1048 on Tue 20 Oct at 8:00 AM'),
     )
   })
 })
@@ -343,12 +362,12 @@ describe('the assign panel', () => {
       .map((detail) => detail.text())
 
     expect(details).toEqual([
-      'Electrical · 2 open jobs · finishes JOB-1049 by 12:00 PM',
-      'Electrical · 3 open jobs · next JOB-1055 at 1:00 PM',
-      'Fire safety · 1 open job',
-      'HVAC · 3 open jobs',
-      'Plumbing · 4 open jobs',
-      'HVAC · Off shift',
+      kept('Electrical~· 2 open jobs~· finishes JOB-1049 by 12:00 PM'),
+      kept('Electrical~· 3 open jobs~· next JOB-1055 at 1:00 PM'),
+      kept('Fire safety~· 1 open job'),
+      kept('HVAC~· 3 open jobs'),
+      kept('Plumbing~· 4 open jobs'),
+      kept('HVAC~· Off shift'),
     ])
     expect(row(wrapper, 'Priya Natarajan').find('.assign-row__job').text()).toBe('JOB-1049')
     expect(ruleDeclarations(cardFile, '.assign-row__job')).toMatchObject({
@@ -371,8 +390,8 @@ describe('the assign panel', () => {
     )
 
     expect(details.map((detail) => detail.text())).toEqual([
-      'Electrical · 2 open jobs · finishes JOB-1049 by 12:00 PM',
-      'Electrical · 2 open jobs · next JOB-1046 on Tue 20 Oct at 9:00 AM',
+      kept('Electrical~· 2 open jobs~· finishes JOB-1049 by 12:00 PM'),
+      kept('Electrical~· 2 open jobs~· next JOB-1046 on Tue 20 Oct at 9:00 AM'),
     ])
     expect(
       details.map((detail) => detail.findAll('.assign-row__moment').map((part) => part.text())),
@@ -398,7 +417,7 @@ describe('the assign panel', () => {
     const { wrapper } = await openJob(freezer)
 
     expect(row(wrapper, 'Marco Reyes').find('.assign-row__detail').text()).toBe(
-      'HVAC · 3 open jobs · still on JOB-1042, due 11:00 AM',
+      kept('HVAC~· 3 open jobs~· still on JOB-1042, due 11:00 AM'),
     )
     expect(
       row(wrapper, 'Marco Reyes')
@@ -425,9 +444,11 @@ describe('the assign panel', () => {
     })
 
     expect(row(wrapper, 'Priya Natarajan').find('.assign-row__detail').text()).toBe(
-      'Electrical · 2 open jobs · next JOB-1046 on Tue 20 Oct at 9:00 AM',
+      kept('Electrical~· 2 open jobs~· next JOB-1046 on Tue 20 Oct at 9:00 AM'),
     )
-    expect(row(wrapper, 'Samuel Osei').find('.assign-row__detail').text()).toBe('HVAC · Inactive')
+    expect(row(wrapper, 'Samuel Osei').find('.assign-row__detail').text()).toBe(
+      kept('HVAC~· Inactive'),
+    )
   })
 
   it('disables off-shift technicians from availableForAssignment and shows their shift', async () => {
@@ -491,7 +512,9 @@ describe('the assign panel', () => {
     const technicianRow = wrapper
       .findAll('dl > div')
       .find((item) => item.find('dt').text() === 'Technician')
-    expect(technicianRow?.find('dd').text()).toBe('PNPriya NatarajanElectrical · Assigned 10:44 AM')
+    expect(technicianRow?.find('dd').text()).toBe(
+      `PNPriya NatarajanElectrical${noBreakSpace}· Assigned 10:44${noBreakSpace}AM`,
+    )
     expect(wrapper.findAll('.status-timeline__entry').map((entry) => entry.text())).toEqual([
       '10:20 AMCreated by Dana Whitfield',
       '10:44 AMAssigned to Priya Natarajan',
@@ -537,7 +560,7 @@ describe('the assign panel', () => {
     await flushPromises()
 
     expect(row(wrapper, 'Priya Natarajan').find('.assign-row__detail').text()).toBe(
-      'Electrical · 3 open jobs · finishes JOB-1049 by 12:00 PM',
+      kept('Electrical~· 3 open jobs~· finishes JOB-1049 by 12:00 PM'),
     )
     expect(rowNames(wrapper).slice(0, 2)).toEqual(['Aisha Karim', 'Priya Natarajan'])
     expect(radio(wrapper, 'Priya Natarajan').element.checked).toBe(true)
@@ -699,7 +722,7 @@ describe('the assign panel', () => {
     ])
     expect(radio(wrapper, 'Marco Reyes').element.checked).toBe(true)
     expect(row(wrapper, 'Marco Reyes').find('.assign-row__detail').text()).toBe(
-      'HVAC · 3 open jobs · finishes JOB-1042 by 11:00 AM',
+      kept('HVAC~· 3 open jobs~· finishes JOB-1042 by 11:00 AM'),
     )
     expect(assignButton(wrapper).text()).toBe('Reassign technician')
     expect(assignButton(wrapper).attributes('aria-disabled')).toBe('true')
@@ -926,7 +949,7 @@ describe('the assign panel', () => {
     expect(notice.element.parentElement?.classList.contains('assign-panel')).toBe(true)
     expect(notice.element.nextElementSibling).toBe(assignButton(wrapper).element)
     expect(row(wrapper, 'Lena Park').find('.assign-row__detail').text()).toBe(
-      'Fire safety · 2 open jobs',
+      kept('Fire safety~· 2 open jobs'),
     )
     expect(panel(wrapper).find('h2').text()).toBe('Reassign technician')
     expect(radio(wrapper, 'Priya Natarajan').element.checked).toBe(true)

@@ -20,6 +20,7 @@ import {
   type FetchStub,
   type RouteTable,
 } from '@/shared/testing/fetch-stub'
+import { kept, keptSpace } from '@/shared/testing/kept-text'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import type { IconName } from '@/shared/ui/icons'
 
@@ -310,9 +311,9 @@ describe('reading values', () => {
   })
 
   it('puts a no-break space between the value and its unit', () => {
-    expect(formatReading(54, '°F')).toBe('54 °F')
-    expect(formatReading(0.4, 'Ω')).toBe('0.4 Ω')
-    expect(formatReading(-2.5, 'in')).toBe('−2.5 in')
+    expect(formatReading(54, '°F')).toBe(kept('54~°F'))
+    expect(formatReading(0.4, 'Ω')).toBe(kept('0.4~Ω'))
+    expect(formatReading(-2.5, 'in')).toBe(kept('−2.5~in'))
     expect(formatReading(3, ' ')).toBe('3')
   })
 })
@@ -321,22 +322,22 @@ describe('time on site', () => {
   it('reads hours and minutes, minutes alone under an hour, and less than a minute', () => {
     expect(formatTimeOnSite(30_000)).toBe('Less than a minute')
     expect(formatTimeOnSite(-5_000)).toBe('Less than a minute')
-    expect(formatTimeOnSite(45 * 60_000)).toBe('45 min')
-    expect(formatTimeOnSite(106 * 60_000)).toBe('1 h 46 min')
-    expect(formatTimeOnSite((67 * 60 + 18) * 60_000)).toBe('67 h 18 min')
+    expect(formatTimeOnSite(45 * 60_000)).toBe(kept('45~min'))
+    expect(formatTimeOnSite(106 * 60_000)).toBe(kept('1~h~46~min'))
+    expect(formatTimeOnSite((67 * 60 + 18) * 60_000)).toBe(kept('67~h~18~min'))
   })
 
   it('takes the difference of the two moments shown, each truncated to its minute (D5-12)', () => {
     const at = (hours: number, minutes: number, seconds: number) =>
       new Date(2026, 9, 19, hours, minutes, seconds).toISOString()
 
-    expect(timeOnSiteBetween(at(9, 42, 50), at(9, 58, 10))).toBe('16 min')
-    expect(formatTimeRange(at(9, 42, 50), at(9, 58, 10), demoToday)).toBe('9:42–9:58 AM')
+    expect(timeOnSiteBetween(at(9, 42, 50), at(9, 58, 10))).toBe(kept('16~min'))
+    expect(formatTimeRange(at(9, 42, 50), at(9, 58, 10), demoToday)).toBe(kept('9:42–9:58~AM'))
     expect(timeOnSiteBetween(at(9, 42, 10), at(9, 42, 50))).toBe('Less than a minute')
-    expect(timeOnSiteBetween(at(9, 42, 59), at(9, 43, 0))).toBe('1 min')
-    expect(timeOnSiteBetween(at(9, 12, 40), at(10, 58, 5))).toBe('1 h 46 min')
+    expect(timeOnSiteBetween(at(9, 42, 59), at(9, 43, 0))).toBe(kept('1~min'))
+    expect(timeOnSiteBetween(at(9, 12, 40), at(10, 58, 5))).toBe(kept('1~h~46~min'))
     expect(timeOnSiteBetween(at(9, 12, 0), new Date(2026, 9, 19, 10, 42, 59, 999))).toBe(
-      '1 h 30 min',
+      kept('1~h~30~min'),
     )
   })
 
@@ -353,19 +354,19 @@ describe('time on site', () => {
 
     expect(describeTiles(summaryTiles(completed, rooftopSubmitted(), demoToday))[1]).toEqual([
       'Time on site',
-      '16 min',
-      '9:42–9:58 AM',
+      kept('16~min'),
+      kept('9:42–9:58~AM'),
     ])
     expect(describeTiles(summaryTiles(running, rooftopInProgress(), now))[1]).toEqual([
       'Time on site',
-      '16 min',
-      'Since 9:42 AM',
+      kept('16~min'),
+      kept('Since 9:42~AM'),
     ])
     expect(
       describeTiles(
         summaryTiles(running, rooftopInProgress(), new Date(2026, 9, 19, 9, 42, 59)),
       )[1],
-    ).toEqual(['Time on site', 'Less than a minute', 'Since 9:42 AM'])
+    ).toEqual(['Time on site', 'Less than a minute', kept('Since 9:42~AM')])
   })
 
   it('waits for the next wall-clock minute', () => {
@@ -376,14 +377,28 @@ describe('time on site', () => {
 
   it('writes a range today as a window, with the date on an earlier day', () => {
     expect(formatTimeRange(onDemoDay(0, 9, 12), onDemoDay(0, 10, 58), demoToday)).toBe(
-      '9:12–10:58 AM',
+      kept('9:12–10:58~AM'),
     )
     expect(formatTimeRange(onDemoDay(-3, 15, 40), onDemoDay(-3, 16, 25), demoToday)).toBe(
-      'Fri 16 Oct, 3:40–4:25 PM',
+      kept('Fri~16~Oct, 3:40–4:25~PM'),
     )
     expect(formatTimeRange(onDemoDay(-3, 15, 40), onDemoDay(0, 8, 52), demoToday)).toBe(
-      'Fri 16 Oct, 3:40 PM – 8:52 AM',
+      kept('Fri~16~Oct, 3:40~PM~– 8:52~AM'),
     )
+  })
+
+  it('keeps every time and date of a range whole, breaking only after a comma or after the spaced dash', () => {
+    const acrossDays = formatTimeRange(onDemoDay(-4, 15, 40), onDemoDay(-3, 10, 58), demoToday)
+
+    expect(acrossDays).toBe(kept('Thu~15~Oct, 3:40~PM~– Fri~16~Oct, 10:58~AM'))
+    expect(acrossDays.split(' ')).toEqual([
+      kept('Thu~15~Oct,'),
+      kept('3:40~PM~–'),
+      kept('Fri~16~Oct,'),
+      kept('10:58~AM'),
+    ])
+    expect(acrossDays).toContain(`${keptSpace}\u{2013} `)
+    expect(acrossDays.split(keptSpace).join(' ')).toBe('Thu 15 Oct, 3:40 PM – Fri 16 Oct, 10:58 AM')
   })
 })
 
@@ -393,8 +408,8 @@ describe('the summary tiles', () => {
       describeTiles(summaryTiles(completedRooftopJob(), rooftopSubmitted(), demoToday)),
     ).toEqual([
       ['Result', '8 Pass, 1 Fail, 1 NotApplicable', 'Rooftop HVAC service · 10 items'],
-      ['Time on site', '1 h 46 min', '9:12–10:58 AM'],
-      ['Completed', '10:58 AM', 'by Marco Reyes'],
+      ['Time on site', kept('1~h~46~min'), kept('9:12–10:58~AM')],
+      ['Completed', kept('10:58~AM'), 'by Marco Reyes'],
     ])
   })
 
@@ -403,8 +418,8 @@ describe('the summary tiles', () => {
 
     expect(describeTiles(tiles)).toEqual([
       ['Result', '4 Pass, 1 Fail, 1 NotApplicable', '6 of 10 answered'],
-      ['Time on site', '1 h 30 min', 'Since 9:12 AM'],
-      ['Last saved', '9:50 AM', 'by Marco Reyes'],
+      ['Time on site', kept('1~h~30~min'), kept('Since 9:12~AM')],
+      ['Last saved', kept('9:50~AM'), 'by Marco Reyes'],
     ])
     expect(tiles.map((tile) => tile.icon)).toEqual(['clipboard-check', 'clock', 'activity'])
   })
@@ -415,7 +430,7 @@ describe('the summary tiles', () => {
 
     expect(describeTiles(summaryTiles(onHold, blank, demoToday))).toEqual([
       ['Result', '—', '0 of 10 answered'],
-      ['Time on site', '1 h 30 min', 'Since 9:12 AM'],
+      ['Time on site', kept('1~h~30~min'), kept('Since 9:12~AM')],
       ['Last saved', '—', 'No answers saved yet'],
     ])
   })
@@ -443,7 +458,7 @@ describe('the summary tiles', () => {
     expect(describeTiles(tiles)).toEqual([
       ['Result', '—', '0 of 10 answered'],
       ['Time on site', '—', 'Not completed'],
-      ['Cancelled', 'Fri 16 Oct', 'at 9:20 AM by Dana Whitfield'],
+      ['Cancelled', kept('Fri~16~Oct'), kept('at 9:20~AM by Dana Whitfield')],
     ])
     expect(tiles[2]?.icon).toBe('x-circle')
   })
@@ -479,10 +494,10 @@ describe('the summary tiles', () => {
     }
 
     expect(describeTiles(summaryTiles(job, boilerInspection(), demoToday)).slice(1)).toEqual([
-      ['Time on site', '45 min', 'Fri 16 Oct, 3:40–4:25 PM'],
-      ['Completed', 'Fri 16 Oct', 'at 4:25 PM by Tom Becker'],
+      ['Time on site', kept('45~min'), kept('Fri~16~Oct, 3:40–4:25~PM')],
+      ['Completed', kept('Fri~16~Oct'), kept('at 4:25~PM by Tom Becker')],
     ])
-    expect(reportMeta(job, demoToday)).toBe('Completed Fri 16 Oct, 4:25 PM by Tom Becker')
+    expect(reportMeta(job, demoToday)).toBe(kept('Completed Fri~16~Oct, 4:25~PM by Tom Becker'))
   })
 
   it('date a running time and the last save from an earlier day', () => {
@@ -490,8 +505,8 @@ describe('the summary tiles', () => {
     const saved: Inspection = { ...rooftopInProgress(), updatedAt: onDemoDay(-3, 9, 50) }
 
     expect(describeTiles(summaryTiles(job, saved, demoToday)).slice(1)).toEqual([
-      ['Time on site', '67 h 2 min', 'Since Fri 16 Oct, 3:40 PM'],
-      ['Last saved', 'Fri 16 Oct', 'at 9:50 AM by Marco Reyes'],
+      ['Time on site', kept('67~h~2~min'), kept('Since Fri~16~Oct, 3:40~PM')],
+      ['Last saved', kept('Fri~16~Oct'), kept('at 9:50~AM by Marco Reyes')],
     ])
   })
 
@@ -507,9 +522,16 @@ describe('the summary tiles', () => {
 
 describe('the report text', () => {
   it('names who completed the job and when, or who created an open job', () => {
-    expect(reportMeta(boilerJob(), demoToday)).toBe('Completed 8:52 AM by Tom Becker')
-    expect(reportMeta(completedRooftopJob(), demoToday)).toBe('Completed 10:58 AM by Marco Reyes')
-    expect(reportMeta(assignedInProgressJob(), demoToday)).toBe('Created 8:14 AM by Dana Whitfield')
+    expect(reportMeta(boilerJob(), demoToday)).toBe(kept('Completed 8:52~AM by Tom Becker'))
+    expect(reportMeta(completedRooftopJob(), demoToday)).toBe(
+      kept('Completed 10:58~AM by Marco Reyes'),
+    )
+    expect(reportMeta(assignedInProgressJob(), demoToday)).toBe(
+      kept('Created 8:14~AM by Dana Whitfield'),
+    )
+    expect(
+      reportMeta({ ...assignedInProgressJob(), createdAt: onDemoDay(-3, 8, 14) }, demoToday),
+    ).toBe(kept('Created Fri~16~Oct, 8:14~AM by Dana Whitfield'))
   })
 
   it.each([
@@ -659,11 +681,15 @@ describe('the inspection report page', () => {
     )
 
     const eyebrow = wrapper.find('.page-header__eyebrow')
-    expect(visibleText(eyebrow.element)).toBe('JOB-1039 · Inspection report')
+    expect(visibleText(eyebrow.element)).toBe(kept('JOB-1039~· Inspection report'))
     expect(spokenText(eyebrow.element)).toBe('JOB-1039, Inspection report')
     expect(eyebrow.find('.page-header__number').text()).toBe('JOB-1039')
     expect(wrapper.find('h1').text()).toBe('Boiler pressure drop')
-    expect(metaParts(wrapper)).toEqual(['Completed', 'High', 'Completed 8:52 AM by Tom Becker'])
+    expect(metaParts(wrapper)).toEqual([
+      'Completed',
+      'High',
+      kept('Completed 8:52~AM by Tom Becker'),
+    ])
     expect(document.title).toBe('JOB-1039 inspection report · FieldService Admin')
     const crumb = wrapper.find('nav[aria-label="Breadcrumb"] [aria-current="page"]')
     expect(crumb.text()).toBe('JOB-1039')
@@ -682,12 +708,12 @@ describe('the inspection report page', () => {
 
     expect(noticeOf(wrapper).exists()).toBe(false)
     expect(shownTiles(wrapper)).toEqual([
-      { label: 'Result', value: '7 Pass 0 Fail 1 N/A', subline: 'Boiler service · 8 items' },
-      { label: 'Time on site', value: '1 h 47 min', subline: '7:05–8:52 AM' },
-      { label: 'Completed', value: '8:52 AM', subline: 'by Tom Becker' },
+      { label: 'Result', value: '7 Pass 0 Fail 1 N/A', subline: kept('Boiler service~· 8 items') },
+      { label: 'Time on site', value: kept('1~h~47~min'), subline: kept('7:05–8:52~AM') },
+      { label: 'Completed', value: kept('8:52~AM'), subline: 'by Tom Becker' },
     ])
 
-    expect(wrapper.find('section.section-card h2').text()).toBe('Inspection · Boiler service')
+    expect(wrapper.find('section.section-card h2').text()).toBe(kept('Inspection~· Boiler service'))
     expect(resultsRegion(wrapper).attributes('tabindex')).toBe('0')
     expect(resultsRegion(wrapper).find('caption').text()).toBe('Inspection results')
     expect(
@@ -716,7 +742,7 @@ describe('the inspection report page', () => {
     expect(detailRows(wrapper)).toEqual([
       ['Customer', 'Lakeside Dental'],
       ['Site', '9 Lakeside Court'],
-      ['Scheduled', 'Mon 19 Oct, 7:00–8:30 AM'],
+      ['Scheduled', kept('Mon~19~Oct, 7:00–8:30~AM')],
       ['Technician', 'Tom Becker'],
       ['Checklist', 'Boiler service'],
     ])
@@ -737,18 +763,22 @@ describe('the inspection report page', () => {
     )
 
     expect(visibleText(wrapper.find('.page-header__eyebrow').element)).toBe(
-      'JOB-1042 · Inspection report',
+      kept('JOB-1042~· Inspection report'),
     )
     expect(wrapper.find('h1').text()).toBe('Rooftop HVAC unit not cooling')
-    expect(metaParts(wrapper)).toEqual(['Completed', 'High', 'Completed 10:58 AM by Marco Reyes'])
+    expect(metaParts(wrapper)).toEqual([
+      'Completed',
+      'High',
+      kept('Completed 10:58~AM by Marco Reyes'),
+    ])
     expect(shownTiles(wrapper)).toEqual([
       {
         label: 'Result',
         value: '8 Pass 1 Fail 1 N/A',
-        subline: 'Rooftop HVAC service · 10 items',
+        subline: kept('Rooftop HVAC service~· 10 items'),
       },
-      { label: 'Time on site', value: '1 h 46 min', subline: '9:12–10:58 AM' },
-      { label: 'Completed', value: '10:58 AM', subline: 'by Marco Reyes' },
+      { label: 'Time on site', value: kept('1~h~46~min'), subline: kept('9:12–10:58~AM') },
+      { label: 'Completed', value: kept('10:58~AM'), subline: 'by Marco Reyes' },
     ])
     const rows = rowCells(wrapper)
     expect(rows).toHaveLength(10)
@@ -876,11 +906,15 @@ describe('the inspection report page', () => {
     expect(notice.classes()).toContain('banner--info')
     expect(notice.find('.banner__title').text()).toBe('Not submitted yet.')
     expect(notice.find('.banner__tile svg').element.innerHTML).toBe(iconMarkup('clock', 18))
-    expect(metaParts(wrapper)).toEqual(['In progress', 'High', 'Created 8:14 AM by Dana Whitfield'])
+    expect(metaParts(wrapper)).toEqual([
+      'In progress',
+      'High',
+      kept('Created 8:14~AM by Dana Whitfield'),
+    ])
     expect(shownTiles(wrapper)).toEqual([
       { label: 'Result', value: '4 Pass 1 Fail 1 N/A', subline: '6 of 10 answered' },
-      { label: 'Time on site', value: '1 h 30 min', subline: 'Since 9:12 AM' },
-      { label: 'Last saved', value: '9:50 AM', subline: 'by Marco Reyes' },
+      { label: 'Time on site', value: kept('1~h~30~min'), subline: kept('Since 9:12~AM') },
+      { label: 'Last saved', value: kept('9:50~AM'), subline: 'by Marco Reyes' },
     ])
     expect(rowCells(wrapper).slice(6)).toEqual([
       ['07', 'Clear condensate drain line', 'Not answered', '—', '—'],
@@ -902,16 +936,16 @@ describe('the inspection report page', () => {
     )
     const timeTile = () => wrapper.find('[data-tile="time-on-site"] .kpi-tile__value')
 
-    expect(timeTile().text()).toBe('1 h 30 min')
+    expect(timeTile().text()).toBe(kept('1~h~30~min'))
     vi.advanceTimersByTime(59_999)
     await flushPromises()
-    expect(timeTile().text()).toBe('1 h 30 min')
+    expect(timeTile().text()).toBe(kept('1~h~30~min'))
     vi.advanceTimersByTime(1)
     await flushPromises()
-    expect(timeTile().text()).toBe('1 h 31 min')
+    expect(timeTile().text()).toBe(kept('1~h~31~min'))
     vi.advanceTimersByTime(60_000)
     await flushPromises()
-    expect(timeTile().text()).toBe('1 h 32 min')
+    expect(timeTile().text()).toBe(kept('1~h~32~min'))
   })
 
   it('moves the running time on site at each wall-clock minute, from moments with seconds (D5-12)', async () => {
@@ -929,17 +963,17 @@ describe('the inspection report page', () => {
     )
     const timeTile = () => wrapper.find('[data-tile="time-on-site"]')
 
-    expect(timeTile().find('.kpi-tile__value').text()).toBe('16 min')
-    expect(timeTile().find('.kpi-tile__subline').text()).toBe('Since 9:42 AM')
+    expect(timeTile().find('.kpi-tile__value').text()).toBe(kept('16~min'))
+    expect(timeTile().find('.kpi-tile__subline').text()).toBe(kept('Since 9:42~AM'))
     vi.advanceTimersByTime(49_999)
     await flushPromises()
-    expect(timeTile().find('.kpi-tile__value').text()).toBe('16 min')
+    expect(timeTile().find('.kpi-tile__value').text()).toBe(kept('16~min'))
     vi.advanceTimersByTime(1)
     await flushPromises()
-    expect(timeTile().find('.kpi-tile__value').text()).toBe('17 min')
+    expect(timeTile().find('.kpi-tile__value').text()).toBe(kept('17~min'))
     vi.advanceTimersByTime(60_000)
     await flushPromises()
-    expect(timeTile().find('.kpi-tile__value').text()).toBe('18 min')
+    expect(timeTile().find('.kpi-tile__value').text()).toBe(kept('18~min'))
   })
 
   it('shows a job that has not started with "—" in the muted colour and the reasons', async () => {
@@ -973,7 +1007,11 @@ describe('the inspection report page', () => {
     expect(shownTiles(wrapper)).toEqual([
       { label: 'Result', value: '—', subline: '0 of 10 answered' },
       { label: 'Time on site', value: '—', subline: 'Not completed' },
-      { label: 'Cancelled', value: 'Fri 16 Oct', subline: 'at 9:20 AM by Dana Whitfield' },
+      {
+        label: 'Cancelled',
+        value: kept('Fri~16~Oct'),
+        subline: kept('at 9:20~AM by Dana Whitfield'),
+      },
     ])
     const notes = wrapper.find('.inspection-report__notes')
     expect(notes.text()).toBe('No notes from the technician.')
@@ -1395,12 +1433,16 @@ describe('live updates on the inspection report', () => {
 
     expect(stub.requestsTo(jobRoute(rooftopJobId))).toHaveLength(3)
     expect(stub.requestsTo(inspectionRoute(rooftopJobId))).toHaveLength(3)
-    expect(metaParts(wrapper)).toEqual(['Completed', 'High', 'Completed 10:58 AM by Marco Reyes'])
+    expect(metaParts(wrapper)).toEqual([
+      'Completed',
+      'High',
+      kept('Completed 10:58~AM by Marco Reyes'),
+    ])
     expect(noticeOf(wrapper).exists()).toBe(false)
     expect(shownTiles(wrapper).map((tile) => tile.value)).toEqual([
       '8 Pass 1 Fail 1 N/A',
-      '1 h 46 min',
-      '10:58 AM',
+      kept('1~h~46~min'),
+      kept('10:58~AM'),
     ])
     expect(wrapper.find('.inspection-report__notes').text()).toBe(rooftopNotes)
     expect(historyLines(wrapper).slice(-1)).toEqual(['10:58 AM Completed by Marco Reyes'])
@@ -1472,7 +1514,7 @@ describe('live updates on the inspection report', () => {
     const banner = wrapper.find('.connection-banner__banner')
     expect(banner.attributes('data-notice')).toBe('refresh-failed')
     expect(banner.text()).toContain(
-      'The inspection report could not be refreshed. Showing it as of 10:42 AM.',
+      kept('The inspection report could not be refreshed. Showing it as of 10:42~AM.'),
     )
     expect(banner.text()).toMatch(/Reference [0-9a-f-]{36}/)
     expect(wrapper.find('h1').text()).toBe('Boiler pressure drop')
@@ -1545,7 +1587,7 @@ describe('links between the report and the job page', () => {
     expect(router.currentRoute.value.name).toBe('job-inspection')
     expect(wrapper.find('h1').text()).toBe('Boiler pressure drop')
     expect(visibleText(wrapper.find('.page-header__eyebrow').element)).toBe(
-      'JOB-1039 · Inspection report',
+      kept('JOB-1039~· Inspection report'),
     )
   })
 
@@ -1585,7 +1627,7 @@ describe('links between the report and the job page', () => {
     expect(router.currentRoute.value.fullPath).toBe(`/jobs/${boilerJobId}/inspection`)
     expect(shownTiles(wrapper)[2]).toEqual({
       label: 'Completed',
-      value: '8:52 AM',
+      value: kept('8:52~AM'),
       subline: 'by Tom Becker',
     })
 

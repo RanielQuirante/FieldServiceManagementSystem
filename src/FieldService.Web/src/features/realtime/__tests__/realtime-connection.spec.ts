@@ -22,6 +22,7 @@ import {
   type FetchStub,
   type RouteTable,
 } from '@/shared/testing/fetch-stub'
+import { kept } from '@/shared/testing/kept-text'
 import ToastHost from '@/shared/ui/ToastHost.vue'
 
 import {
@@ -954,7 +955,7 @@ describe('event toasts and row flashes', () => {
       'JOB-1044. Tom Becker put a job on hold. Water heater leaking at base is now On hold. “Waiting for replacement gas valve”',
     )
     expect(toast.meta).toBe('JOB-1044')
-    expect(toast.metaDetail).toBe('10:31 AM')
+    expect(toast.metaDetail).toBe(kept('10:31~AM'))
   })
 
   it('shows just now under a minute, and the moment of an older entry', () => {
@@ -966,6 +967,6 @@ describe('event toasts and row flashes', () => {
     expect(
       liveToastFor(generatorJob(), historyEntry({ occurredAt: onDemoDay(-1, 16, 5) }), demoToday)
         .metaDetail,
-    ).toBe('Sun 18 Oct, 4:05 PM')
+    ).toBe(kept('Sun~18~Oct, 4:05~PM'))
   })
 })

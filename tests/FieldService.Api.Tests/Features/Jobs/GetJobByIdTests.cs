@@ -246,6 +246,40 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
     }
 
     [Theory]
+    [InlineData(JobStatus.Unassigned, false, true)]
+    [InlineData(JobStatus.Assigned, false, true)]
+    [InlineData(JobStatus.InProgress, false, true)]
+    [InlineData(JobStatus.OnHold, false, true)]
+    [InlineData(JobStatus.Completed, false, false)]
+    [InlineData(JobStatus.Cancelled, false, false)]
+    [InlineData(JobStatus.Assigned, true, false)]
+    [InlineData(JobStatus.InProgress, true, false)]
+    [InlineData(JobStatus.OnHold, true, false)]
+    [InlineData(JobStatus.Completed, true, false)]
+    [InlineData(JobStatus.Cancelled, true, false)]
+    public async Task CanCancelFollowsTheTransitionTableForTheCallerAndTheJobStatus(
+        JobStatus status,
+        bool asAssignee,
+        bool canCancel)
+    {
+        var data = new TestData(Fixture, Now);
+        var administrator = await data.CreateAdministratorAsync(CancellationToken);
+        var technician = await data.CreateTechnicianAsync(Trade.Hvac, CancellationToken);
+        var job = await data.MoveToAsync(
+            await data.CreateJobAsync(administrator.Id, _templateId, CancellationToken),
+            technician,
+            status,
+            CancellationToken);
+        using var client = ClientFor(asAssignee ? technician.User : administrator);
+
+        using var response = await client.GetAsync(PathOf(job.Id));
+
+        var details = await ReadJobAsync(response);
+        Assert.Equal(status, details.Status);
+        Assert.Equal(canCancel, details.Affordances.CanCancel);
+    }
+
+    [Theory]
     [InlineData(JobStatus.Unassigned, false, null, false)]
     [InlineData(JobStatus.Assigned, false, null, false)]
     [InlineData(JobStatus.InProgress, false, null, false)]
@@ -349,7 +383,7 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
     }
 
     [Fact]
-    public async Task TheAffordancesMemberIsLastAndHoldsAllowedStatusChangesCanSubmitAndCanAssignInThatOrder()
+    public async Task TheAffordancesMemberIsLastAndHoldsAllowedStatusChangesCanSubmitCanAssignAndCanCancelInThatOrder()
     {
         var data = new TestData(Fixture, Now);
         var administrator = await data.CreateAdministratorAsync(CancellationToken);
@@ -369,7 +403,7 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
         Assert.Equal(["version", "affordances"], members.TakeLast(2));
         var affordances = document.RootElement.GetProperty("affordances");
         Assert.Equal(
-            ["allowedStatusChanges", "canSubmit", "canAssign"],
+            ["allowedStatusChanges", "canSubmit", "canAssign", "canCancel"],
             affordances.EnumerateObject().Select(member => member.Name));
         Assert.Equal(
             """[{"status":"OnHold","requiresNote":true}]""",
@@ -378,6 +412,7 @@ public sealed class GetJobByIdTests(DatabaseFixture fixture) : DatabaseTest(fixt
             """{"allowed":false,"blockingCode":"inspection.incomplete","answered":0,"total":10}""",
             affordances.GetProperty("canSubmit").GetRawText());
         Assert.Equal(JsonValueKind.False, affordances.GetProperty("canAssign").ValueKind);
+        Assert.Equal(JsonValueKind.False, affordances.GetProperty("canCancel").ValueKind);
     }
 
     [Fact]

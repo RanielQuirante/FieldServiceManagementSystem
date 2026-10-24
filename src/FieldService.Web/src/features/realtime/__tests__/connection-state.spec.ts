@@ -6,6 +6,7 @@ import App from '@/app/App.vue'
 import { createAppRouter, installNavigationGuards } from '@/app/router'
 import { sessionResponse } from '@/features/auth/__tests__/session-fixtures'
 import { useSessionStore } from '@/features/auth/session-store'
+import { demoSummary } from '@/features/dashboard/__tests__/dashboard-fixtures'
 import {
   demoSummaries,
   demoTechnicians,
@@ -15,6 +16,7 @@ import {
 import { useToasts } from '@/shared/composables/use-toasts'
 import { lastFakeSocket, type FakeSocket } from '@/shared/testing/fake-socket'
 import { json, noContent, type FetchStub, type RouteTable } from '@/shared/testing/fetch-stub'
+import { kept } from '@/shared/testing/kept-text'
 import ConnectionBanner from '@/shared/ui/ConnectionBanner.vue'
 import LivePill from '@/shared/ui/LivePill.vue'
 
@@ -129,12 +131,41 @@ describe('connection states', () => {
 
     expect(realtime.state).toBe('live')
     expect(realtime.notice).toBe('back-online')
-    expect(realtime.noticeTime).toBe('10:42 AM')
+    expect(realtime.noticeTime).toBe(kept('10:42~AM'))
 
     await vi.advanceTimersByTimeAsync(backOnlineMilliseconds - 1)
     expect(realtime.notice).toBe('back-online')
     await vi.advanceTimersByTimeAsync(1)
     expect(realtime.notice).toBeNull()
+  })
+
+  it('names what the open page refreshed in Back online, from the copy the page registered', async () => {
+    const stub = await signedIn()
+    const realtime = useRealtimeStore()
+    const view = recordingView({
+      page: {
+        refreshFailedTitle: 'The dashboard could not be refreshed.',
+        refreshedLabel: 'The dashboard was refreshed at',
+        showingFrom: (time) => `Showing data from ${time}.`,
+      },
+    })
+    const unregister = realtime.register(view.registration)
+    realtime.start()
+    const socket = lastFakeSocket()
+    await socket.simulateConnect()
+    await flush()
+
+    expect(realtime.refreshedLabel).toBe('The dashboard was refreshed at')
+    socket.simulateDisconnect('transport close')
+    await vi.advanceTimersByTimeAsync(5_000)
+    await socket.simulateConnect()
+    await flush()
+
+    expect(realtime.notice).toBe('back-online')
+    expect(realtime.refreshedLabel).toBe('The dashboard was refreshed at')
+    unregister()
+    expect(realtime.refreshedLabel).toBe('Jobs refreshed at')
+    expect(stub.requestsTo(ticketRoute).length).toBeGreaterThan(0)
   })
 
   it('removes Back online at once when the connection drops again', async () => {
@@ -184,7 +215,7 @@ describe('connection states', () => {
     expect(pausedAfterMilliseconds).toBe(30_000)
     expect(realtime.state).toBe('paused')
     expect(realtime.notice).toBe('paused')
-    expect(realtime.noticeTime).toBe('10:42 AM')
+    expect(realtime.noticeTime).toBe(kept('10:42~AM'))
 
     await socket.simulateConnect()
     await flush()
@@ -207,7 +238,7 @@ describe('connection states', () => {
     expect(socket.connectCalls).toBe(connects + 1)
     expect(realtime.refreshing).toBe(false)
     expect(realtime.notice).toBe('paused')
-    expect(realtime.noticeTime).toBe('10:42 AM')
+    expect(realtime.noticeTime).toBe(kept('10:42~AM'))
     expect(realtime.refreshedAt?.getTime()).toBe(demoToday.getTime() + pausedAfterMilliseconds)
   })
 })
@@ -225,7 +256,7 @@ describe('Refresh failed', () => {
     expect(realtime.refreshedAt).toEqual(demoToday)
     expect(realtime.refreshFailure).toEqual({
       title: 'Jobs could not be refreshed.',
-      message: 'Showing jobs from 10:42 AM.',
+      message: kept('Showing jobs from 10:42~AM.'),
       reference: expect.any(String),
     })
   })
@@ -350,7 +381,7 @@ describe('LivePill', () => {
     const pill = mount(LivePill, { props: { state: 'live', updatedAt: demoToday } })
     const text = pill.find('.live-pill__text')
 
-    expect(text.text()).toBe('Live · , updated 10:42 AM')
+    expect(text.text()).toBe(kept('Live~· , updated 10:42 AM'))
     expect(text.find('[aria-hidden="true"]').text()).toBe('·')
     expect(text.find('.visually-hidden').text()).toBe(',')
     expect(pill.find('.live-pill__dot').attributes('aria-hidden')).toBe('true')
@@ -380,6 +411,22 @@ describe('ConnectionBanner', () => {
     expect(slot.findAll('.connection-banner__banner')).toHaveLength(1)
     expect(slot.find('.connection-banner__banner').attributes('role')).toBeUndefined()
     expect(slot.classes('connection-banner--shown')).toBe(true)
+    slot.unmount()
+  })
+
+  it.each([
+    ['Jobs refreshed at', 'Back online. Jobs refreshed at 10:44 AM.'],
+    ['This job was refreshed at', 'Back online. This job was refreshed at 10:44 AM.'],
+    ['The report was refreshed at', 'Back online. The report was refreshed at 10:44 AM.'],
+    ['The dashboard was refreshed at', 'Back online. The dashboard was refreshed at 10:44 AM.'],
+    ['Technicians refreshed at', 'Back online. Technicians refreshed at 10:44 AM.'],
+  ] as const)('names the page in Back online: %s', (refreshedLabel, text) => {
+    const slot = mount(ConnectionBanner, {
+      props: { notice: 'back-online', time: '10:44 AM', refreshedLabel },
+    })
+
+    expect(slot.text()).toBe(text)
+    expect(slot.find('.connection-banner__time').text()).toBe('10:44 AM')
     slot.unmount()
   })
 
@@ -480,11 +527,28 @@ describe('the shell', () => {
     expect(shell.lastElementChild?.getAttribute('aria-live')).toBeNull()
   })
 
+  it.each([
+    ['/', 'The dashboard was refreshed at'],
+    ['/jobs', 'Jobs refreshed at'],
+    [`/jobs/${generatorJobId}`, 'This job was refreshed at'],
+    [`/jobs/${generatorJobId}/inspection`, 'The report was refreshed at'],
+    ['/technicians', 'Technicians refreshed at'],
+  ])('registers the Back online sentence of the page at %s', async (path, refreshedLabel) => {
+    const { wrapper } = await openApp(path, {
+      'GET /api/dashboard/summary': json(demoSummary()),
+      [jobRoute(generatorJobId)]: json(generatorJob()),
+      [`GET /api/jobs/${generatorJobId}/inspection`]: noContent(),
+    })
+
+    expect(useRealtimeStore().refreshedLabel).toBe(refreshedLabel)
+    expect(wrapper.find('main h1').exists()).toBe(true)
+  })
+
   it('shows the Reconnecting banner on Jobs but not on New job', async () => {
     const { wrapper, router, socket } = await openApp('/jobs')
     await socket.simulateConnect()
     await flush()
-    expect(wrapper.find('.live-pill').text()).toBe('Live · , updated 10:42 AM')
+    expect(wrapper.find('.live-pill').text()).toBe(kept('Live~· , updated 10:42 AM'))
 
     socket.simulateDisconnect('transport close')
     await flush(1)
@@ -522,7 +586,7 @@ describe('the shell', () => {
     )
     const toast = region.find('.toast')
     expect(toast.attributes('role')).toBeUndefined()
-    expect(toast.find('.toast__meta').text()).toBe('JOB-1049 · , just now')
+    expect(toast.find('.toast__meta').text()).toBe(kept('JOB-1049~· , just now'))
     expect(toast.find('.toast__title').text()).toBe('Priya Natarajan started work')
   })
 })

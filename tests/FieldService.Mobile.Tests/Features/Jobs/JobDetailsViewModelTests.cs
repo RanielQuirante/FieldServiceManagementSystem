@@ -30,7 +30,7 @@ public sealed class JobDetailsViewModelTests
         Assert.Equal("Roof access through the east stairwell. Ask reception for the roof key.", viewModel.AccessNotes);
         Assert.Equal("Nina Alvarez", viewModel.ContactValue);
         Assert.Equal("(555) 014-6620", viewModel.ContactSecondary);
-        Assert.Equal("Mon 19 Oct, 9:00–11:00 AM", viewModel.ScheduledText);
+        Assert.Equal("Mon 19 Oct, 9:00–" + DisplayFormats.ZeroWidthSpace + "11:00 AM", viewModel.ScheduledText);
         Assert.True(viewModel.ShowsScheduledRow);
         Assert.Equal("RTU-2, 10-ton packaged rooftop unit", viewModel.Equipment);
         Assert.Equal("Rooftop HVAC service", viewModel.ChecklistName);

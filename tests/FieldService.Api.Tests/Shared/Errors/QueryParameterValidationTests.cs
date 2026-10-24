@@ -1,6 +1,9 @@
+using System.Globalization;
 using FieldService.Api.Domain;
+using FieldService.Api.Features.Dashboard.GetDashboardSummary;
 using FieldService.Api.Features.Jobs.GetJobs;
 using FieldService.Api.Shared.Errors;
+using FieldService.Api.Shared.Http;
 using FieldService.Api.Tests.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
@@ -70,14 +73,78 @@ public sealed class QueryParameterValidationTests(DatabaseFixture fixture)
     }
 
     [Theory]
+    [InlineData("2026-10-19T04:00:00.000Z", null)]
+    [InlineData("2026-10-19T04:00:00Z", null)]
+    [InlineData("2026-10-19T04:00:00.1Z", null)]
+    [InlineData("2026-10-19T04:00:00.1234567Z", null)]
+    [InlineData("2026-10-19T00:00:00-04:00", null)]
+    [InlineData("2026-10-19T09:30:00+05:30", null)]
+    [InlineData("2026-10-19T00:00:00+00:00", null)]
+    [InlineData("2026-10-19t04:00:00z", null)]
+    [InlineData("2026-10-19T04:00:00", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T04:00:00.000", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T04:00Z", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T04:00:00.12345678Z", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T04:00:00.Z", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T00:00:00 04:00", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T00:00:00+0400", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19 04:00:00Z", QueryParameterRule.InstantMessage)]
+    [InlineData(" 2026-10-19T04:00:00Z", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T04:00:00Z ", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-02-30T04:00:00Z", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T24:00:00Z", QueryParameterRule.InstantMessage)]
+    [InlineData("2026-10-19T04:00:60Z", QueryParameterRule.InstantMessage)]
+    [InlineData("10/19/2026 04:00:00 +00:00", QueryParameterRule.InstantMessage)]
+    [InlineData("1792420920", QueryParameterRule.InstantMessage)]
+    [InlineData("today", QueryParameterRule.InstantMessage)]
+    [InlineData("", QueryParameterRule.EmptyValueMessage)]
+    [InlineData(null, null)]
+    public void AnInstantMustBeRfc3339WithZOrANumericOffsetAndUpToSevenFractionalDigits(string? value, string? expected)
+    {
+        var rule = QueryParameterRule.For("from", typeof(DateTimeOffset?));
+
+        Assert.Equal(typeof(DateTimeOffset), rule.ValueType);
+        Assert.Equal(expected, rule.Check(value));
+    }
+
+    [Theory]
+    [InlineData("2026-10-19T04:00:00.000Z")]
+    [InlineData("2026-10-19T00:00:00-04:00")]
+    [InlineData("2026-10-19T09:30:00.1234567+05:30")]
+    [InlineData("2026-10-19t04:00:00z")]
+    public void EveryInstantTheRuleAcceptsBindsToTheSameMomentAsTheJsonConverterReads(string value)
+    {
+        Assert.Null(QueryParameterRule.For("to", typeof(DateTimeOffset?)).Check(value));
+        Assert.True(UtcInstantJsonConverter.TryParse(value, out var fromJson));
+
+        var bound = DateTimeOffset.Parse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AdjustToUniversal | DateTimeStyles.AllowWhiteSpaces);
+
+        Assert.Equal(fromJson, UtcInstant.Truncate(bound));
+    }
+
+    [Theory]
     [InlineData(typeof(long))]
-    [InlineData(typeof(DateTimeOffset?))]
+    [InlineData(typeof(DateTime?))]
     [InlineData(typeof(bool))]
     public void ATypeWithoutARuleFailsWhenTheEndpointIsBuilt(Type type)
     {
         var exception = Assert.Throws<InvalidOperationException>(() => QueryParameterRule.For("from", type));
 
         Assert.Contains("from", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetDashboardSummaryDeclaresFromAndToAsInstantsByTheirWireNames()
+    {
+        var rules = QueryParameterRule.ListFor(
+            typeof(GetDashboardSummaryEndpoint).GetMethod(nameof(GetDashboardSummaryEndpoint.HandleAsync))!);
+
+        Assert.Equal(["from", "to"], rules.Select(rule => rule.Name));
+        Assert.Equal([typeof(DateTimeOffset), typeof(DateTimeOffset)], rules.Select(rule => rule.ValueType));
     }
 
     [Fact]

@@ -3,13 +3,21 @@ import { describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, parseQuery, type Router } from 'vue-router'
 
 import { sessionResponse } from '@/features/auth/__tests__/session-fixtures'
-import { jobList } from '@/features/jobs/__tests__/job-fixtures'
+import { ruleDeclarations } from '@/app/styles/__tests__/stylesheet-source'
+import { demoSummary } from '@/features/dashboard/__tests__/dashboard-fixtures'
+import AppIcon from '@/shared/ui/AppIcon.vue'
 import { useSessionStore } from '@/features/auth/session-store'
 import { sessionChannelName } from '@/features/auth/session-sync'
 import { json, noContent, problem, stubFetch } from '@/shared/testing/fetch-stub'
 
 import App from '../App.vue'
-import { createAppRouter, installNavigationGuards, routes, stringifyQuery } from '../router'
+import {
+  createAppRouter,
+  installNavigationGuards,
+  landingRouteName,
+  routes,
+  stringifyQuery,
+} from '../router'
 
 const refreshRoute = 'POST /api/auth/refresh'
 
@@ -33,12 +41,15 @@ describe('the route table', () => {
   it('holds the pages under the route names of the plan, each loaded lazily', () => {
     expect(pageRoutes.map((route) => [route.name, route.path])).toEqual([
       ['sign-in', '/sign-in'],
+      ['dashboard', '/'],
       ['jobs', '/jobs'],
       ['job-create', '/jobs/new'],
       ['job-detail', '/jobs/:jobId'],
       ['job-inspection', '/jobs/:jobId/inspection'],
+      ['technicians', '/technicians'],
       ['not-found', '/:pathMatch(.*)*'],
     ])
+    expect(routes.filter((route) => route.redirect !== undefined)).toEqual([])
     for (const route of pageRoutes) {
       expect(typeof route.component).toBe('function')
     }
@@ -67,6 +78,24 @@ describe('the route table', () => {
     expect(byName['job-inspection']?.breadcrumbs?.map((crumb) => crumb.label)).toEqual(['Jobs'])
     expect(byName['job-inspection']?.title).toBe('Inspection report')
     expect(byName['job-inspection']?.newJobAction).toBeUndefined()
+  })
+
+  it('files the dashboard and technicians under their own sections, with no parent crumbs', () => {
+    const byName = Object.fromEntries(
+      pageRoutes.map((route) => [String(route.name), route.meta] as const),
+    )
+
+    expect(landingRouteName).toBe('dashboard')
+    expect(byName.dashboard).toEqual({
+      requiresAdministrator: true,
+      title: 'Dashboard',
+      section: 'dashboard',
+    })
+    expect(byName.technicians).toEqual({
+      requiresAdministrator: true,
+      title: 'Technicians',
+      section: 'technicians',
+    })
   })
 })
 
@@ -136,14 +165,16 @@ describe('the navigation guard', () => {
     expect(document.title).toBe('Page not found · FieldService Admin')
   })
 
-  it('lands on the jobs list until the dashboard arrives', async () => {
+  it('lands on the dashboard at the root address, with no redirect', async () => {
     stubFetch({ [refreshRoute]: json(sessionResponse()) })
     const router = guardedRouter()
 
     await router.push('/')
 
-    expect(router.currentRoute.value.name).toBe('jobs')
-    expect(router.currentRoute.value.fullPath).toBe('/jobs')
+    expect(router.currentRoute.value.name).toBe('dashboard')
+    expect(router.currentRoute.value.fullPath).toBe('/')
+    expect(router.currentRoute.value.redirectedFrom).toBeUndefined()
+    expect(document.title).toBe('Dashboard · FieldService Admin')
   })
 
   it('lets a restored administrator open a protected route', async () => {
@@ -170,7 +201,8 @@ describe('the navigation guard', () => {
 
     await router.push({ name: 'sign-in', query: { redirect: '//evil.example/jobs' } })
 
-    expect(router.currentRoute.value.fullPath).toBe('/jobs')
+    expect(router.currentRoute.value.fullPath).toBe('/')
+    expect(router.currentRoute.value.name).toBe('dashboard')
   })
 
   it.each(['/..//evil.example', '/%2e%2e//evil.example', '/./\\evil.example'])(
@@ -181,7 +213,7 @@ describe('the navigation guard', () => {
 
       await router.push({ name: 'sign-in', query: { redirect } })
 
-      expect(router.currentRoute.value.fullPath).toBe('/jobs')
+      expect(router.currentRoute.value.fullPath).toBe('/')
     },
   )
 
@@ -207,6 +239,12 @@ describe('the navigation guard', () => {
 
     await router.push('/jobs/01a15488-9680-7989-92af-ed07fc34a890')
     expect(document.title).toBe('Job details · FieldService Admin')
+
+    await router.push('/technicians')
+    expect(document.title).toBe('Technicians · FieldService Admin')
+
+    await router.push('/')
+    expect(document.title).toBe('Dashboard · FieldService Admin')
   })
 })
 
@@ -252,7 +290,7 @@ describe('the application frame', () => {
   it('shows signed-in pages inside the shell and the sign-in page without it', async () => {
     stubFetch({
       [refreshRoute]: json(sessionResponse()),
-      'GET /api/jobs': json(jobList([], { totalCount: 0 })),
+      'GET /api/dashboard/summary': json(demoSummary()),
       'GET /api/technicians': json({ items: [] }),
     })
     const router = guardedRouter()
@@ -267,8 +305,76 @@ describe('the application frame', () => {
 
     await router.push('/sign-in')
     await flushPromises()
-    expect(router.currentRoute.value.name).toBe('jobs')
-    expect(wrapper.find('main#main h1').text()).toBe('Jobs')
+    expect(router.currentRoute.value.name).toBe('dashboard')
+    expect(wrapper.find('main#main h1').text()).toMatch(
+      /^Good (morning|afternoon|evening), Dana Whitfield$/,
+    )
+    wrapper.unmount()
+  })
+
+  it('offers Go to dashboard on the not-found page', async () => {
+    stubFetch({
+      [refreshRoute]: json(sessionResponse()),
+      'GET /api/dashboard/summary': json(demoSummary()),
+      'GET /api/technicians': json({ items: [] }),
+    })
+    const router = guardedRouter()
+    await router.push('/reports/2026')
+    const wrapper = mount(App, { global: { plugins: [router] }, attachTo: document.body })
+    await flushPromises()
+
+    const link = wrapper.find('main .empty-state a')
+    expect(wrapper.find('main h2').text()).toBe('Nothing is at this address')
+    expect(wrapper.find('main .empty-state__body').text()).toBe(
+      'The link may be mistyped or out of date. Check the address, or go back to the dashboard.',
+    )
+    expect(link.text()).toBe('Go to dashboard')
+    expect(link.attributes('href')).toBe('/')
+    expect(link.find('svg').element.innerHTML).toBe(
+      mount(AppIcon, { props: { name: 'grid', size: 18 } }).element.innerHTML,
+    )
+
+    await link.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('dashboard')
+    wrapper.unmount()
+  })
+
+  it('keeps the stacked sidebar at its own height, so the account panel keeps its normal gap', () => {
+    expect(ruleDeclarations('shared/ui/AppShell.vue', '.app-shell')).toEqual({
+      display: 'flex',
+      'flex-wrap': 'wrap',
+      'align-content': 'flex-start',
+      'min-height': '100vh',
+      'container-type': 'inline-size',
+    })
+  })
+
+  it('lists Dashboard, Jobs and Technicians in the sidebar, the brand linking to the dashboard', async () => {
+    stubFetch({
+      [refreshRoute]: json(sessionResponse()),
+      'GET /api/dashboard/summary': json(demoSummary()),
+      'GET /api/technicians': json({ items: [] }),
+    })
+    const router = guardedRouter()
+    await router.push('/reports')
+    const wrapper = mount(App, { global: { plugins: [router] }, attachTo: document.body })
+    await flushPromises()
+
+    const links = wrapper.findAll('.app-shell__nav a')
+    expect(links.map((link) => [link.text(), link.attributes('href')])).toEqual([
+      ['Dashboard', '/'],
+      ['Jobs', '/jobs'],
+      ['Technicians', '/technicians'],
+    ])
+    expect(wrapper.find('a.app-shell__brand').attributes('href')).toBe('/')
+
+    await router.push('/')
+    await flushPromises()
+    expect(wrapper.find('.app-shell__nav a[aria-current="page"]').text()).toBe('Dashboard')
+    expect(wrapper.find('nav[aria-label="Breadcrumb"] [aria-current="page"]').text()).toBe(
+      'Dashboard',
+    )
     wrapper.unmount()
   })
 

@@ -9,7 +9,7 @@ import {
   signIn,
   type SessionResponse,
 } from './support/api.ts'
-import { documentTitle, jobsCopy, shellCopy, signInCopy } from './support/copy.ts'
+import { dashboardCopy, documentTitle, jobsCopy, shellCopy, signInCopy } from './support/copy.ts'
 import { openInApp } from './support/run.ts'
 
 test.describe('E2E-01 administrator sign-in and route protection', () => {
@@ -30,14 +30,18 @@ test.describe('E2E-01 administrator sign-in and route protection', () => {
     await expect(page).toHaveURL('/sign-in?redirect=%2Fjobs%2Fnew')
     await openInApp(page, `/jobs/${job.id}`)
     await expect(page).toHaveURL(`/sign-in?redirect=%2Fjobs%2F${job.id}`)
+    await openInApp(page, '/')
+    await expect(page).toHaveURL('/sign-in?redirect=%2F')
+    await openInApp(page, '/technicians?shift=off-shift')
+    await expect(page).toHaveURL('/sign-in?redirect=%2Ftechnicians%3Fshift%3Doff-shift')
   })
 
-  test('signing in through the form lands on the jobs page and a reload keeps the session through the cookie', async ({
+  test('signing in through the form without a redirect lands on the dashboard at / and a reload keeps the session through the cookie', async ({
     anonymousPage: page,
     sentinelSink,
   }) => {
-    await page.goto('/jobs')
-    await expect(page).toHaveURL('/sign-in?redirect=%2Fjobs')
+    await page.goto('/sign-in')
+    await expect(page).toHaveURL('/sign-in')
     await page.getByLabel(signInCopy.email, { exact: true }).fill(demoAccounts.administrator)
     await page.getByLabel(signInCopy.password, { exact: true }).fill(demoPassword())
     const signInResponse = page.waitForResponse('**/api/auth/sign-in')
@@ -45,9 +49,19 @@ test.describe('E2E-01 administrator sign-in and route protection', () => {
     await page.getByRole('button', { name: signInCopy.submit, exact: true }).click()
 
     const session = (await (await signInResponse).json()) as SessionResponse
-    await expect(page).toHaveURL('/jobs')
-    await expect(page.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
-    await expect(page).toHaveTitle(documentTitle(jobsCopy.heading))
+    await expect(page).toHaveURL('/')
+    const greeting = page.getByRole('heading', {
+      level: 1,
+      name: dashboardCopy.greeting(session.user.displayName),
+    })
+    await expect(greeting).toBeVisible()
+    await expect(greeting).toBeFocused()
+    await expect(page).toHaveTitle(documentTitle(dashboardCopy.heading))
+    await expect(
+      page.getByRole('navigation', { name: shellCopy.mainNavigation }).getByRole('link', {
+        name: dashboardCopy.heading,
+      }),
+    ).toHaveAttribute('aria-current', 'page')
     const cookie = (await page.context().cookies()).find((item) => item.name === refreshCookieName)
     expect(cookie?.httpOnly).toBe(true)
     expect(cookie?.sameSite).toBe('Strict')
@@ -71,8 +85,13 @@ test.describe('E2E-01 administrator sign-in and route protection', () => {
 
     expect(refresh.status()).toBe(200)
     expect(refresh.request().headers()['x-fieldservice-csrf']).toBe('1')
-    await expect(page).toHaveURL('/jobs')
-    await expect(page.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
+    await expect(page).toHaveURL('/')
+    await expect(
+      page.getByRole('heading', {
+        level: 1,
+        name: dashboardCopy.greeting(session.user.displayName),
+      }),
+    ).toBeVisible()
     await expect(page.getByRole('navigation', { name: shellCopy.mainNavigation })).toContainText(
       session.user.displayName,
     )
@@ -90,12 +109,14 @@ test.describe('W1-AC1 redirect values after sign-in', () => {
   }) => {
     await page.goto('/sign-in?redirect=%2F..%2F%2Fevil.example')
 
-    await expect(page).toHaveURL('/jobs')
+    await expect(page).toHaveURL('/')
     await openInApp(page, '/sign-in?redirect=%2F.%2F%5Cevil.example')
-    await expect(page).toHaveURL('/jobs')
+    await expect(page).toHaveURL('/')
     await openInApp(page, '/sign-in?redirect=%2Fjobs%2F..%2F%2Fevil.example%2Fx')
-    await expect(page).toHaveURL('/jobs')
+    await expect(page).toHaveURL('/')
     await openInApp(page, '/sign-in?redirect=%2F%2Fevil.example')
+    await expect(page).toHaveURL('/')
+    await openInApp(page, '/sign-in?redirect=%2Fjobs')
     await expect(page).toHaveURL('/jobs')
     await openInApp(page, '/sign-in?redirect=%2Fjobs%2Fnew')
     await expect(page).toHaveURL('/jobs/new')

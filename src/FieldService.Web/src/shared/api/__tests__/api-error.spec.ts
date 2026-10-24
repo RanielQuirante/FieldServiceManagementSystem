@@ -9,6 +9,7 @@ import {
   unmappedFieldErrors,
   unwrap,
   unwrapEmpty,
+  unwrapResponse,
 } from '../api-error'
 
 const correlationId = 'dd85f06c-7606-4dfc-a702-fa39647047d8'
@@ -191,5 +192,27 @@ describe('unwrap', () => {
 
   it('resolves an empty success', async () => {
     await expect(unwrapEmpty(Promise.resolve({ response: response(204) }))).resolves.toBeUndefined()
+  })
+
+  it('hands back the response of an accepted request so its headers can be read', async () => {
+    const accepted = response(202, { 'X-Correlation-ID': correlationId })
+
+    const result = await unwrapResponse(Promise.resolve({ response: accepted }))
+
+    expect(result).toBe(accepted)
+    expect(result.headers.get('X-Correlation-ID')).toBe(correlationId)
+  })
+
+  it('throws the ApiError of a refused request instead of its response', async () => {
+    const refused = response(429, { 'Retry-After': '30', 'X-Correlation-ID': correlationId })
+
+    await expect(
+      unwrapResponse(
+        Promise.resolve({ error: { code: 'rate-limit.exceeded' }, response: refused }),
+      ),
+    ).rejects.toMatchObject({ status: 429, retryAfterSeconds: 30, correlationId })
+    await expect(
+      unwrapResponse(Promise.reject(new TypeError('fetch failed'))),
+    ).rejects.toMatchObject({ status: 0 })
   })
 })

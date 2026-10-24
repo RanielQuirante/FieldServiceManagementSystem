@@ -247,7 +247,7 @@ public sealed class StatusChangeTests
         Assert.Equal("Put on hold", viewModel.ConfirmText);
         Assert.Equal("Putting on hold…", viewModel.ConfirmBusyText);
         Assert.Equal("FsIconPauseCircle", viewModel.ConfirmIconKey);
-        Assert.Equal("JOB-1042 · Rooftop HVAC unit not cooling", viewModel.SheetSubtitle);
+        Assert.Equal(Spaces.Text("JOB-1042_· Rooftop HVAC unit not cooling"), viewModel.SheetSubtitle);
     }
 
     [Fact]
@@ -344,8 +344,8 @@ public sealed class StatusChangeTests
         Assert.False(viewModel.IsStatusSheetOpen);
         Assert.Equal(string.Empty, viewModel.HoldReason);
         Assert.Equal(JobStatus.OnHold, viewModel.Status);
-        Assert.Equal("“" + HoldNote + "”", viewModel.HoldReasonLine);
-        Assert.True(viewModel.HasHoldReasonLine);
+        Assert.Equal("“" + HoldNote + "”", viewModel.ReasonLine);
+        Assert.True(viewModel.HasReasonLine);
         Assert.Equal("Put on hold by Marco Reyes", viewModel.Timeline[^1].Text);
         Assert.Equal(HoldNote, viewModel.Timeline[^1].Note);
         Assert.True(viewModel.ShowsUpdateStatus);
@@ -366,7 +366,7 @@ public sealed class StatusChangeTests
         Assert.Equal("InProgress", body.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.Null, body.GetProperty("note").ValueKind);
         Assert.Equal(JobStatus.InProgress, viewModel.Status);
-        Assert.Null(viewModel.HoldReasonLine);
+        Assert.Null(viewModel.ReasonLine);
         Assert.Equal("Resumed by Tom Becker", viewModel.Timeline[^1].Text);
         harness.ScreenReader.Received(1).Announce("JOB-1037 resumed.");
     }
@@ -382,7 +382,7 @@ public sealed class StatusChangeTests
 
         await viewModel.ConfirmStatusCommand.ExecuteAsync(null);
 
-        Assert.Equal("“Waiting for the roof key.”", viewModel.HoldReasonLine);
+        Assert.Equal("“Waiting for the roof key.”", viewModel.ReasonLine);
         Assert.Equal(first.History.Count, viewModel.Timeline.Count);
         harness.ScreenReader.Received(1).Announce("JOB-1042 put on hold.");
     }
@@ -601,10 +601,10 @@ public sealed class StatusChangeTests
             History = [JobDtoBuilder.History(JobHistoryAction.PutOnHold, JobStatus.InProgress, JobStatus.OnHold, _marco, null, "  ", JobDtoBuilder.Local(10, 16, 13, 50))],
         });
 
-        Assert.Equal("“Waiting for the gas utility to restore supply to the boiler room.”", held.HoldReasonLine);
-        Assert.True(held.HasHoldReasonLine);
-        Assert.Null(blank.HoldReasonLine);
-        Assert.False(blank.HasHoldReasonLine);
+        Assert.Equal("“Waiting for the gas utility to restore supply to the boiler room.”", held.ReasonLine);
+        Assert.True(held.HasReasonLine);
+        Assert.Null(blank.ReasonLine);
+        Assert.False(blank.HasReasonLine);
     }
 
     [Fact]
