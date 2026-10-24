@@ -1,6 +1,8 @@
 using FieldService.Api.Domain;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -22,7 +24,10 @@ public static class SecurityRegistration
         services.AddSingleton<AccessTokenIssuer>();
         services.AddSingleton<SocketTicketIssuer>();
 
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+        services.AddAuthenticationCore(options => options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme);
+        services.AddWebEncoders();
+        services.TryAddSingleton<IAuthenticationConfigurationProvider, AuthenticationConfigurationProvider>();
+        new AuthenticationBuilder(services).AddJwtBearer();
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
             .Configure<IOptions<AuthOptions>, TimeProvider>((options, auth, time) =>
                 ConfigureJwtBearer(options, auth.Value, time));
