@@ -13,6 +13,7 @@ This document describes how FieldService protects its users and data: the securi
 - [Headers and content security policy](#headers-and-content-security-policy)
 - [Secrets and startup validation](#secrets-and-startup-validation)
 - [Logging](#logging)
+- [Client error reports](#client-error-reports)
 - [Operator procedures](#operator-procedures)
 - [Review results](#review-results)
 - [Accepted limitations](#accepted-limitations)
@@ -118,10 +119,12 @@ Refresh and sign-out with the cookie also require the header `X-FieldService-Csr
 - Assigning a job (`PUT /api/jobs/{jobId}/assignment`) and listing technicians (`GET /api/technicians`) require `Administrator`. A technician's job list (`GET /api/technicians/me/jobs`) requires `Technician` and always uses the caller's id from the access token; it takes no technician parameter. After a job is reassigned, the previous technician gets the same `404` as for a job that does not exist.
 - An assignment carries the job's current version, so two administrators assigning the same job at once cannot both succeed: the second gets `409 concurrency.conflict`.
 - Changing a job's status (`PUT /api/jobs/{jobId}/status`) requires `Technician` and only the assigned technician's own job; an administrator gets `403`, and any other technician the same `404` as for a missing job. Only the allowed changes are accepted: start an assigned job, put a started job on hold, and resume a job on hold. A broken rule answers before a stale version does, re-sending the current status changes nothing, and two simultaneous changes never both succeed. The change event is recorded only after the change is saved.
-- A hold reason is required, at most 500 characters, trimmed, and limited to printable characters and line breaks. It is stored in the job's history, shown as plain text in both apps, and never written to a log.
+- A hold reason is required, at most 500 characters, trimmed, and holds no control characters other than line breaks and tabs. It is stored in the job's history, shown as plain text in both apps, and never written to a log.
 - Reading an inspection (`GET /api/jobs/{jobId}/inspection`) requires `AdministratorOrTechnician`, and a technician reads only their own jobs. Saving it (`PUT /api/jobs/{jobId}/inspection`) and submitting the job (`POST /api/jobs/{jobId}/submission`) require `Technician` and only the assigned technician's own job; an administrator gets `403`, and any other technician the same `404` as for a missing job, before any job-dependent check runs.
 - A submitted inspection cannot change. The API refuses any changed answer with `409 inspection.locked`, re-sending the saved answers changes nothing, and a database trigger refuses any update or delete of a submitted inspection's rows, so the rule holds even against a direct database write by the application role. Submission completes the job, locks the inspection and writes the history entry in one transaction; two simultaneous submissions or a save racing a submission never produce two completions or a changed checklist.
 - Inspection notes, readings and technician notes are stored with the inspection, shown as plain text, and never written to a log; a test runs a whole inspection flow with every log level captured and fails if any of them appears.
+- The dashboard summary (`GET /api/dashboard/summary`), cancelling a job (`POST /api/jobs/{jobId}/cancellation`) and client error reports (`POST /api/client-errors`) require `Administrator`. A technician gets `403` before any validation or job lookup, so the answer never tells whether a job exists. The summary returns only what an administrator already sees on the job pages: no email address, phone number, access note or contact.
+- A cancellation carries the job's version and works from Unassigned, Assigned, In progress and On hold; a completed job answers `409 job.invalid-transition`, and an already cancelled job `200` with nothing written. The reason is required, at most 500 characters, trimmed, holds no control characters other than line breaks and tabs, is stored in the job's history, shown as plain text in both apps, and never written to a log. A cancelled job's draft inspection stays unsubmitted and can no longer be saved.
 - Endpoint parameters and responses use dedicated request and response records, never database entities, and a test enforces it.
 - A request to a route that does not exist gets `404`, and a wrong method gets `405`, for anonymous callers too.
 
@@ -152,14 +155,14 @@ The dashboard treats every event as a hint: it never copies data from an event, 
 
 | Control | Rule |
 |---|---|
-| Rate limits | Fixed 60-second windows: sign-in 10 and refresh 30 per client address; socket tickets 30 per user; every `/api` request, these included, 300 per user or 60 per anonymous address. Requests with a missing or invalid token count against the address limit. A rejected request gets `429` with `Retry-After`. Health checks and the API document are not limited. |
-| Body size | 16 KB on sign-in, refresh, sign-out and socket tickets, 1 MB on every other request; larger bodies get `413`. |
+| Rate limits | Fixed 60-second windows: sign-in 10 and refresh 30 per client address; socket tickets 30 and client error reports 10 per user; every `/api` request, these included, 300 per user or 60 per anonymous address. Requests with a missing or invalid token count against the address limit. A rejected request gets `429` with `Retry-After`. Health checks and the API document are not limited. |
+| Body size | 8 KB on client error reports, 16 KB on sign-in, refresh, sign-out and socket tickets, 1 MB on every other request; larger bodies get `413`. |
 | Lists | An inspection save takes 1 to 100 answers and at most 10 readings per answer. A longer list is refused while the body is read, with one error, so an oversized request never produces a large response. |
 | Numbers | Reading values lie between −99,999,999.99 and 99,999,999.99 with at most two decimals; a third decimal is refused, never rounded by the API. Numbers with more than 28 significant digits are rounded by the JSON parser before the check. |
 | Media type | Request bodies must be JSON; any other `Content-Type` gets `415`, even with an empty body. Refresh and sign-out also accept a request with no body and no `Content-Type`. |
 | JSON | Duplicate members, numbers sent as strings, integer enumeration values and nulls for required members are rejected with `400`. |
 | Strings | Single-line fields reject control characters; multi-line fields allow only line feed, carriage return and tab. Passwords and refresh tokens are used exactly as sent. |
-| Query strings | Every query parameter is checked before binding; a bad value is a `400` keyed by the parameter name. |
+| Query strings | Every query parameter is checked before binding; a bad value is a `400` keyed by the parameter name. The dashboard summary's `from` and `to` are RFC 3339 instants with `Z` or a numeric offset, `to` after `from`, at most 31 days apart; they reach the database as UTC. |
 | Errors | Problem Details (`application/problem+json`) with a stable `code` and the correlation id; no stack trace, exception text or query string outside Development. |
 | Cross-origin access | Only the configured dashboard origins; `*` is refused at startup. |
 | Forwarded headers | Trusted only from loopback in Development and from configured proxies elsewhere; `X-Forwarded-Host` is never applied. |
@@ -207,11 +210,30 @@ It loads no third-party origin: fonts are self-hosted, styles are static rules i
 
 ## Logging
 
-Logs carry identifiers, never passwords, tokens, cookies, `Authorization` headers, request bodies, query strings, email addresses, names, phone numbers or addresses. Security events (sign-in, refresh, reuse detection, sign-out, refused authorization and rate-limit rejections) are named and listed with their properties in [logging.md](logging.md). A test signs in, refreshes, issues a socket ticket, creates and changes jobs, sends their signed events and signs out with known sentinel values, and fails if any of them, a ticket, a key, a webhook signature or an event body reaches a log event or a log file. The API's outgoing HTTP client writes no request logs of its own, and its retry and circuit-breaker events carry no headers or bodies.
+Logs carry identifiers, never passwords, tokens, cookies, `Authorization` headers, request bodies, query strings, email addresses, names, phone numbers or addresses. Apart from unhandled exceptions, which are logged with their message and stack trace, the one API entry that carries free text from outside the services is the client error report, scrubbed as described in [Client error reports](#client-error-reports). Security events (sign-in, refresh, reuse detection, sign-out, refused authorization and rate-limit rejections) are named and listed with their properties in [logging.md](logging.md). A test signs in, refreshes, issues a socket ticket, creates and changes jobs, sends their signed events and signs out with known sentinel values, and fails if any of them, a ticket, a key, a webhook signature or an event body reaches a log event or a log file. The API's outgoing HTTP client writes no request logs of its own, and its retry and circuit-breaker events carry no headers or bodies.
 
 The notification service logs event ids, job ids, socket ids, user ids, ticket ids and correlation ids, never tickets, signatures, secrets, request bodies or the refused `Origin` value. An error is logged with its type, message, stack trace and code only, and a failure value that is not an error is logged by its type alone, so data attached to a failure never reaches a log. A test of each service scans its logs for sentinel values.
 
 The technician app writes one entry per API call, with the method, the route template without its query, the status, the duration and the correlation id. The HTTP client's own request logs are turned off, and a test of the production client setup fails if they come back. Data records print only their type and id.
+
+## Client error reports
+
+The dashboard sends important browser errors to the API, which writes them to its log; browser code never writes log files. Two layers keep personal data and secrets out of the log.
+
+**In the dashboard**, before a report is sent:
+
+- Only a signed-in administrator's errors are reported, at most 10 a minute, each error once; a refused report is never retried.
+- A failed API call is described by its status and error code only, never by the rest of the response. No form value or other text the user typed goes into a report.
+- Quoted text in the message and stack becomes `[redacted]`, and the stack is reduced to its frames. A response that cannot be read as JSON, and a thrown value that is not an error, are reported with a fixed message and no stack.
+- Token-shaped values, email addresses and query strings are removed, and the route is sent as its path only.
+
+**In the API**:
+
+- `POST /api/client-errors` requires `Administrator`, accepts 10 reports a minute per user and 8 KB per report, and reads only the members of its fixed schema; unknown members are ignored and never logged.
+- Before logging, the message, source, stack, route, correlation id and application version are scrubbed again: JSON Web Token shapes, bearer values, webhook secrets, email addresses and refresh-token shapes become `[redacted]`, and query strings `?[redacted]`.
+- The report is written as one Warning, `client-error.reported`, with `Source` `web`, the user id and the request's correlation id, and the answer is `202` with no body: nothing is echoed. The entry is described in [logging.md](logging.md).
+
+A test sends reports carrying sentinel tokens, secrets, email addresses and query strings in every member, with every log level captured, and fails if any of them reaches a log event or file.
 
 ## Operator procedures
 
@@ -264,6 +286,7 @@ Each feature set is reviewed against these controls before it is merged.
 | 2026-10-22 | Technician status changes: start, hold and resume, the status history in the dashboard, and the technician app's Update status sheet | No high, medium or low finding | Retries stay with the session a request started under, every way a session ends goes through one path, abandoned sessions are signed out on the server, and hold reasons are kept out of logs and printed requests. |
 | 2026-10-23 | Real-time updates: socket tickets, signed job events, the notification service's relay and sockets, and the dashboard's live states | No high or medium finding; one low finding resolved before merge | The event contract now states the reconnect timing the design specifies, and the dashboard pins those values with a test. Also added: the notification service refuses a webhook secret equal to its ticket key, logs an error with its type, message, stack and code only and any other failure value by its type alone, and exits with code 1 when it cannot listen; end-to-end tests fail if a socket handshake URL carries anything but its two protocol keys. The accepted limitations below gained the real-time items. |
 | 2026-10-24 | Inspections and submission: the checklist save and submission, the lock after submission, the technician app's checklist and review screens, and the dashboard's inspection report | No high finding; one medium finding fixed before merge | A save with an oversized list of empty answers produced a very large error response; lists are now limited while the body is read, with one error. Also fixed: database refusals and lock timeouts that the database driver wrapped were answered as server errors instead of the documented conflicts. A test now runs a whole inspection flow with every log level captured and fails if a note, reading or technician note appears. |
+| 2026-10-24 | The dashboard, the technicians page, job cancellation and client error reports | No high or medium finding; three low findings fixed before merge | The API's scrubber missed refresh tokens that start with a hyphen, and the dashboard's quoted-text redaction missed values holding an apostrophe or a line break; both are fixed with tests. A race of an inspection save against a cancellation now has a test. The dashboard's error reporter never sends response data, form values or typed text, and the remaining free-text risk is listed below. |
 
 ## Accepted limitations
 
@@ -275,5 +298,6 @@ Each feature set is reviewed against these controls before it is merged.
 - Rate limits are per process and per window. They slow guessing but do not lock an account, and a distributed attempt from many addresses is outside their scope.
 - There is no self-registration, password reset or multi-factor authentication; accounts come from the seeded data set in local environments.
 - Administrators are not separated from each other: every administrator can see and change every job.
+- A client error report can still carry personal data that a browser prints without quotation marks, or a name, phone number or address in free text: no pattern finds those reliably, and a phone pattern would also remove identifiers and dates. Reports come only from signed-in administrators, who can see the same data, at most 10 a minute each. They are written to the API's local log files under their retention and to its console output, which the host or container platform keeps under its own rules.
 - The technician app keeps the jobs it has loaded in memory while it runs, so a technician can read them offline. On an unlocked device, anyone holding it can read them until the session ends.
 - When no maps app is installed, Navigate sends the job site address to a public map search in the browser, and the address stays in the browser's history.

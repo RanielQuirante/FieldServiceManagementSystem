@@ -50,8 +50,8 @@ These values are deliberately not configurable; changing one is a code change wi
 - the issuer and the access-token audience, both `fieldservice-api`, with HS256 as the only accepted algorithm;
 - the refresh cookie `fs_refresh`, limited to the path `/api/auth`;
 - password hashing with PBKDF2 at 210,000 iterations;
-- the rate limits, in fixed 60-second windows: 10 sign-ins and 30 refreshes per minute per client address, and 30 socket tickets per minute per signed-in user; on top of these, every `/api` request counts against 300 per minute per signed-in user, or 60 per minute per client address for a request without a valid token. Health checks and the OpenAPI document are not limited;
-- the 16 KB request body limit of sign-in, refresh and sign-out;
+- the rate limits, in fixed 60-second windows: 10 sign-ins and 30 refreshes per minute per client address, and 30 socket tickets and 10 client error reports per minute per signed-in user; on top of these, every `/api` request counts against 300 per minute per signed-in user, or 60 per minute per client address for a request without a valid token. Health checks and the OpenAPI document are not limited;
+- the request body limits of 16 KB for sign-in, refresh and sign-out, and 8 KB for client error reports;
 - the job event queue: 1,000 events, the oldest dropped first when it is full;
 - the delivery budget of each job event: attempts of 2 seconds, at most 3 retries with jitter after a 1-second base delay, and 10 seconds in total; a circuit breaker that stops deliveries for 15 seconds when at least half of 4 or more attempts within 30 seconds fail; and, at shutdown, 5 seconds to deliver the events still queued;
 - the 16 KB webhook body limit;

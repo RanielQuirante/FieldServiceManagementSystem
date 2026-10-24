@@ -784,7 +784,7 @@ The aggregate root and the concurrency boundary.
 | `pk_jobs` | `id` | yes | Job details and every command |
 | `ix_jobs_number` | `number` | yes | Uniqueness of job numbers. Search does not use it, because it matches `JOB-{number}` as a substring. |
 | `ix_jobs_updated_at_id` | `updated_at DESC, id DESC` | no | The job list without a status filter, ordered by `updated_at DESC, id DESC` with offset paging |
-| `ix_jobs_status_updated_at_id` | `status, updated_at DESC, id DESC` | no | The job list filtered by status; the status facet counts; the dashboard counts by status |
+| `ix_jobs_status_updated_at_id` | `status, updated_at DESC, id DESC` | no | The job list filtered by status; the status facet counts; the dashboard's open-job figures, its Completed and Cancelled counts in the time window, and its list of jobs without a technician |
 | `ix_jobs_assigned_technician_id_status` | `assigned_technician_id, status` | no | A technician's assigned jobs; the open-job counts and the current or next job per technician; the technician filter of the job list; foreign-key support |
 | `ix_jobs_scheduled_start` | `scheduled_start` | no | Range and order on `scheduled_start` for the dashboard's unassigned-job queries at scale |
 | `ix_jobs_checklist_template_id` | `checklist_template_id` | no | Foreign-key support |
@@ -792,9 +792,11 @@ The aggregate root and the concurrency boundary.
 
 The job search matches the term with ILIKE against `'JOB-' || number::text`, the title, the customer name and the site address, which is a sequential scan at the MVP's size. Trigram indexes through `pg_trgm` are the planned optimization once the table grows.
 
+The dashboard reads all its figures in one read-only `REPEATABLE READ` transaction, so they come from one snapshot. It counts the jobs completed and cancelled in its time window as the Completed and Cancelled jobs whose `updated_at` falls in the window, and it takes the start of the oldest current hold as the earliest `updated_at` of an OnHold job. Both rely on rules the API keeps: a Completed or Cancelled job is never written again, so its `updated_at` stays equal to its `completed_at` or `cancelled_at`, and an OnHold job is written only when it is put on hold. A change that writes to such jobs must keep these equalities or change the dashboard's queries.
+
 #### `job_history`
 
-Append-only: the app role has SELECT and INSERT only. It feeds the timelines, the dashboard's live activity and the time on site.
+Append-only: the app role has SELECT and INSERT only. It feeds the timelines, the dashboard's live activity and its count of jobs created in the time window, and the time on site.
 
 | Column | Type | Null | Rules |
 |---|---|---|---|
@@ -823,7 +825,7 @@ A job created with a technician gets two entries, `Created` and then `Assigned`.
 |---|---|---|---|
 | `pk_job_history` | `id` | yes | |
 | `ix_job_history_job_id_occurred_at` | `job_id, occurred_at` | no | Job timelines in job details and the inspection report; time on site |
-| `ix_job_history_occurred_at` | `occurred_at DESC` | no | The dashboard's live activity: the 6 newest entries in the time window |
+| `ix_job_history_occurred_at` | `occurred_at DESC` | no | The dashboard's live activity, the 6 newest entries in the time window; its count of jobs created in the window, from their `Created` entries |
 | `ix_job_history_actor_user_id` | `actor_user_id` | no | Foreign-key support |
 | `ix_job_history_technician_id` | `technician_id` | no | Foreign-key support |
 
@@ -1079,7 +1081,7 @@ The tables below give times as `D`, `D-1` and so on, on the 24-hour local clock 
 - The figures that count the seeding day, such as the jobs completed today, hold when the seed runs between 02:42 and 19:41 local and the screens are read the same day. Outside that range, a completion or a scheduled start leaves the seeding day. On the day the clocks go forward, a seed run before 03:42 also moves the completion of JOB-1039 onto the day before, so the seeding day shows one completed job instead of two.
 - When a daylight-saving change falls between a listed time and the moment `Δ` moves it to, the screens show that event earlier or later than its listed time plus `Δ` by the size of the change, one hour in most time zones. The order of events stays as listed.
 - Seeded times are fixed when the seed runs. A demo on a later day shows the data as of the seeding day; a database reset places it on the current day again (see [Resetting the demo data](#resetting-the-demo-data)).
-- In containers the local time zone is UTC unless `TZ` is set. Relative times still hold, and only the displayed hours shift.
+- In containers the local time zone is UTC unless `TZ` is set. Every seeded time is placed relative to the moment the seeder runs. When the browser's time zone is a whole number of hours from UTC and no daylight-saving change falls between four days before and three days after the seeding day, a UTC seed therefore gives the same instants, clock times and day figures as a seed made in the browser's time zone at the same moment, and the windows above apply to the browser's local time. Otherwise the times move by the difference, such as 30 minutes for a half-hour offset or one hour across a daylight-saving change, and their order holds.
 
 ### Users
 
@@ -1282,7 +1284,7 @@ With the seed run at 10:42 (`Δ` 0) and the screens read the same day, the rows 
 |---|---|
 | Job list, by `updated_at` descending, 12 jobs per page | Page 1: JOB-1049, JOB-1044, JOB-1051, JOB-1047, JOB-1043, JOB-1042, JOB-1039, JOB-1045 and JOB-1052, then JOB-1048, JOB-1053 and JOB-1050 from D-1. Page 2: JOB-1046, JOB-1054, JOB-1055, JOB-1041, JOB-1038, JOB-1040, JOB-1037, JOB-1036 |
 | Status counts | 20 jobs: Unassigned 4, Assigned 8, InProgress 2, OnHold 3, Completed 2, Cancelled 1 |
-| Dashboard | 17 open jobs, 4 of them without a technician and 2 of those scheduled on the seeding day; 13 open jobs with a technician; 5 of 6 technicians on shift; InProgress across 2 technicians; the next Assigned job starts at 11:30 (JOB-1045); OnHold since D-3 13:50 (JOB-1037); 2 jobs completed on the seeding day, the last at 09:58; 0 cancelled on the seeding day |
+| Dashboard | 17 open jobs, 4 of them without a technician and 2 of those scheduled on the seeding day; 13 open jobs with a technician; 5 of 6 technicians on shift; InProgress across 2 technicians; the next Assigned job starts at 11:30 (JOB-1045) when the dashboard is read before 11:30, and after that it is the next start still ahead: JOB-1055 at 13:00, JOB-1047 at 13:30, then JOB-1048 on D+1 at 08:00; OnHold since D-3 13:50 (JOB-1037); 2 jobs completed on the seeding day, the last at 09:58; 0 cancelled on the seeding day |
 | Jobs without a technician, by scheduled start | JOB-1052 (Urgent, D 14:00), JOB-1051 (High, D 15:30), JOB-1050 (Low, D+2 09:00), JOB-1054 (Normal, D+3 10:00) |
 | Live activity, the 6 newest entries of the day | 10:42 Priya Natarajan started JOB-1049; 10:31 Tom Becker put JOB-1044 on hold; 10:20 Dana Whitfield created JOB-1051; 10:05 Dana Whitfield assigned JOB-1047 to Marco Reyes; 09:58 Aisha Karim completed JOB-1043; 09:12 Marco Reyes started JOB-1042 |
 | Marco Reyes in the technician app | Active: JOB-1042 and JOB-1047 on the seeding day, JOB-1053 the next day. Completed: JOB-1036, because cancelled jobs stay visible to their technician |

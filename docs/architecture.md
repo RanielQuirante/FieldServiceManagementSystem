@@ -8,7 +8,7 @@ FieldService is a field service management system made of four applications and 
 - **FieldService.Notifications**, a Node.js service that relays job changes to the dashboard over Socket.IO.
 - **PostgreSQL 17**, which only the API and its migrations reach.
 
-This document currently covers how the applications communicate. The security controls on each connection are in [security.md](security.md), the wire formats in [contracts/README.md](contracts/README.md), and the settings in [configuration.md](configuration.md).
+This document covers how the applications communicate and the main request flows. The security controls on each connection are in [security.md](security.md), the wire formats in [contracts/README.md](contracts/README.md), and the settings in [configuration.md](configuration.md).
 
 ## Contents
 
@@ -19,6 +19,9 @@ This document currently covers how the applications communicate. The security co
   - [Assign a job](#assign-a-job)
   - [Technician status update](#technician-status-update)
   - [Inspection save and submit](#inspection-save-and-submit)
+  - [Cancel a job](#cancel-a-job)
+  - [Dashboard summary](#dashboard-summary)
+  - [Client error report](#client-error-report)
   - [Real-time broadcast](#real-time-broadcast)
   - [Reconnect and refetch](#reconnect-and-refetch)
 
@@ -214,6 +217,91 @@ sequenceDiagram
 ```
 
 Saves send no event, because only the technician sees a draft. Every save that writes also updates the job row, so the job's version guards the checklist too, and two devices saving the same checklist cannot both succeed. Once submitted, the inspection cannot change: the API refuses the write, and a database trigger refuses any update or delete of a submitted inspection's rows. The administrator's read-only report is described in [ui.md](ui.md#inspection-report).
+
+### Cancel a job
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Administrator
+    participant Web as Dashboard
+    participant Api as API
+    participant Db as PostgreSQL
+    participant Notif as Notification service
+    participant Dash as Dashboard, every connected tab
+    participant App as Technician app
+    Admin->>Web: Cancel job on the job page, enter a reason and confirm
+    Web->>Api: POST /api/jobs/{jobId}/cancellation with reason and version
+    Note over Api: The Administrator policy runs before validation, so a technician gets 403 for any job
+    alt the reason is missing, blank or longer than 500 characters
+        Api-->>Web: 400 keyed reason
+    else the job does not exist
+        Api-->>Web: 404 job.not-found
+    else the job is already Cancelled
+        Api-->>Web: 200 with the current job, no history entry, no event
+    else the job is Completed
+        Api-->>Web: 409 job.invalid-transition
+    else accepted
+        Api->>Db: One batch: the Cancelled history entry with the reason as its note, and the job update where its version matches
+        alt the version was stale, or the row was locked too long
+            Api-->>Web: 409 concurrency.conflict, and the dialog reloads the job
+            Note over Web: Still cancellable: the dialog stays open with the refreshed status.<br/>Otherwise it closes and says the job can no longer be cancelled
+        else committed
+            Api-->>Web: 200 with the read-only job, canCancel false
+            Api-)Notif: Signed job.status-changed to Cancelled
+            Notif-)Dash: job.status-changed
+            Dash->>Api: Refetch the job and the visible lists
+        end
+    end
+    Note over App: No push to the technician app
+    App->>Api: GET /api/technicians/me/jobs?view=completed lists the cancelled job under Completed
+    App->>Api: GET /api/jobs/{jobId} when it is opened, read-only, with the reason from its history
+```
+
+A job can be cancelled from Unassigned, Assigned, In progress or On hold, and it keeps its assignee. A draft inspection stays unsubmitted and can no longer be saved, because saves need an In progress job. A cancellation racing an assignment, a status change, a submission or an inspection save ends with one success and `409` for the other request.
+
+### Dashboard summary
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Web as Dashboard
+    participant Api as API
+    participant Db as PostgreSQL
+    Web->>Api: GET /api/dashboard/summary?from&to, the local day as UTC instants
+    Web->>Api: GET /api/technicians for the workload
+    Note over Api: The Administrator policy, then the window rule: from before to, at most 31 days
+    Api->>Db: One read-only REPEATABLE READ transaction with six reads
+    Note over Db: Open jobs by status, the day's completed and cancelled jobs, the day's created jobs,<br/>the ten unassigned jobs that start first, technician counts, the six newest history entries
+    Api-->>Web: 200 with generatedAt, the figures and the lists
+    Note over Web: Refetched on every live event, debounced, on every reconnect, and at local midnight
+```
+
+All six reads see one snapshot of the database, so the figures agree with each other. The job and history reads use the indexes on the job status and the history time, so their cost follows the open jobs and the window's history entries rather than every job ever stored.
+
+### Client error report
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Page as Dashboard page
+    participant Rep as Error reporter
+    participant Api as API
+    participant Log as API log file
+    Page->>Rep: An uncaught error, an unhandled rejection or a router error
+    Rep-->>Page: An error toast at once, with the failed request's reference when there is one
+    opt an administrator is signed in, the error is new, fewer than 10 were sent in the last 60 seconds, and no pause after a 429 is running
+        Note over Rep: A failed request is described by its status and code only; quoted text, query strings,<br/>tokens and email addresses are removed; the stack is reduced to its frames; the route is the path only
+        Rep->>Api: POST /api/client-errors with a new X-Correlation-ID
+        Note over Api: Administrator policy, 10 a minute per user (429), 8 KB (413), the fixed members (400)
+        Api->>Api: Scrub the text members again, ignore unknown members
+        Api->>Log: Warning client-error.reported with Source web, the user id and the correlation id
+        Api-->>Rep: 202 with no body
+        Rep-->>Page: When the error carried no reference of its own and its toast is still shown, the toast gains the report's reference
+    end
+```
+
+The reference on the toast is always one the API's log holds, so support can find the entry from what the administrator reads out. The log entry and its properties are described in [logging.md](logging.md), and the controls in [security.md](security.md#client-error-reports).
 
 ### Real-time broadcast
 

@@ -10,6 +10,9 @@ This document describes the dashboard's user interface: its design tokens, fonts
 - [Icons](#icons)
 - [Shared components](#shared-components)
 - [Pages and routes](#pages-and-routes)
+- [Dashboard](#dashboard)
+- [Technicians](#technicians)
+- [Cancelling a job](#cancelling-a-job)
 - [Inspection report](#inspection-report)
 - [Live updates](#live-updates)
 - [Accessibility](#accessibility)
@@ -79,23 +82,58 @@ The components live in `src/FieldService.Web/src/shared/ui`.
 | AppIcon | One icon from the icon set |
 | Banner | Error and information messages inside a page |
 | LoadingState, EmptyState, ErrorState | The three page states, with skeleton blocks, a message and a retry action |
-| Toast, ToastHost | Short notices at the bottom of the window; an error toast shows the request's reference so support can find it in the logs, and an event toast tells what changed on a job |
+| Toast, ToastHost | Short notices at the bottom of the window; an error toast shows a reference only when the API's log holds it (the failed request's own id, or the error report's id once the API has accepted it), and an event toast tells what changed on a job |
 | LivePill | The live-update connection state in the top bar |
 | ConnectionBanner | The Reconnecting, Paused, Back online and Refresh failed messages of live updates |
-| KpiTile | A summary figure with its icon, label and subline, used on the inspection report |
+| KpiTile | A summary figure with its icon, label and subline, optionally a link; used on the dashboard and the inspection report |
+| ConfirmDialog | A modal dialog for an action that needs confirmation, with the page kept behind it; used to cancel a job |
 
 ## Pages and routes
 
 | Route | Page | Access |
 |---|---|---|
 | `/sign-in` | Sign-in, with an optional return path | Public |
+| `/` | Dashboard | Administrators |
 | `/jobs` | Job list with search, status and priority filters and paging, 12 jobs per page | Administrators |
 | `/jobs/new` | New job form | Administrators |
 | `/jobs/:jobId` | Job details with the assignee and the status history | Administrators |
 | `/jobs/:jobId/inspection` | The read-only inspection report | Administrators |
-| Any other path | Not found | Administrators |
+| `/technicians` | Technicians with their shift and workload, filters and search | Administrators |
+| Any other path | Not found, with a link to the dashboard | Administrators |
 
-`/` opens the job list. Page titles read "<page> · FieldService Admin". Every page has loading, empty, error and not-found states as they apply, and focus moves to the page heading after each navigation.
+Signing in without a return path opens the dashboard. Page titles read "<page> · FieldService Admin". Every page has loading, empty, error and not-found states as they apply, and focus moves to the page heading after each navigation.
+
+## Dashboard
+
+The dashboard at `/` gives the day at a glance. Its figures come from one summary request for the dispatcher's local day, from midnight to the next midnight, and from the technician list.
+
+- **Hero band:** a greeting for the time of day with the administrator's name, the date, and one sentence on the open jobs and how many still need a technician, beside two figure tiles. Below 560 pixels of width it becomes a compact band.
+- **Jobs by status:** six cards (Unassigned, Assigned, In progress, On hold, Completed today and Cancelled today), each with a subline such as the next start, the number of technicians at work or the oldest hold, and each opening the job list filtered to its status. The cards always form full rows: six, three or two across.
+- **Needs a technician:** the ten unassigned jobs that start first, each with a link to assign it, and "View all" when more are waiting.
+- **Live activity:** the six newest history entries of the day as sentences, such as "Tom Becker put JOB-1044 on hold", with the job number linking to the job. Entries that a live update adds are marked New for 12 seconds.
+- **Technician workload:** each technician with their shift, open jobs and current or next job. Below 640 pixels the table becomes a list.
+- **States:** each part has its loading, empty and error form. One Try again retries the summary, and a separate one retries the workload.
+
+The dashboard refreshes both requests on every live event and reconnect ([Live updates](#live-updates)), and the summary again at local midnight.
+
+## Technicians
+
+`/technicians` lists every technician with their trade, shift, open jobs, current or next job, and phone. An inactive technician reads "Inactive".
+
+- **Filters:** All, On shift and Off shift, each with its count. The counts ignore the search.
+- **Search:** by name, email, trade, or three or more digits of the phone number.
+- **Address:** the filter and the search are kept in the page address, so a link reopens the same view.
+- **Narrow screens:** below 900 pixels the table becomes a list, and the phone number is a link that starts a call.
+
+## Cancelling a job
+
+An open job's page offers Cancel job. The dialog shows the job's status and technician and what cancelling means, and asks for a reason of up to 500 characters, with a count from 400.
+
+- A reason typed in the dialog is kept if the dialog closes without sending. A click outside the dialog does nothing, and Escape is ignored while the request is running.
+- After a cancellation, the page becomes read-only, and a notice under the title says when and by whom the job was cancelled, with the reason. Every cancelled job's page shows this notice.
+- When the job changed in the meantime, the dialog stays open with the reason and the refreshed status, and a second press sends the new version. When someone else cancelled the job first, or the job was completed, the page says so above the notice.
+
+The technician app shows a cancelled job under Completed, read-only, with the reason under "Cancelled on …", or "Cancelled at …" for a job cancelled today ([Screens](#screens)).
 
 ## Inspection report
 
@@ -117,8 +155,10 @@ While an administrator is signed in, the dashboard keeps a live connection to th
 
 | Page | Live pill | Connection banner | Event toasts | Row flash |
 |---|---|---|---|---|
+| Dashboard | Yes | Yes | Yes | No; new Live activity entries are marked New |
 | Jobs | Yes | Yes | Yes | Yes |
-| Job details | Yes | Yes | Yes | No; the page refreshes in place |
+| Job details, Inspection report | Yes | Yes | Yes | No; the page refreshes in place |
+| Technicians | Yes | Yes | Yes | No; the rows refresh in place |
 | New job, Not found | Yes | No | No | No |
 
 **Connection states**
@@ -155,7 +195,9 @@ The target is WCAG 2.2 level AA. The dashboard is built and tested for:
 - **Contrast:** text and icons meet the AA minimums on every surface, glass included.
 - **Reflow:** every page works at 320 CSS pixels wide without horizontal page scrolling; wide tables scroll inside their own region and keep their messages in view.
 - **Forms:** labels, required and optional markers, help text and server errors are linked to their fields, and focus moves to the first invalid field.
-- **Status messages:** errors are announced as alerts, and loading states are announced without moving focus.
+- **Status messages:** errors are announced as alerts, once each, and loading states are announced without moving focus.
+- **Dialogs:** the cancel dialog moves focus to its reason field and keeps the page behind it inert. Closed without sending, it returns focus to Cancel job; after a cancellation, or when a live refresh removes the button, focus moves to the page heading.
+- **Text that must stay whole:** times, dates, durations and job numbers never break inside.
 - **User preferences:** reduced motion stops animations, reduced transparency replaces glass with solid surfaces, and forced colours keep text, focus and gradient titles visible.
 
 Automated checks run an accessibility audit, keyboard, reflow and preference checks on every page and state in Chrome. Checks with Firefox, Safari, VoiceOver and browser zoom at 200 and 400 percent are carried out by hand.
@@ -193,8 +235,8 @@ The controls live in `src/FieldService.Mobile/Shared/Controls`: `AppHeader` (lis
 | Screen | Route | Content |
 |---|---|---|
 | Sign in | `//sign-in` | Email and password with field errors, an error banner, and the "Your session ended." notice after an expiry or a revocation |
-| My jobs | `//jobs` | Active and Completed segments, jobs grouped by day, pull to refresh, the account sheet with sign-out |
-| Job details | `jobs/details` | Status, priority, schedule, customer, site, access notes, contact, equipment, description, timeline and checklist; an Assigned job shows the schedule first, with Navigate and, where the device can dial and the job has a contact phone, Call, and Start job; an In progress or On hold job offers Update status, and an On hold job shows its hold reason under the status; an In progress job also offers Start inspection or Continue inspection with the checklist's progress |
+| My jobs | `//jobs` | Active and Completed segments, jobs grouped by day, pull to refresh, the account sheet with sign-out. Completed holds completed and cancelled jobs, newest first; a card adds the date to its time when the slot falls on another day than its group |
+| Job details | `jobs/details` | Status, priority, schedule, customer, site, access notes, contact, equipment, description, timeline and checklist; an Assigned job shows the schedule first, with Navigate and, where the device can dial and the job has a contact phone, Call, and Start job; an In progress or On hold job offers Update status, and an On hold job shows its hold reason under the status; an In progress job also offers Start inspection or Continue inspection with the checklist's progress; a cancelled job shows "Cancelled on …" (or "Cancelled at …" when cancelled today) with the reason under it and offers no action, only Navigate and Call |
 | Update status | sheet over Job details | Only the changes the server allows for the job: Put on hold, with a required reason of up to 500 characters and a count from 400, or Resume. A conflict closes the sheet, keeps the reason, reloads the job and explains what changed. Complete job appears when the checklist is complete and opens Review and submit |
 | Inspection | `jobs/inspection` | Every checklist item with Pass, Fail and N/A, readings with their units (two decimals at most), and a required fault note on Fail; N/A hides the readings. The progress ("6 of 10 answered") and the result counts sit at the top. Answers are kept in memory while the app runs and saved when the technician leaves the screen and before Review and submit; a conflict reloads and keeps the technician's changes. On hold, cancelled and submitted checklists are read-only |
 | Review and submit | `jobs/review` | The time on site, the result counts, the failed items with their notes, optional technician notes of up to 2,000 characters, and the site-safety confirmation, unchecked each time the screen opens. Submitting completes the job, returns to My jobs with a confirmation, and leaves the job and its checklist read-only |
@@ -208,11 +250,12 @@ On Windows, at 900 units wide or more, My jobs shows the list and the selected j
 - Every tappable element is at least 48 units high and wide. A test reads the XAML and fails on any interactive style or control below 48.
 - Every control that carries meaning has a screen-reader description, such as "Active, 3, selected" for a segment. Icons beside text are hidden from screen readers.
 - A job card is one screen-reader item with the role and action of a button, named by its job number, title, status, priority, schedule, customer and site.
-- Times and short dates never break across lines.
+- Times, short dates, durations and job numbers never break across lines; a time range breaks only after its dash.
+- A cancelled job's status line and reason are read as one item.
 - Status and priority always have a text label, as in the dashboard.
 - Each option in the Update status sheet is one screen-reader item with the role of a radio button and its checked state. A status change is announced when it succeeds, and focus moves to the next action.
 - When a sheet closes, its keyboard closes with it, and the sheet's title stays in view while the keyboard is open.
 - Each answer option is one screen-reader item with its selected state. Choosing a result announces it with the new progress, and a submission is announced on My jobs.
 - A field error moves focus to its field and scrolls it, with its message, into view above the bottom action bar.
 - Icons beside text that can wrap stay level with the first line, at every text size.
-- At large text sizes on narrow phones, the answer options drop their icons together and then stack as full-width rows, and button labels wrap instead of being cut.
+- At large text sizes on narrow phones, the answer options drop their icons together and then stack as full-width rows, the My jobs segments, the two dock buttons and the status and priority chips stack in rows, and button labels wrap instead of being cut.

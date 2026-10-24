@@ -16,7 +16,7 @@ This document describes where each FieldService application writes its logs, how
 | Notification service | Production | JSON stdout, plus a volume | `info` |
 | Technician app | Debug | `logs/` inside the app's data folder | Debug |
 | Technician app | Release | Same | Information |
-| Web dashboard | All | No log files | — |
+| Web dashboard | All | No log files. The errors it reports reach the API's log as `client-error.reported` ([Client error reports](#client-error-reports)) | — |
 | nginx | Staging (Compose) | JSON access log to stdout, without query strings or client addresses; errors to stderr at `warn` | — |
 | PostgreSQL | Compose | Container stdout | Server default |
 | PostgreSQL | Homebrew on macOS | `/opt/homebrew/var/log/postgresql@17.log` | Server default |
@@ -136,6 +136,7 @@ Entity Framework's own Error and Fatal events are dropped, so a database excepti
 | `auth.socket-ticket.issued` | 4009 | Information | `POST /api/auth/socket-tickets` issues a socket ticket to an administrator whose session is still live. A refusal writes no event of this name: a 401 appears only in the request line, a 403 as `authz.forbidden` and a 429 as `rate-limit.rejected` | `UserId`, `TicketId` |
 | `authz.forbidden` | 4007 | Information | An authorization policy refuses a signed-in user, and the response is 403. A request without a valid access token gets 401 and writes no event | `Policy`, `UserId`, `Role`, `RoutePattern` |
 | `rate-limit.rejected` | 4008 | Warning | A rate limit refuses a request, and the response is 429. Written at the first refusal of a partition, then not again for that partition until its window ends | `Policy`, `PartitionKind`, `UserId` or `ClientIp`, `RoutePattern` |
+| `client-error.reported` | 4010 | Warning | `POST /api/client-errors` accepts an error report from the web dashboard, and the response is 202. A refused report writes no event of this name ([Client error reports](#client-error-reports)) | `Source`, `UserId`, `CorrelationId`, `ErrorSource`, `Route`, `OccurredAt`, `AppVersion`, `ReportedCorrelationId`, `ErrorMessage`, `ErrorStack` |
 
 | Property | Content |
 |---|---|
@@ -146,8 +147,8 @@ Entity Framework's own Error and Fatal events are dropped, so a database excepti
 | `Reason` | A reason code from the table below |
 | `SecondsSinceConsumed` | Whole seconds between the token's first use and its reuse |
 | `ClientIp` | The client's IP address as the API sees it, after the forwarded headers of a trusted proxy apply; `unknown` when the connection has none |
-| `Policy` | On `authz.forbidden`, the endpoint's authorization policies, separated by commas, or `fallback` when the endpoint names none. On `rate-limit.rejected`, `sign-in`, `refresh`, `socket-tickets` or `global` |
-| `PartitionKind` | `user` when the `global` or `socket-tickets` limit counts a signed-in user's requests, logged with `UserId`; `ip` when a limit counts the requests of one address, logged with `ClientIp`. The other of the two properties is null |
+| `Policy` | On `authz.forbidden`, the endpoint's authorization policies, separated by commas, or `fallback` when the endpoint names none. On `rate-limit.rejected`, `sign-in`, `refresh`, `socket-tickets`, `client-errors` or `global` |
+| `PartitionKind` | `user` when the `global`, `socket-tickets` or `client-errors` limit counts a signed-in user's requests, logged with `UserId`; `ip` when a limit counts the requests of one address, logged with `ClientIp`. The other of the two properties is null |
 | `RoutePattern` | The route template of the endpoint that matched, never the request path with its values or the query string. On `rate-limit.rejected` it is null when the request matched no endpoint |
 
 | Event | Reason | Meaning |
@@ -165,7 +166,76 @@ Entity Framework's own Error and Fatal events are dropped, so a database excepti
 
 For each event the checks run in the order listed, and the first one that applies is logged.
 
-**What the events carry.** The security, configuration and seeding events follow the rules of [Redaction](#redaction) and carry identifiers only: user, session and ticket ids, role and client names, reason codes, counts, policy names, route templates and setting names. None of them carries a password, a token, a ticket or its hash, a cookie, a header, a body, a query string, an email address, a name, a phone number or a postal address. `ClientIp` appears only on `auth.sign-in.failed`, `auth.refresh.reuse-detected` and `rate-limit.rejected`, and `config.invalid` names the key and the rule, never the value.
+**What the events carry.** The security, configuration and seeding events follow the rules of [Redaction](#redaction). Apart from `client-error.reported`, they carry identifiers only: user, session and ticket ids, role and client names, reason codes, counts, policy names, route templates and setting names. None of them carries a password, a token, a ticket or its hash, a cookie, a header, a body, a query string, an email address, a name, a phone number or a postal address. `client-error.reported` carries the same kind of identifiers plus the text of a browser error report, which the API scrubs before it writes the event ([Client error reports](#client-error-reports)). `ClientIp` appears only on `auth.sign-in.failed`, `auth.refresh.reuse-detected` and `rate-limit.rejected`, and `config.invalid` names the key and the rule, never the value.
+
+### Client error reports
+
+The web dashboard writes no log files and never writes to the server's log folders. When it meets an error that no page handles (one caught by the Vue error handler, an unhandled promise rejection or an error during navigation), it shows an error toast and, while an administrator is signed in, sends a report to `POST /api/client-errors` ([api.md](api.md#reportclienterror-post-apiclient-errors)). The API writes each accepted report as one `client-error.reported` event, with the `SourceContext` `FieldService.Api.Features.Diagnostics.ReportClientError.ReportClientErrorEndpoint`, through its usual sinks ([Destinations](#destinations)): on a developer machine the file `logs/api/api-YYYYMMDD.log` and the console; in Staging `/app/logs`, bind-mounted from the host's `logs/api/`, and the JSON console. The events follow the API's file rotation and 14-file retention.
+
+| Property | Content |
+|---|---|
+| `Source` | Always `web`, the application that reported the error |
+| `UserId` | The id of the administrator whose session sent the report |
+| `CorrelationId` | The report request's own correlation id, as on every event of a request; the API also returns it in the 202 response's `X-Correlation-ID` header |
+| `ErrorSource` | Where the dashboard caught the error, scrubbed; the dashboard sends `app.errorHandler`, `window.unhandledrejection` or `router.onError` |
+| `Route` | The dashboard's route path when the error occurred, without a query string or fragment, scrubbed; null when the report has none |
+| `OccurredAt` | When the error occurred, by the browser's clock, in UTC truncated to milliseconds; CLEF writes it in ISO 8601 with `+00:00`. `@t` is when the API wrote the event |
+| `AppVersion` | The dashboard's version, scrubbed; null when the report has none |
+| `ReportedCorrelationId` | The correlation id of the failed API call behind the error, scrubbed; null when the error did not come from an API call |
+| `ErrorMessage` | The error message, scrubbed |
+| `ErrorStack` | The stack trace, scrubbed; null when the report has none |
+
+Every text is trimmed, and a `route`, `correlationId`, `stack` or `appVersion` that is empty after trimming is logged as null.
+
+**Line breaks.** `ErrorMessage` and `ErrorStack` can hold line breaks. The log files and the JSON console write them as `\n` and `\r`, so each report stays one line there. The text console (`Logs:ConsoleFormat` `Text`, used in Development and Testing) prints them as line breaks, so one report can span several console lines. The message template puts `ErrorMessage` and `ErrorStack` last: the event's first console line starts with the time, the level and the identifiers, and any further lines are report text, which can look like other log lines. Read reports in the log files when the line boundaries matter.
+
+**Scrubbing.** Before the event is written, the API runs each of the six text members, `message`, `source`, `stack`, `route`, `correlationId` and `appVersion`, through one scrubber. It replaces these values, in this order:
+
+| Value | Written as |
+|---|---|
+| JWT-shaped strings, such as access tokens and socket tickets: dot-separated base64url segments that start with `eyJ` | `[redacted]` |
+| Bearer values: the word `bearer` in any case, white space and the value after it | `[redacted]` |
+| Webhook secrets: `whsec_` and the value after it | `[redacted]` |
+| Email addresses | `[redacted]` |
+| Refresh-token-shaped values: a separate run of 43 letters, digits, `_` or `-` | `[redacted]` |
+| Query strings: a `?` and everything after it up to white space or `)` | `?[redacted]` |
+
+The exact patterns are listed in [api.md](api.md#reportclienterror-post-apiclient-errors). A message of the form `Request to /api/jobs?<query> failed for <email address>`, with a real query and address, is logged as `Request to /api/jobs?[redacted] failed for [redacted]`. Ordinary error text, route paths with ids, UUIDs and version numbers pass unchanged. Before it sends a report, the dashboard strips the same kinds of values and applies rules of its own: it describes a failed API call by its status and error code only, never by the rest of the response, and puts no form value or other user-entered text into a report; it replaces quoted text in a message or stack with `[redacted]`; it sends a stack as its frames only, without the lines that repeat the message; and it sends a fixed message with no stack for a JSON parse failure, such as an API response that cannot be read, and for a thrown value that is not an `Error`. The API scrubs again because it does not rely on the client, and its scrubber finds only the shaped values in the table above: a name, a phone number or a postal address written in free text has no such shape, so the API's scrubber cannot find it.
+
+**What is never logged.**
+
+- Nothing in the report reaches the log unscrubbed: the API reads only the seven members of the request contract (`message`, `source`, `route`, `correlationId`, `stack`, `occurredAt` and `appVersion`), writes `occurredAt` as a parsed time, and writes the six text members only after trimming and scrubbing, as the properties above.
+- A member that the contract does not define is ignored and never logged, at any level. The request body as sent and its headers are never logged.
+- The 202 response has no body and echoes nothing back.
+- The report's request line carries the method, the path, the status and the duration, as for every request ([API request log](#api-request-log)).
+
+**Refused reports.** A refused report writes no `client-error.reported` event. A 400 (a member breaks its rule) and a 413 (a body over 8 KB) appear only in the request line, as does a 401; a 403, such as a technician's request, appears as `authz.forbidden`; and a 429 appears as `rate-limit.rejected` with the `Policy` `client-errors`, the `PartitionKind` `user` and the `UserId`. The `client-errors` limit counts 10 reports a minute per user, invalid reports included.
+
+**Finding a browser error by its reference.** The dashboard's error toast shows "Reference" and an id, which is one of two:
+
+- When the error came from a failed API call, the toast shows that call's correlation id at once. In the API log it is the `CorrelationId` of that call's request line and events, and the `ReportedCorrelationId` of the `client-error.reported` event when the dashboard sent a report.
+- Otherwise, the toast shows the report's own `CorrelationId`, and only after the API answered 202, so that event is in the log.
+
+When a report of the second kind is not sent or not accepted (no administrator is signed in, the dashboard's own limit of 10 a minute is reached, or the report fails), the toast shows no reference, so a toast never shows a reference that the log does not hold. A repeat of an error the dashboard has already reported adds no toast and no report.
+
+One search finds either kind, because it matches the id in any property:
+
+```
+grep -h "<reference>" logs/api/*.log
+```
+
+The result holds the `client-error.reported` line when a report was accepted and, for a failed API call, that call's request line and events. To list every report, or the reports of one administrator:
+
+```
+grep -h '"Name":"client-error.reported"' logs/api/*.log
+grep -h '"Name":"client-error.reported"' logs/api/*.log | grep '"UserId":"<user id>"'
+```
+
+To find the reports refused by the limit:
+
+```
+grep -h '"Name":"rate-limit.rejected"' logs/api/*.log | grep '"Policy":"client-errors"'
+```
 
 ### Real-time events
 
@@ -326,6 +396,7 @@ How the applications keep to them:
 - The API's request log leaves out the query string, and the framework's own request lines, which contain it, stay below the configured level.
 - The API never logs the message of a request-binding failure, because that message quotes the submitted value.
 - The API's client for the notification service writes no HTTP client log entries, so the `webhook-signature` header is never logged, whatever the level. The `job-event.*` events carry ids only, and `auth.socket-ticket.issued` carries the ticket's id, never the ticket.
+- The API writes a browser error report as `client-error.reported` only after trimming and scrubbing each of its text members: token-shaped values, webhook secrets and email addresses become `[redacted]`, and query strings `?[redacted]`. A member outside the request contract, the body as sent and its headers are never logged. The web dashboard writes no logs of its own, never sends form values, and strips the same kinds of values before it sends a report ([Client error reports](#client-error-reports)).
 - The notification service's logger replaces the `authorization`, `cookie` and `webhook-signature` headers, the socket handshake's `auth` object, and any `auth`, `ticket`, `token`, `password`, `secret`, `signature`, `webhookSecrets` or `socketTicketKey` member, at the top level of a line or one level down, with `[redacted]`.
 - The notification service writes an Error with `type`, `message`, `stack` and a string or number `code` only, so properties attached to an error never reach a log, and writes a failure value that is not an Error as `errType` only ([Service events](#service-events)).
 - The notification service's job-event and socket lines carry ids and reason codes only. The event body, the signature, the ticket and a refused origin are never logged, and a ticket verification error, whose details can quote the ticket's claims, becomes a reason code instead of a logged error.
@@ -340,6 +411,8 @@ How the applications keep to them:
 | One request across the services | `grep -r "<correlation id>" logs/` |
 | One job change across the services | `grep -h '"Name":"job-event.dispatched"' logs/api/*.log` for the ids, then `grep -h "<correlation id>" logs/api/*.log logs/notifications/*.log` ([Following one job change across the services](#following-one-job-change-across-the-services)) |
 | Job events the API could not deliver | `grep -h '"Name":"job-event.dispatch-failed"' logs/api/*.log` |
+| Errors the web dashboard reported | `grep -h '"Name":"client-error.reported"' logs/api/*.log` |
+| One dashboard error by its toast reference | `grep -h "<reference>" logs/api/*.log` ([Client error reports](#client-error-reports)) |
 | Events and sockets the notification service refused | `grep -h -E '"msg":"(job-event\|socket)\.rejected"' logs/notifications/*.log` |
 | Change the API level without editing files | `Serilog__MinimumLevel__Default=Debug` in the process or Compose environment |
 | Change the notification service's level | `LOG_LEVEL=debug` in its `.env` file or the Compose environment |
