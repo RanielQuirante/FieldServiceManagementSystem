@@ -1,6 +1,8 @@
 import {
   createRouter,
   createWebHistory,
+  isNavigationFailure,
+  START_LOCATION,
   type LocationQueryRaw,
   type RouteLocationNormalized,
   type RouteLocationRaw,
@@ -151,7 +153,10 @@ export function installNavigationGuards(router: Router): void {
     return true
   })
 
-  router.afterEach((to, from) => {
+  router.afterEach((to, from, failure) => {
+    if (isNavigationFailure(failure) || (to.path === from.path && from !== START_LOCATION)) {
+      return
+    }
     if (to.path !== from.path) {
       resetPageTitle()
     }

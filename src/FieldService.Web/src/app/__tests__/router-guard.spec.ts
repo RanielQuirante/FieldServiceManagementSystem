@@ -1,14 +1,25 @@
-import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
-import { createMemoryHistory, parseQuery, type Router } from 'vue-router'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  createMemoryHistory,
+  isNavigationFailure,
+  NavigationFailureType,
+  parseQuery,
+  type Router,
+} from 'vue-router'
 
 import { sessionResponse } from '@/features/auth/__tests__/session-fixtures'
 import { ruleDeclarations } from '@/app/styles/__tests__/stylesheet-source'
 import { demoSummary } from '@/features/dashboard/__tests__/dashboard-fixtures'
+import {
+  completedRooftopJob,
+  rooftopSubmitted,
+} from '@/features/jobs/__tests__/inspection-fixtures'
+import { assignedInProgressJob } from '@/features/jobs/__tests__/job-fixtures'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import { useSessionStore } from '@/features/auth/session-store'
 import { sessionChannelName } from '@/features/auth/session-sync'
-import { json, noContent, problem, stubFetch } from '@/shared/testing/fetch-stub'
+import { json, noContent, problem, stubFetch, type RouteTable } from '@/shared/testing/fetch-stub'
 
 import App from '../App.vue'
 import {
@@ -244,6 +255,136 @@ describe('the navigation guard', () => {
     expect(document.title).toBe('Technicians · FieldService Admin')
 
     await router.push('/')
+    expect(document.title).toBe('Dashboard · FieldService Admin')
+  })
+})
+
+const rooftopJobId = assignedInProgressJob().id
+
+interface TitledPage {
+  readonly name: string
+  readonly path: string
+  readonly routes: () => RouteTable
+  readonly title: string
+}
+
+const titledPages: readonly TitledPage[] = [
+  {
+    name: 'job page',
+    path: `/jobs/${rooftopJobId}`,
+    routes: () => ({ [`GET /api/jobs/${rooftopJobId}`]: json(assignedInProgressJob()) }),
+    title: 'JOB-1042 · FieldService Admin',
+  },
+  {
+    name: 'inspection report',
+    path: `/jobs/${rooftopJobId}/inspection`,
+    routes: () => ({
+      [`GET /api/jobs/${rooftopJobId}`]: json(completedRooftopJob()),
+      [`GET /api/jobs/${rooftopJobId}/inspection`]: json(rooftopSubmitted()),
+    }),
+    title: 'JOB-1042 inspection report · FieldService Admin',
+  },
+]
+
+function settledNavigation(router: Router): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = router.afterEach(() => {
+      stop()
+      resolve()
+    })
+  })
+}
+
+type SamePathNavigation = (router: Router, path: string) => Promise<unknown>
+
+const samePathNavigations: readonly (readonly [string, SamePathNavigation])[] = [
+  ['to the same address', (router, path) => router.push(path)],
+  ['that only adds a fragment', (router, path) => router.push(`${path}#history`)],
+  [
+    'back from a fragment to the same address',
+    async (router, path) => {
+      await router.push(`${path}#history`)
+      const settled = settledNavigation(router)
+      router.back()
+      await settled
+    },
+  ],
+]
+
+describe('the document title of a page that names itself', () => {
+  let mounted: VueWrapper | null = null
+
+  afterEach(() => {
+    mounted?.unmount()
+    mounted = null
+  })
+
+  async function openPage(page: TitledPage): Promise<Router> {
+    stubFetch({
+      [refreshRoute]: json(sessionResponse()),
+      'GET /api/technicians': json({ items: [] }),
+      ...page.routes(),
+    })
+    const router = guardedRouter()
+    await router.push(page.path)
+    mounted = mount(App, { global: { plugins: [router] }, attachTo: document.body })
+    await flushPromises()
+    return router
+  }
+
+  function currentCrumb(): string | undefined {
+    return mounted?.find('nav[aria-label="Breadcrumb"] [aria-current="page"]').text()
+  }
+
+  describe.each(titledPages)('on the $name', (page) => {
+    it.each(samePathNavigations)(
+      'keeps the job number after a navigation %s',
+      async (_, navigate) => {
+        const router = await openPage(page)
+        expect(document.title).toBe(page.title)
+
+        await navigate(router, page.path)
+        await flushPromises()
+
+        expect(router.currentRoute.value.path).toBe(page.path)
+        expect(document.title).toBe(page.title)
+        expect(currentCrumb()).toBe('JOB-1042')
+      },
+    )
+
+    it('names the next page after a navigation to another path', async () => {
+      const router = await openPage(page)
+
+      await router.push('/technicians')
+      await flushPromises()
+
+      expect(router.currentRoute.value.name).toBe('technicians')
+      expect(document.title).toBe('Technicians · FieldService Admin')
+      expect(currentCrumb()).toBe('Technicians')
+    })
+
+    it('keeps the job number when a guard stops the navigation to another path', async () => {
+      const router = await openPage(page)
+      router.beforeEach((to) => to.name !== 'technicians')
+
+      const failure = await router.push('/technicians')
+      await flushPromises()
+
+      expect(isNavigationFailure(failure, NavigationFailureType.aborted)).toBe(true)
+      expect(router.currentRoute.value.path).toBe(page.path)
+      expect(document.title).toBe(page.title)
+      expect(currentCrumb()).toBe('JOB-1042')
+    })
+  })
+
+  it('names the page of the first navigation, the root address included', async () => {
+    stubFetch({ [refreshRoute]: json(sessionResponse()) })
+    document.title = 'Technicians · FieldService Admin'
+    const router = guardedRouter()
+
+    await router.push('/')
+
+    expect(router.currentRoute.value.path).toBe('/')
     expect(document.title).toBe('Dashboard · FieldService Admin')
   })
 })
