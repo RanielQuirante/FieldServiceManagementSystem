@@ -27,7 +27,7 @@
                 <DataTrigger TargetType="Button" Binding="{Binding ShowsDisabledLook}" Value="True">
                     <Setter Property="Background" Value="{StaticResource FsDisabledFillBrush}" />
                     <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
-                    <Setter Property="Shadow" Value="{x:Null}" />
+                    <Setter Property="Shadow" Value="{StaticResource FsShadowNone}" />
                 </DataTrigger>
             </Button.Triggers>
             <VisualStateManager.VisualStateGroups>

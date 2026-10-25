@@ -131,7 +131,7 @@
                             <Setter Property="Background" Value="{StaticResource FsDisabledFillBrush}" />
                             <Setter Property="TextColor" Value="{StaticResource FsDisabledText}" />
                             <Setter Property="BorderWidth" Value="0" />
-                            <Setter Property="Shadow" Value="{x:Null}" />
+                            <Setter Property="Shadow" Value="{StaticResource FsShadowNone}" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
@@ -261,7 +261,7 @@
                         <VisualState.Setters>
                             <Setter Property="Background" Value="{StaticResource FsDisabledFillBrush}" />
                             <Setter Property="BorderWidth" Value="0" />
-                            <Setter Property="Shadow" Value="{x:Null}" />
+                            <Setter Property="Shadow" Value="{StaticResource FsShadowNone}" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>

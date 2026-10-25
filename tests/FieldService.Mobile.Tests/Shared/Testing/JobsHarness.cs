@@ -8,6 +8,7 @@ using Microsoft.Extensions.Time.Testing;
 using Microsoft.Maui.Accessibility;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.ApplicationModel.Communication;
+using Microsoft.Maui.Devices;
 using Microsoft.Maui.Devices.Sensors;
 using Microsoft.Maui.Networking;
 using NSubstitute;
@@ -23,7 +24,8 @@ public sealed class JobsHarness
         bool dialerSupported = true,
         bool twoPane = false,
         ISessionService? session = null,
-        INavigator? navigator = null)
+        INavigator? navigator = null,
+        DevicePlatform? platform = null)
     {
         Stub = stub;
         Clock = new FakeTimeProvider(JobDtoBuilder.Now);
@@ -38,6 +40,8 @@ public sealed class JobsHarness
         Map.TryOpenAsync(Arg.Any<Placemark>(), Arg.Any<MapLaunchOptions>()).Returns(true);
         Dialer = Substitute.For<IPhoneDialer>();
         Dialer.IsSupported.Returns(dialerSupported);
+        Device = Substitute.For<IDeviceInfo>();
+        Device.Platform.Returns(platform ?? DevicePlatform.Android);
         Launcher = Substitute.For<ILauncher>();
         ScreenReader = Substitute.For<ISemanticScreenReader>();
         Layout = Substitute.For<IWindowLayout>();
@@ -77,6 +81,8 @@ public sealed class JobsHarness
 
     public IPhoneDialer Dialer { get; }
 
+    public IDeviceInfo Device { get; }
+
     public ILauncher Launcher { get; }
 
     public ISemanticScreenReader ScreenReader { get; }
@@ -86,7 +92,7 @@ public sealed class JobsHarness
     public JobsApiClient Jobs { get; }
 
     public JobDetailsViewModel CreateDetails() =>
-        new(Jobs, Store, Session, Map, Dialer, Launcher, Navigator, ScreenReader, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
+        new(Jobs, Store, Session, Map, Dialer, Device, Launcher, Navigator, ScreenReader, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
 
     public MyJobsViewModel CreateMyJobs() =>
         new(Jobs, Session, Navigator, Startup, Layout, CreateDetails, ScreenReader, Network, Clock, Logs.CreateLogger<MyJobsViewModel>());

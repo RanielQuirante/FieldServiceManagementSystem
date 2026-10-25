@@ -39,6 +39,17 @@ public partial class InfoRow : ContentView
 
     public static readonly BindableProperty RowDescriptionProperty = BindableProperty.Create(nameof(RowDescription), typeof(string), typeof(InfoRow), string.Empty);
 
+    public static readonly BindableProperty SelectsTextProperty = BindableProperty.Create(
+        nameof(SelectsText),
+        typeof(bool),
+        typeof(InfoRow),
+        false,
+        propertyChanged: (bindable, _, _) => ((InfoRow)bindable).UpdateText());
+
+    public static readonly BindableProperty SelectsValueProperty = BindableProperty.Create(nameof(SelectsValue), typeof(bool), typeof(InfoRow), false);
+
+    public static readonly BindableProperty SelectsSecondaryValueProperty = BindableProperty.Create(nameof(SelectsSecondaryValue), typeof(bool), typeof(InfoRow), false);
+
     public InfoRow()
     {
         InitializeComponent();
@@ -110,6 +121,27 @@ public partial class InfoRow : ContentView
         private set => SetValue(RowDescriptionProperty, value);
     }
 
+    public bool SelectsText
+    {
+        get => (bool)GetValue(SelectsTextProperty);
+        set => SetValue(SelectsTextProperty, value);
+    }
+
+    public bool SelectsValue
+    {
+        get => (bool)GetValue(SelectsValueProperty);
+        private set => SetValue(SelectsValueProperty, value);
+    }
+
+    public bool SelectsSecondaryValue
+    {
+        get => (bool)GetValue(SelectsSecondaryValueProperty);
+        private set => SetValue(SelectsSecondaryValueProperty, value);
+    }
+
+    public static (bool Value, bool SecondaryValue) SelectionFor(bool selectsText, bool hasSecondaryValue) =>
+        (selectsText && !hasSecondaryValue, selectsText && hasSecondaryValue);
+
     public static string Describe(string? label, string? value, string? secondaryValue) =>
         string.Join(", ", new[] { label, value, secondaryValue }.Where(part => !string.IsNullOrWhiteSpace(part)))
             .Replace(DisplayFormats.ZeroWidthSpace, string.Empty, StringComparison.Ordinal);
@@ -118,5 +150,6 @@ public partial class InfoRow : ContentView
     {
         HasSecondaryValue = !string.IsNullOrWhiteSpace(SecondaryValue);
         RowDescription = Describe(Label, Value, SecondaryValue);
+        (SelectsValue, SelectsSecondaryValue) = SelectionFor(SelectsText, HasSecondaryValue);
     }
 }

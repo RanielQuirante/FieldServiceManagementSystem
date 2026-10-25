@@ -29,10 +29,12 @@
                        AutomationProperties.IsInAccessibleTree="False" />
                 <Label Text="{Binding Value}"
                        Style="{StaticResource FsTextInfoValue}"
+                       controls:TextSelection.IsEnabled="{Binding SelectsValue}"
                        AutomationProperties.IsInAccessibleTree="False" />
                 <Label Text="{Binding SecondaryValue}"
                        IsVisible="{Binding HasSecondaryValue}"
                        Style="{StaticResource FsTextInfoSecondary}"
+                       controls:TextSelection.IsEnabled="{Binding SelectsSecondaryValue}"
                        AutomationProperties.IsInAccessibleTree="False" />
             </VerticalStackLayout>
             <Grid Grid.Column="2"

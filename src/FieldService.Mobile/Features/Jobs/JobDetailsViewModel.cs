@@ -32,6 +32,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     private readonly ISessionService _session;
     private readonly IMap _map;
     private readonly IPhoneDialer _phoneDialer;
+    private readonly IDeviceInfo _deviceInfo;
     private readonly ILauncher _launcher;
     private readonly INavigator _navigator;
     private readonly ISemanticScreenReader _screenReader;
@@ -50,6 +51,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         ISessionService session,
         IMap map,
         IPhoneDialer phoneDialer,
+        IDeviceInfo deviceInfo,
         ILauncher launcher,
         INavigator navigator,
         ISemanticScreenReader screenReader,
@@ -63,6 +65,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         _session = session;
         _map = map;
         _phoneDialer = phoneDialer;
+        _deviceInfo = deviceInfo;
         _launcher = launcher;
         _navigator = navigator;
         _screenReader = screenReader;
@@ -95,6 +98,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         nameof(ContactSecondary),
         nameof(HasContact),
         nameof(HasContactSecondary),
+        nameof(HasContactPhone),
         nameof(ContactDescription),
         nameof(ScheduledText),
         nameof(ShowsScheduledRow),
@@ -252,7 +256,9 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     public bool ShowsUpdateStatusSecondary => ShowsUpdateStatus && ShowsInspectionAction;
 
-    public bool CanCall => _phoneDialer.IsSupported && ContactPhone is not null;
+    public bool CanCall => _deviceInfo.Platform != DevicePlatform.WinUI && _phoneDialer.IsSupported && ContactPhone is not null;
+
+    public bool HasContactPhone => ContactPhone is not null;
 
     public bool ShowsRowCall => ShowsRowActions && CanCall;
 

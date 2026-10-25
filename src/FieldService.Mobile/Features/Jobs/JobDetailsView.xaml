@@ -263,6 +263,7 @@
                                                   Label="Contact"
                                                   Value="{Binding ContactValue}"
                                                   SecondaryValue="{Binding ContactSecondary}"
+                                                  SelectsText="{Binding HasContactPhone}"
                                                   IsVisible="{Binding HasContact}"
                                                   ShowsAction="{Binding ShowsRowCall}"
                                                   ActionIconData="{StaticResource FsIconPhone}"
