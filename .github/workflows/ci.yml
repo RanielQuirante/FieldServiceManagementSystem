@@ -265,6 +265,101 @@ jobs:
       - name: Check tracked files and scan their content for secrets
         run: node infrastructure/scripts/check-tracked-files.mjs
 
+  e2e:
+    needs:
+      - api
+      - notifications
+      - web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      E2E_BASE_URL: http://127.0.0.1:8081
+      E2E_LOGS_DIR: ../../logs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: src/FieldService.Web/package-lock.json
+      - name: Create throwaway environment values
+        run: node infrastructure/scripts/create-dev-env.mjs --ci
+      - name: Give the log folders to the container users
+        run: |
+          mkdir -p logs/api logs/notifications
+          chmod 0755 logs/api logs/notifications
+          sudo chown 1654:1654 logs/api
+          sudo chown 1000:1000 logs/notifications
+          stat -c '%u:%g %a %n' logs/api logs/notifications
+      - name: Show the Docker and Compose versions
+        run: |
+          docker version
+          docker compose version
+      - name: Build and start the full stack
+        run: docker compose -f infrastructure/docker-compose.yml --profile full up -d --build --wait --wait-timeout 300
+      - name: Wait for API readiness
+        run: curl --fail --silent --show-error --connect-timeout 2 --max-time 5 --retry 60 --retry-delay 2 --retry-max-time 150 --retry-all-errors http://127.0.0.1:5080/health/ready
+      - name: Install web dependencies
+        working-directory: src/FieldService.Web
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures
+        working-directory: src/FieldService.Web
+        run: npm audit signatures
+      - name: Install Chromium
+        working-directory: src/FieldService.Web
+        run: npx playwright install --with-deps chromium
+      - name: Run end-to-end tests
+        working-directory: src/FieldService.Web
+        run: npm run test:e2e
+      - name: List quarantined end-to-end tests
+        id: e2e-quarantine-list
+        working-directory: src/FieldService.Web
+        run: |
+          listing=$(npx playwright test --project=compose --list --grep @quarantine --pass-with-no-tests --reporter=list)
+          printf '%s\n' "$listing"
+          count=$(printf '%s\n' "$listing" | sed -n -E 's/^Total: ([0-9]+) tests? in [0-9]+ files?$/\1/p')
+          if ! [[ "$count" =~ ^[0-9]+$ ]]; then
+            echo "The quarantine listing printed no test count" >&2
+            exit 1
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "No test is tagged @quarantine, so the quarantine run is skipped"
+          fi
+      - name: Run quarantined end-to-end tests
+        id: e2e-quarantine
+        if: steps.e2e-quarantine-list.outputs.count != '0'
+        working-directory: src/FieldService.Web
+        continue-on-error: true
+        run: npx playwright test --project=compose --grep @quarantine --pass-with-no-tests
+      - name: Show the container states and recent logs
+        if: failure()
+        run: |
+          docker compose -f infrastructure/docker-compose.yml --profile full ps --all
+          docker compose -f infrastructure/docker-compose.yml logs --no-color db
+          docker compose -f infrastructure/docker-compose.yml --profile full logs --no-color --tail 100 migrate api notifications web
+      - name: Collect container logs
+        if: failure() || steps.e2e-quarantine.outcome == 'failure'
+        run: docker compose -f infrastructure/docker-compose.yml --profile full logs --no-color migrate api notifications web > compose.log
+      - name: Upload diagnostics
+        if: failure() || steps.e2e-quarantine.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-diagnostics
+          path: |
+            src/FieldService.Web/playwright-report
+            src/FieldService.Web/test-results
+            !src/FieldService.Web/test-results/sentinels/**
+            logs
+            compose.log
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f infrastructure/docker-compose.yml --profile full down -v
+
   ci-passed:
     if: always()
     needs:
@@ -274,6 +369,7 @@ jobs:
       - mobile-android
       - mobile-windows
       - hygiene
+      - e2e
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
