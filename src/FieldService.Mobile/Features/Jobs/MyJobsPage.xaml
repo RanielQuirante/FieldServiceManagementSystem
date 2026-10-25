@@ -31,6 +31,7 @@
                                                 Title="{x:Static jobs:MyJobsViewModel.PageTitle}"
                                                 AvatarText="{Binding Initials}"
                                                 AvatarCommand="{Binding OpenAccountSheetCommand}"
+                                                AvatarFocusRequest="{Binding AccountFocusRequest}"
                                                 SyncText="{Binding SyncText}"
                                                 SyncIndicator="{Binding SyncIndicator}"
                                                 RefreshCommand="{Binding RefreshCommand}">
@@ -101,7 +102,8 @@
                             <Label Text="{Binding Heading}"
                                    Style="{StaticResource FsTextEyebrow}"
                                    Padding="16,22,16,6"
-                                   SemanticProperties.HeadingLevel="Level2" />
+                                   SemanticProperties.HeadingLevel="Level2"
+                                   controls:ListSemantics.IsOwnStop="True" />
                         </DataTemplate>
                     </CollectionView.GroupHeaderTemplate>
                     <CollectionView.ItemTemplate>
@@ -152,7 +154,8 @@
                                     Title="FieldService Tech"
                                     UpdatedText="{Binding UpdatedText}"
                                     AvatarText="{Binding Initials}"
-                                    AvatarCommand="{Binding OpenAccountSheetCommand}" />
+                                    AvatarCommand="{Binding OpenAccountSheetCommand}"
+                                    AvatarFocusRequest="{Binding AccountFocusRequest}" />
                 <Grid Grid.Row="1"
                       ColumnDefinitions="400,*"
                       ColumnSpacing="{StaticResource FsSpace24}"
@@ -243,7 +246,8 @@
                                     <Label Text="{Binding Heading}"
                                            Style="{StaticResource FsTextEyebrow}"
                                            Padding="0,16,0,6"
-                                           SemanticProperties.HeadingLevel="Level2" />
+                                           SemanticProperties.HeadingLevel="Level2"
+                                           controls:ListSemantics.IsOwnStop="True" />
                                 </DataTemplate>
                             </CollectionView.GroupHeaderTemplate>
                             <CollectionView.ItemTemplate>

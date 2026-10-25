@@ -67,12 +67,15 @@
                         <VerticalStackLayout Spacing="{StaticResource FsSpace4}"
                                              VerticalOptions="Center">
                             <Label Text="{Binding Eyebrow}"
-                                   Style="{StaticResource FsTextEyebrowOnDark}" />
+                                   Style="{StaticResource FsTextEyebrowOnDark}"
+                                   controls:ListSemantics.IsOwnStop="True" />
                             <Label Text="{Binding Title}"
                                    Style="{StaticResource FsTextScreenTitle}"
-                                   SemanticProperties.HeadingLevel="Level1" />
+                                   SemanticProperties.HeadingLevel="Level1"
+                                   controls:ListSemantics.IsOwnStop="True" />
                         </VerticalStackLayout>
-                        <Button Grid.Column="1"
+                        <Button x:Name="ListAvatarButton"
+                                Grid.Column="1"
                                 Style="{StaticResource FsIconButtonOnDark}"
                                 Text="{Binding AvatarText}"
                                 Command="{Binding AvatarCommand}"
@@ -102,7 +105,8 @@
                             <Label Grid.Column="1"
                                    Text="{Binding SyncText}"
                                    IsVisible="{Binding HasSyncText}"
-                                   Style="{StaticResource FsTextSyncOnDark}" />
+                                   Style="{StaticResource FsTextSyncOnDark}"
+                                   controls:ListSemantics.IsOwnStop="True" />
                         </Grid>
                         <Grid Grid.Column="1"
                               VerticalOptions="Center">
@@ -282,7 +286,8 @@
                                    TextColor="{StaticResource FsOnDark}" />
                         </HorizontalStackLayout>
                     </Border>
-                    <Button Grid.Column="3"
+                    <Button x:Name="TopBarAvatarButton"
+                            Grid.Column="3"
                             Style="{StaticResource FsIconButtonOnDark}"
                             Text="{Binding AvatarText}"
                             Command="{Binding AvatarCommand}"

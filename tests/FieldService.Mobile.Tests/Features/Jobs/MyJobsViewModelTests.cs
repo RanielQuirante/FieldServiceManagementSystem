@@ -369,9 +369,33 @@ public sealed class MyJobsViewModelTests
 
         await harness.Session.Received(1).SignOutAsync(Arg.Any<CancellationToken>());
         Assert.False(viewModel.IsAccountSheetOpen);
+        Assert.Equal(0, viewModel.AccountFocusRequest);
         Assert.Empty(viewModel.Groups);
         Assert.Null(viewModel.ActiveCount);
         Assert.False(viewModel.IsSigningOut);
+    }
+
+    [Fact]
+    public void CancelTheOverlayAndBackCloseTheAccountSheetAndReturnFocusToTheAccountButton()
+    {
+        var harness = new JobsHarness(StubHttpMessageHandler.Sequence());
+        var viewModel = harness.CreateMyJobs();
+
+        viewModel.OpenAccountSheetCommand.Execute(null);
+        viewModel.CloseAccountSheetCommand.Execute(null);
+
+        Assert.False(viewModel.IsAccountSheetOpen);
+        Assert.Equal(1, viewModel.AccountFocusRequest);
+        viewModel.CloseAccountSheetCommand.Execute(null);
+        Assert.Equal(1, viewModel.AccountFocusRequest);
+
+        viewModel.OpenAccountSheetCommand.Execute(null);
+        Assert.True(viewModel.CloseSheet());
+
+        Assert.False(viewModel.IsAccountSheetOpen);
+        Assert.Equal(2, viewModel.AccountFocusRequest);
+        Assert.False(viewModel.CloseSheet());
+        Assert.Equal(2, viewModel.AccountFocusRequest);
     }
 
     [Fact]

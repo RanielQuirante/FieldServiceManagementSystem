@@ -53,6 +53,7 @@ public static class AndroidPlatformSetup
             handlers.AddHandler<OptionRow, OptionRowHandler>();
             handlers.AddHandler<CheckboxRow, CheckboxRowHandler>();
             handlers.AddHandler<Label, WrapSafeLabelHandler>();
+            handlers.AddHandler<Icon, IconHandler>();
         });
         ContentViewHandler.Mapper.AppendToMapping(SystemBarInsetsMappingKey, (handler, view) =>
         {
@@ -68,6 +69,22 @@ public static class AndroidPlatformSetup
                 ApplySoftInputMode(handler.PlatformView, sheet.IsOpen);
             }
         });
+        ViewHandler.ViewMapper.AppendToMapping(AutomationProperties.ExcludedWithChildrenProperty.PropertyName, (handler, view) =>
+        {
+            if (view is BindableObject element && handler.PlatformView is Android.Views.View platformView)
+            {
+                RestoreAccessibilityImportance(platformView, element);
+            }
+        });
+        ViewHandler.ViewMapper.AppendToMapping(ListSemantics.IsOwnStopProperty.PropertyName, (handler, view) =>
+        {
+            if (view is BindableObject element && element.IsSet(ListSemantics.IsOwnStopProperty) && handler.PlatformView is Android.Views.View platformView && OperatingSystem.IsAndroidVersionAtLeast(28))
+            {
+                platformView.ScreenReaderFocusable = ListSemantics.GetIsOwnStop(element);
+            }
+        });
+        EntryHandler.CommandMapper.AppendToMapping(FormField.EndInputCommand, (handler, _, _) => EndInputSession(handler.PlatformView));
+        EditorHandler.CommandMapper.AppendToMapping(FormField.EndInputCommand, (handler, _, _) => EndInputSession(handler.PlatformView));
         LayoutHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => KeepEffectsUnclipped(handler.PlatformView));
         BorderHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => KeepEffectsUnclipped(handler.PlatformView));
         ContentViewHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => KeepEffectsUnclipped(handler.PlatformView));
@@ -125,6 +142,34 @@ public static class AndroidPlatformSetup
         {
             WindowCompat.GetInsetsController(window, decor)?.Hide(WindowInsetsCompat.Type.Ime());
         }
+    }
+
+    private static void RestoreAccessibilityImportance(Android.Views.View platformView, BindableObject element)
+    {
+        if (AccessibilityExclusion.RestoresImportance(element) && platformView.ImportantForAccessibility == Android.Views.ImportantForAccessibility.NoHideDescendants)
+        {
+            platformView.ImportantForAccessibility = Android.Views.ImportantForAccessibility.Auto;
+        }
+    }
+
+    private static void EndInputSession(Android.Widget.EditText field)
+    {
+        if (field.Parent is not Android.Views.ViewGroup holder
+            || field.Context?.GetSystemService(Android.Content.Context.InputMethodService) is not Android.Views.InputMethods.InputMethodManager input
+            || !input.InvokeIsActive(field))
+        {
+            return;
+        }
+
+        var descendants = holder.DescendantFocusability;
+        var focusable = holder.Focusable;
+        var focusableInTouchMode = holder.FocusableInTouchMode;
+        holder.DescendantFocusability = Android.Views.DescendantFocusability.BeforeDescendants;
+        holder.FocusableInTouchMode = true;
+        holder.RequestFocus();
+        holder.FocusableInTouchMode = focusableInTouchMode;
+        holder.Focusable = focusable;
+        holder.DescendantFocusability = descendants;
     }
 
     private static void RemoveFieldChrome(Android.Widget.EditText platformView)

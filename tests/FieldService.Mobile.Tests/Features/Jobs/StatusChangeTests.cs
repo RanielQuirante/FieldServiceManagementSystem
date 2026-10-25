@@ -440,6 +440,30 @@ public sealed class StatusChangeTests
         Assert.Single(harness.Stub.Requests, request => request.Method == HttpMethod.Put);
     }
 
+    [Theory]
+    [InlineData("cancel")]
+    [InlineData("back")]
+    public async Task ClosingTheSheetWithoutAChangeReturnsFocusToUpdateStatus(string path)
+    {
+        var (viewModel, _, _) = await OpenAsync(JobDtoBuilder.Details1042());
+        viewModel.OpenStatusSheetCommand.Execute(null);
+        Assert.Equal(0, viewModel.UpdateStatusFocusRequest);
+
+        if (path == "cancel")
+        {
+            viewModel.CloseStatusSheetCommand.Execute(null);
+        }
+        else
+        {
+            Assert.True(viewModel.CloseSheet());
+        }
+
+        Assert.False(viewModel.IsStatusSheetOpen);
+        Assert.Equal(1, viewModel.UpdateStatusFocusRequest);
+        Assert.False(viewModel.CloseSheet());
+        Assert.Equal(1, viewModel.UpdateStatusFocusRequest);
+    }
+
     [Fact]
     public async Task CancelTheOverlayAndBackCloseTheSheetAndKeepTheDraft()
     {
@@ -539,6 +563,7 @@ public sealed class StatusChangeTests
         viewModel.SelectStatusOptionCommand.Execute(hold);
         await viewModel.ConfirmStatusCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsStatusSheetOpen);
+        Assert.Equal(0, viewModel.UpdateStatusFocusRequest);
         Assert.Same(resume, viewModel.SelectedStatusOption);
         Assert.True(resume.IsSelected);
         Assert.False(hold.IsSelected);

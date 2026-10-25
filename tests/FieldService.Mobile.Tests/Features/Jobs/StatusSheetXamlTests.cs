@@ -435,11 +435,15 @@ public sealed class StatusSheetXamlTests
 
         public int Releases { get; private set; }
 
+        public int Ends { get; private set; }
+
         public void ReleaseInput()
         {
             Releases++;
             HoldsInput = false;
         }
+
+        public void EndInput() => Ends++;
     }
 
     private static string? Metric(IEnumerable<XElement> metrics, string key) =>

@@ -136,6 +136,6 @@ public static class ScrollRequests
             return;
         }
 
-        element.Dispatcher.Dispatch(() => element.SetSemanticFocus());
+        element.Dispatcher.Dispatch(() => FocusMoves.MoveTo(element));
     }
 }

@@ -11,6 +11,7 @@ public partial class FormField : ContentView, IReleasesInput
 
     private IKeepInViewHost? _viewHost;
 
+    public const string EndInputCommand = "FsEndInput";
     public const string NoCharactersLeft = "No characters left";
     public const string OptionalMarker = " Optional";
     public const string ReadingFontFamily = "GeistMonoMedium";
@@ -450,6 +451,14 @@ public partial class FormField : ContentView, IReleasesInput
                 _ = field.HideSoftInputAsync(CancellationToken.None);
                 field.Unfocus();
             }
+        }
+    }
+
+    public void EndInput()
+    {
+        foreach (var field in new InputView?[] { Input, Area })
+        {
+            field?.Handler?.Invoke(EndInputCommand);
         }
     }
 

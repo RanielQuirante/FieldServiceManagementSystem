@@ -134,6 +134,13 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         0,
         propertyChanged: (bindable, oldValue, newValue) => ((AppHeader)bindable).OnSummaryFocusRequested((int)oldValue, (int)newValue));
 
+    public static readonly BindableProperty AvatarFocusRequestProperty = BindableProperty.Create(
+        nameof(AvatarFocusRequest),
+        typeof(int),
+        typeof(AppHeader),
+        0,
+        propertyChanged: (bindable, oldValue, newValue) => ((AppHeader)bindable).OnAvatarFocusRequested((int)oldValue, (int)newValue));
+
     public static readonly BindableProperty UpdatedTextProperty = BindableProperty.Create(
         nameof(UpdatedText),
         typeof(string),
@@ -425,6 +432,12 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         private set => SetValue(HasStatusDescriptionProperty, value);
     }
 
+    public int AvatarFocusRequest
+    {
+        get => (int)GetValue(AvatarFocusRequestProperty);
+        set => SetValue(AvatarFocusRequestProperty, value);
+    }
+
     public int SummaryFocusRequest
     {
         get => (int)GetValue(SummaryFocusRequestProperty);
@@ -559,6 +572,20 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         if (requested != previous && requested != 0 && SummaryTitleLabel?.Handler is not null)
         {
             Dispatcher.Dispatch(() => SummaryTitleLabel.SetSemanticFocus());
+        }
+    }
+
+    private void OnAvatarFocusRequested(int previous, int requested)
+    {
+        if (requested == previous || requested == 0)
+        {
+            return;
+        }
+
+        var avatar = IsDesktopTopBar ? TopBarAvatarButton : ListAvatarButton;
+        if (avatar?.Handler is not null)
+        {
+            Dispatcher.Dispatch(() => FocusMoves.MoveTo(avatar));
         }
     }
 

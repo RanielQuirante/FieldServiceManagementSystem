@@ -14,9 +14,11 @@
             <VerticalStackLayout Spacing="{StaticResource FsSpace6}">
                 <Label Text="{Binding Title}"
                        Style="{StaticResource FsTextLargeHeading}"
-                       SemanticProperties.HeadingLevel="Level2" />
+                       SemanticProperties.HeadingLevel="Level2"
+                       controls:ListSemantics.IsOwnStop="True" />
                 <Label Text="{Binding Message}"
-                       Style="{StaticResource FsTextBodySecondary}" />
+                       Style="{StaticResource FsTextBodySecondary}"
+                       controls:ListSemantics.IsOwnStop="True" />
             </VerticalStackLayout>
             <Grid IsVisible="{Binding HasAction}"
                   HorizontalOptions="Start">

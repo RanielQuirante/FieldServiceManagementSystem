@@ -365,10 +365,15 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
         ArgumentNullException.ThrowIfNull(descendants);
 
         var released = 0;
-        foreach (var input in descendants.OfType<IReleasesInput>().Where(input => input.HoldsInput).ToList())
+        foreach (var input in descendants.OfType<IReleasesInput>().ToList())
         {
-            input.ReleaseInput();
-            released++;
+            if (input.HoldsInput)
+            {
+                input.ReleaseInput();
+                released++;
+            }
+
+            input.EndInput();
         }
 
         return released;

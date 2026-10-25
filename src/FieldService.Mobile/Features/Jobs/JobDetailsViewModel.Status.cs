@@ -277,12 +277,13 @@ public sealed partial class JobDetailsViewModel
     [RelayCommand]
     private void CloseStatusSheet()
     {
-        if (IsUpdatingStatus)
+        if (IsUpdatingStatus || !IsStatusSheetOpen)
         {
             return;
         }
 
         IsStatusSheetOpen = false;
+        UpdateStatusFocusRequest++;
     }
 
     private bool CanConfirmStatus() => SelectedStatusOption is not null;

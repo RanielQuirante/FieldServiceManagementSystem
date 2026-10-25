@@ -132,7 +132,8 @@
                                 <Grid IsVisible="{Binding ShowsUpdateStatusSecondary}">
                                     <Button Style="{StaticResource FsSecondaryOnDarkDesktopButton}"
                                             Command="{Binding OpenStatusSheetCommand}"
-                                            SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}" />
+                                            SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
+                                            controls:ScrollRequests.SemanticFocus="{Binding UpdateStatusFocusRequest}" />
                                     <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
                                                            Padding="{StaticResource FsPaddingDesktopButton}"
                                                            HorizontalOptions="Center"
@@ -150,7 +151,8 @@
                                 <Grid IsVisible="{Binding ShowsUpdateStatusPrimary}">
                                     <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
                                             Command="{Binding OpenStatusSheetCommand}"
-                                            SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}" />
+                                            SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
+                                            controls:ScrollRequests.SemanticFocus="{Binding UpdateStatusFocusRequest}" />
                                     <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
                                                            Padding="{StaticResource FsPaddingDesktopButton}"
                                                            HorizontalOptions="Center"
@@ -317,6 +319,7 @@
                                       ScrollSource="{x:Reference DetailsScroll}" />
         <controls:SystemBarSpacer Grid.Row="1" />
         <controls:ActionDock Grid.Row="1"
+                             SafeAreaEdges="None,None,None,SoftInput"
                              IsVisible="{Binding ShowsDock}"
                              HelperText="{Binding DockHelper}"
                              AutomationProperties.ExcludedWithChildren="{Binding IsStatusSheetOpen}">

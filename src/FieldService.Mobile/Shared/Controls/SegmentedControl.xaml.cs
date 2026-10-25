@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using System.Windows.Input;
 
 namespace FieldService.Mobile.Shared.Controls;
 
 public partial class SegmentedControl : ContentView
 {
+    public static readonly TimeSpan KeepFocusFor = TimeSpan.FromSeconds(10);
+
     public static readonly BindableProperty FirstTextProperty = BindableProperty.Create(nameof(FirstText), typeof(string), typeof(SegmentedControl));
 
     public static readonly BindableProperty FirstCountProperty = BindableProperty.Create(
@@ -55,9 +58,16 @@ public partial class SegmentedControl : ContentView
 
     public static readonly BindableProperty HasSecondCountProperty = BindableProperty.Create(nameof(HasSecondCount), typeof(bool), typeof(SegmentedControl), false);
 
+    private Button? _chosen;
+    private long _chosenAt;
+
     public SegmentedControl()
     {
         InitializeComponent();
+        FirstButton.Clicked += OnSegmentClicked;
+        SecondButton.Clicked += OnSegmentClicked;
+        FirstButton.Loaded += OnSegmentLoaded;
+        SecondButton.Loaded += OnSegmentLoaded;
         Apply();
     }
 
@@ -149,6 +159,33 @@ public partial class SegmentedControl : ContentView
         selected ? CapsuleVariant.Selected : onDark ? CapsuleVariant.OnDark : CapsuleVariant.Default;
 
     public static string FontSizeKey(bool compact) => compact ? "FsFontSizeSegmentCompact" : "FsFontSizeSegment";
+
+    public static bool KeepsFocus(TimeSpan sinceChoice) => sinceChoice >= TimeSpan.Zero && sinceChoice <= KeepFocusFor;
+
+    private Button SelectedButton => IsFirstSelected ? FirstButton : SecondButton;
+
+    private void OnSegmentClicked(object? sender, EventArgs e)
+    {
+        _chosen = sender as Button;
+        _chosenAt = Stopwatch.GetTimestamp();
+        KeepFocusOnChoice();
+    }
+
+    private void OnSegmentLoaded(object? sender, EventArgs e)
+    {
+        if (_chosen is not null && ReferenceEquals(sender, _chosen) && KeepsFocus(Stopwatch.GetElapsedTime(_chosenAt)))
+        {
+            KeepFocusOnChoice();
+        }
+    }
+
+    private void KeepFocusOnChoice()
+    {
+        if (_chosen is { } chosen)
+        {
+            FocusMoves.MoveSoon(chosen, () => ReferenceEquals(chosen, _chosen) && ReferenceEquals(chosen, SelectedButton));
+        }
+    }
 
     private void Apply()
     {

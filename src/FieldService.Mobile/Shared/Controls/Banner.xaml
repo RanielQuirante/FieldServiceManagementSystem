@@ -29,7 +29,8 @@
                 <VerticalStackLayout Grid.Column="1"
                                      Spacing="{StaticResource FsSpace6}"
                                      VerticalOptions="Center"
-                                     SemanticProperties.Description="{Binding SpokenText}">
+                                     SemanticProperties.Description="{Binding SpokenText}"
+                                     controls:ListSemantics.IsOwnStop="True">
                     <Label Style="{StaticResource FsTextBanner}"
                            AutomationProperties.IsInAccessibleTree="False">
                         <Label.FormattedText>

@@ -117,6 +117,9 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     public partial bool IsAccountSheetOpen { get; private set; }
 
     [ObservableProperty]
+    public partial int AccountFocusRequest { get; private set; }
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SignOutCommand))]
     public partial bool IsSigningOut { get; private set; }
 
@@ -209,7 +212,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
             return false;
         }
 
-        IsAccountSheetOpen = false;
+        CloseAccountSheet();
         return true;
     }
 
@@ -413,7 +416,16 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     private void OpenAccountSheet() => IsAccountSheetOpen = true;
 
     [RelayCommand]
-    private void CloseAccountSheet() => IsAccountSheetOpen = false;
+    private void CloseAccountSheet()
+    {
+        if (!IsAccountSheetOpen)
+        {
+            return;
+        }
+
+        IsAccountSheetOpen = false;
+        AccountFocusRequest++;
+    }
 
     private bool CanSignOut() => !IsSigningOut;
 

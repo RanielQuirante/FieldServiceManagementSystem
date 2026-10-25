@@ -144,7 +144,7 @@ public partial class PrimaryButton : ContentView
     {
         if (requested != previous && requested != 0 && CoreButton?.Handler is not null)
         {
-            Dispatcher.Dispatch(() => CoreButton.SetSemanticFocus());
+            Dispatcher.Dispatch(() => FocusMoves.MoveTo(CoreButton));
         }
     }
 
