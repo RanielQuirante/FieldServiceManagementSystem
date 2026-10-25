@@ -283,8 +283,17 @@ public sealed partial class JobDetailsViewModel
         }
 
         IsStatusSheetOpen = false;
-        UpdateStatusFocusRequest++;
+        if (CanUpdateStatus || FocusesDisabledTrigger(_deviceInfo.Platform))
+        {
+            UpdateStatusFocusRequest++;
+        }
+        else
+        {
+            TitleFocusRequest++;
+        }
     }
+
+    public static bool FocusesDisabledTrigger(DevicePlatform platform) => platform != DevicePlatform.WinUI;
 
     private bool CanConfirmStatus() => SelectedStatusOption is not null;
 

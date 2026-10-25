@@ -165,7 +165,8 @@
                         <Label x:Name="SummaryTitleLabel"
                                Text="{Binding SummaryTitle}"
                                Style="{StaticResource FsTextHeroJobTitle}"
-                               SemanticProperties.HeadingLevel="Level2" />
+                               SemanticProperties.HeadingLevel="Level2"
+                               controls:FocusRing.IsOnDark="True" />
                         <VerticalStackLayout IsVisible="{Binding HasSchedule}"
                                              Spacing="{StaticResource FsSpace4}">
                             <Grid ColumnDefinitions="Auto,*"

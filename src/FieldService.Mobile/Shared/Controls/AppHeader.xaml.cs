@@ -571,7 +571,7 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
     {
         if (requested != previous && requested != 0 && SummaryTitleLabel?.Handler is not null)
         {
-            Dispatcher.Dispatch(() => SummaryTitleLabel.SetSemanticFocus());
+            Dispatcher.Dispatch(() => FocusMoves.MoveTo(SummaryTitleLabel));
         }
     }
 

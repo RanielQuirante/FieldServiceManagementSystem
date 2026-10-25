@@ -1,4 +1,5 @@
 using FieldService.Mobile.Shared.Controls;
+using Microsoft.Maui.Controls.Handlers.Items;
 using Microsoft.Maui.Handlers;
 using Microsoft.Maui.Platform;
 using Microsoft.UI.Xaml;
@@ -6,6 +7,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using PlatformBrush = Microsoft.UI.Xaml.Media.SolidColorBrush;
 using PlatformCheckBox = Microsoft.UI.Xaml.Controls.CheckBox;
+using PlatformRect = Windows.Foundation.Rect;
 using PlatformThickness = Microsoft.UI.Xaml.Thickness;
 
 namespace FieldService.Mobile.WinUI;
@@ -15,6 +17,9 @@ public static class WindowsPlatformSetup
     public const string FieldChromeMappingKey = "FsFieldChrome";
     public const string CheckBoxLookMappingKey = "FsCheckBoxLook";
     public const string CheckBoxBoxPartName = "NormalRectangle";
+    public const string FocusRingMappingKey = "FsFocusRing";
+    public const string SheetKeysMappingKey = "FsSheetKeys";
+    public const string ListSemanticsMappingKey = "FsListSemantics";
 
     private const string FocusedBorderThicknessKey = "TextControlBorderThemeThicknessFocused";
 
@@ -29,6 +34,12 @@ public static class WindowsPlatformSetup
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        builder.ConfigureMauiHandlers(handlers =>
+        {
+            handlers.AddHandler<OptionRow, KeyboardRowHandler>();
+            handlers.AddHandler<CheckboxRow, KeyboardRowHandler>();
+            handlers.AddHandler<OptionGroup, OptionGroupHandler>();
+        });
         EntryHandler.Mapper.AppendToMapping(FieldChromeMappingKey, (handler, _) =>
         {
             handler.PlatformView.BorderThickness = new PlatformThickness(0);
@@ -60,6 +71,73 @@ public static class WindowsPlatformSetup
                 handler.PlatformView.IsTextSelectionEnabled = TextSelection.GetIsEnabled(label);
             }
         });
+        foreach (var key in new[] { ListSemantics.IsOwnStopProperty.PropertyName, nameof(ILabel.Text) })
+        {
+            LabelHandler.Mapper.AppendToMapping(key, (handler, view) =>
+            {
+                if (view is Label label && ListSemantics.GetIsOwnStop(label))
+                {
+                    ListItems.AttachGroupHeader(handler.PlatformView, label);
+                }
+            });
+        }
+
+        LabelHandler.CommandMapper.PrependToMapping(nameof(IView.Focus), (handler, view, _) => TextTargets.PrepareForFocus(handler.PlatformView, view as BindableObject));
+        foreach (var key in new[] { FocusRingMappingKey, nameof(VisualElement.Style), FocusRing.IsOnDarkProperty.PropertyName })
+        {
+            ButtonHandler.Mapper.AppendToMapping(key, (handler, view) =>
+            {
+                if (view is Button button)
+                {
+                    FocusVisuals.Apply(handler.PlatformView, FocusRing.KeepNormalLook(button, FocusVisuals.DarkFocus), FocusVisuals.ControlMargin);
+                }
+            });
+        }
+
+        ViewHandler.ViewMapper.AppendToMapping(AutomationProperties.ExcludedWithChildrenProperty.PropertyName, (handler, view) =>
+        {
+            if (view is BindableObject element && handler.PlatformView is FrameworkElement platformView)
+            {
+                CoveredSubtrees.Apply(platformView, AutomationProperties.GetExcludedWithChildren(element) == true);
+            }
+        });
+        ViewHandler.ViewCommandMapper.AppendToMapping(FocusMoves.RevealCommand, (handler, _, _) =>
+        {
+            if (handler.PlatformView is FrameworkElement { ActualWidth: > 0, ActualHeight: > 0 } element)
+            {
+                var clearance = ScrollRequests.RevealClearance;
+                element.StartBringIntoView(new BringIntoViewOptions
+                {
+                    AnimationDesired = false,
+                    TargetRect = new PlatformRect(-clearance, -clearance, element.ActualWidth + (2 * clearance), element.ActualHeight + (2 * clearance)),
+                });
+            }
+        });
+        foreach (var key in new[] { SheetKeysMappingKey, nameof(JobCard.Description), nameof(JobCard.IsCompact), nameof(JobCard.IsLoading) })
+        {
+            ContentViewHandler.Mapper.AppendToMapping(key, (handler, view) =>
+            {
+                if (view is BottomSheet sheet)
+                {
+                    SheetKeys.Attach(handler.PlatformView, sheet);
+                }
+                else if (view is JobCard card)
+                {
+                    ListItems.AttachCard(handler.PlatformView, card);
+                }
+            });
+        }
+
+        foreach (var key in new[] { ListSemanticsMappingKey, ListSemantics.NameProperty.PropertyName })
+        {
+            CollectionViewHandler.Mapper.AppendToMapping(key, (handler, view) =>
+            {
+                if (view is BindableObject list)
+                {
+                    ListItems.AttachList(handler.PlatformView, list);
+                }
+            });
+        }
     }
 
     private static void FitCheckBoxBox(object sender, RoutedEventArgs e)

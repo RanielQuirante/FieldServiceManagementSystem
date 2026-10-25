@@ -32,7 +32,8 @@
                                     Command="{Binding SignOutCommand}" />
             <Button Text="Cancel"
                     Style="{StaticResource FsQuietButton}"
-                    Command="{Binding CloseAccountSheetCommand}" />
+                    Command="{Binding CloseAccountSheetCommand}"
+                    controls:BottomSheet.InitialFocus="True" />
         </VerticalStackLayout>
     </VerticalStackLayout>
 </ContentView>

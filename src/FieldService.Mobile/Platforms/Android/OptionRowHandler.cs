@@ -13,7 +13,11 @@ public sealed class OptionRowHandler : ContentViewHandler
         new PropertyMapper<OptionRow, OptionRowHandler>(Mapper)
         {
             [nameof(OptionRow.IsSelected)] = (handler, _) => handler.PlatformView.SendAccessibilityEvent(EventTypes.ViewSelected),
-            [nameof(OptionRow.IsAvailable)] = (handler, row) => handler.PlatformView.Enabled = row.IsAvailable,
+            [nameof(OptionRow.IsAvailable)] = (handler, row) =>
+            {
+                handler.PlatformView.Enabled = row.IsAvailable;
+                handler.PlatformView.Focusable = row.IsOperable;
+            },
         };
 
     public OptionRowHandler()

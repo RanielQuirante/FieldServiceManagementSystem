@@ -4,7 +4,7 @@ using Microsoft.Maui.Controls.Shapes;
 
 namespace FieldService.Mobile.Shared.Controls;
 
-public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInViewHost
+public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInViewHost, IClosableSheet
 {
     public const double TopGap = 24;
     public const double MinimumContentHeight = 160;
@@ -51,6 +51,14 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
         false,
         propertyChanged: (bindable, _, _) => ((BottomSheet)bindable).ApplyPlacement());
 
+    public static readonly BindableProperty InitialFocusProperty = BindableProperty.CreateAttached(
+        "InitialFocus",
+        typeof(bool),
+        typeof(BottomSheet),
+        false);
+
+    public static readonly TimeSpan FocusRetryDelay = TimeSpan.FromMilliseconds(150);
+
     public static readonly BindableProperty ScrollToEndRequestProperty = BindableProperty.Create(
         nameof(ScrollToEndRequest),
         typeof(int),
@@ -68,6 +76,7 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
     private double _navigationBar;
     private double _keyboard;
     private VisualElement? _kept;
+    private int _opening;
 
     public BottomSheet()
     {
@@ -140,6 +149,55 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
         get => (bool)GetValue(ShowsHairlineProperty);
         private set => SetValue(ShowsHairlineProperty, value);
     }
+
+    public static bool GetInitialFocus(BindableObject view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        return (bool)view.GetValue(InitialFocusProperty);
+    }
+
+    public static void SetInitialFocus(BindableObject view, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        view.SetValue(InitialFocusProperty, value);
+    }
+
+    public static VisualElement? InitialFocusTarget(IEnumerable<object> descendants)
+    {
+        ArgumentNullException.ThrowIfNull(descendants);
+
+        var shown = descendants.OfType<VisualElement>().Where(FocusMoves.IsShown).ToList();
+        var rows = shown.Where(element => element is IKeyboardRow { Role: KeyboardRowRole.RadioButton, IsOperable: true }).ToList();
+        return rows.FirstOrDefault(row => ((IKeyboardRow)row).IsOn)
+            ?? rows.FirstOrDefault()
+            ?? shown.FirstOrDefault(element => GetInitialFocus(element) && element.IsEnabled);
+    }
+
+    public static bool CloseOpenSheet(IEnumerable<object> descendants)
+    {
+        ArgumentNullException.ThrowIfNull(descendants);
+
+        if (descendants.OfType<IClosableSheet>().LastOrDefault(sheet => sheet.IsOpen) is not { } open)
+        {
+            return false;
+        }
+
+        open.RequestClose();
+        return true;
+    }
+
+    public static bool Close(bool isOpen, ICommand? closeCommand)
+    {
+        if (!isOpen || closeCommand is not { } command || !command.CanExecute(null))
+        {
+            return false;
+        }
+
+        command.Execute(null);
+        return true;
+    }
+
+    public bool RequestClose() => Close(IsOpen, CloseCommand);
 
     public static Thickness PaddingFor(double navigationBar) => PaddingFor(navigationBar, 0, false);
 
@@ -388,9 +446,30 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
         }
 
         IsVisible = isOpen;
-        if (isOpen && Handler is not null && !string.IsNullOrWhiteSpace(Title))
+        if (!isOpen || Handler is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Title))
         {
             SemanticScreenReader.Default.Announce(Title);
+        }
+
+        var opening = ++_opening;
+        Dispatcher.Dispatch(() => MoveFocusIn(opening, retry: true));
+    }
+
+    private void MoveFocusIn(int opening, bool retry)
+    {
+        if (!IsOpen || opening != _opening || InitialFocusTarget(this.GetVisualTreeDescendants()) is not { } target)
+        {
+            return;
+        }
+
+        if (!FocusMoves.MoveKeyboardFocus(target) && retry)
+        {
+            Dispatcher.DispatchDelayed(FocusRetryDelay, () => MoveFocusIn(opening, retry: false));
         }
     }
 }

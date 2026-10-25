@@ -18,6 +18,7 @@
                          RefreshColor="{StaticResource FsTeal700}">
                 <CollectionView x:Name="JobsList"
                                 ItemsSource="{Binding Groups}"
+                                controls:ListSemantics.Name="{x:Static controls:ListSemantics.JobListName}"
                                 IsGrouped="True"
                                 SelectionMode="Single"
                                 SelectedItem="{Binding SelectedJob}"
@@ -193,6 +194,7 @@
                                                    Command="{Binding SelectViewCommand}" />
                         <CollectionView Grid.Row="2"
                                         ItemsSource="{Binding Groups}"
+                                        controls:ListSemantics.Name="{x:Static controls:ListSemantics.JobListName}"
                                         IsGrouped="True"
                                         SelectionMode="Single"
                                         SelectedItem="{Binding SelectedJob}"

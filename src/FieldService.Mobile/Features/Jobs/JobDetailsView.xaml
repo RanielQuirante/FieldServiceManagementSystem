@@ -48,7 +48,9 @@
                             </HorizontalStackLayout>
                             <Label Text="{Binding Title}"
                                    Style="{StaticResource FsTextPaneHeroTitle}"
-                                   SemanticProperties.HeadingLevel="Level2" />
+                                   SemanticProperties.HeadingLevel="Level2"
+                                   controls:FocusRing.IsOnDark="True"
+                                   controls:ScrollRequests.SemanticFocus="{Binding TitleFocusRequest}" />
                             <VerticalStackLayout IsVisible="{Binding IsAssigned}"
                                                  Spacing="{StaticResource FsSpace4}">
                                 <Grid ColumnDefinitions="Auto,*"

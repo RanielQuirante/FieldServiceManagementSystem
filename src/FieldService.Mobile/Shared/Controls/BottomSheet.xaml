@@ -12,6 +12,7 @@
                   SafeAreaEdges="None,None,None,SoftInput">
                 <BoxView Color="{StaticResource FsOverlay}"
                          InputTransparent="False"
+                         controls:TabStop.IsStop="False"
                          AutomationProperties.IsInAccessibleTree="False">
                     <BoxView.GestureRecognizers>
                         <TapGestureRecognizer Command="{TemplateBinding CloseCommand}" />

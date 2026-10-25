@@ -1,8 +1,9 @@
 namespace FieldService.Mobile.Shared.Controls;
 
-public partial class CheckboxRow : ContentView
+public partial class CheckboxRow : ContentView, IKeyboardRow
 {
     public const string AndroidClassName = "android.widget.CheckBox";
+    public const double CornerRadius = 22;
 
     public static readonly BindableProperty TextProperty = BindableProperty.Create(
         nameof(Text),
@@ -41,7 +42,7 @@ public partial class CheckboxRow : ContentView
         UpdateLook();
     }
 
-    public static bool ExposesNativeState => OperatingSystem.IsAndroid();
+    public static bool ExposesNativeState => OperatingSystem.IsAndroid() || OperatingSystem.IsWindows();
 
     public string? Text
     {
@@ -78,6 +79,25 @@ public partial class CheckboxRow : ContentView
         get => (int)GetValue(FocusRequestProperty);
         set => SetValue(FocusRequestProperty, value);
     }
+
+    public KeyboardRowRole Role => KeyboardRowRole.CheckBox;
+
+    public string AccessibleName => Text ?? string.Empty;
+
+    public string? AccessibleDetail => HasError ? ErrorText : null;
+
+    public bool IsOn => IsChecked;
+
+    public bool IsOperable => !IsInputBlocked && IsEnabled;
+
+    public double FocusCornerRadius => CornerRadius;
+
+    public Thickness FocusInset => InsetFor(Height, Surface?.Bounds ?? Rect.Zero);
+
+    public static Thickness InsetFor(double rowHeight, Rect card) =>
+        card.Height <= 0 || rowHeight <= 0 ? Thickness.Zero : new Thickness(0, 0, 0, Math.Max(0, rowHeight - card.Bottom));
+
+    public bool Operate() => Toggle();
 
     public static string Describe(string? text, bool isChecked, string? error, bool nativeState)
     {
@@ -117,7 +137,7 @@ public partial class CheckboxRow : ContentView
     {
         if (requested != previous && requested != 0 && Handler is not null)
         {
-            Dispatcher.Dispatch(() => this.SetSemanticFocus());
+            Dispatcher.Dispatch(() => FocusMoves.MoveTo(this));
         }
     }
 

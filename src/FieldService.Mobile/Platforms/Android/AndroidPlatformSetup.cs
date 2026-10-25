@@ -14,6 +14,8 @@ public static class AndroidPlatformSetup
     public const string SystemBarInsetsMappingKey = "FsSystemBarInsets";
     public const string UnclippedMappingKey = "FsUnclipped";
 
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Android.Views.ViewGroup, FocusabilityBox> _focusability = new();
+
     public static void Configure(MauiAppBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -74,6 +76,17 @@ public static class AndroidPlatformSetup
             if (view is BindableObject element && handler.PlatformView is Android.Views.View platformView)
             {
                 RestoreAccessibilityImportance(platformView, element);
+                if (platformView is Android.Views.ViewGroup group)
+                {
+                    KeepFocusOut(group, AccessibilityExclusion.CoversContent(element));
+                }
+            }
+        });
+        ViewHandler.ViewMapper.AppendToMapping(TabStop.IsStopProperty.PropertyName, (handler, view) =>
+        {
+            if (view is BindableObject element && !TabStop.GetIsStop(element) && handler.PlatformView is Android.Views.View platformView)
+            {
+                platformView.Focusable = false;
             }
         });
         ViewHandler.ViewMapper.AppendToMapping(ListSemantics.IsOwnStopProperty.PropertyName, (handler, view) =>
@@ -152,6 +165,28 @@ public static class AndroidPlatformSetup
         }
     }
 
+    private static void KeepFocusOut(Android.Views.ViewGroup group, bool covered)
+    {
+        if (covered)
+        {
+            if (!_focusability.TryGetValue(group, out _))
+            {
+                _focusability.AddOrUpdate(group, new FocusabilityBox(group.DescendantFocusability, group.Focusable));
+                group.DescendantFocusability = Android.Views.DescendantFocusability.BlockDescendants;
+                group.Focusable = false;
+            }
+
+            return;
+        }
+
+        if (_focusability.TryGetValue(group, out var saved))
+        {
+            group.DescendantFocusability = saved.Value;
+            group.Focusable = saved.Focusable;
+            _focusability.Remove(group);
+        }
+    }
+
     private static void EndInputSession(Android.Widget.EditText field)
     {
         if (field.Parent is not Android.Views.ViewGroup holder
@@ -199,6 +234,13 @@ public static class AndroidPlatformSetup
         {
             Apply();
         }
+    }
+
+    private sealed class FocusabilityBox(Android.Views.DescendantFocusability value, bool focusable)
+    {
+        public Android.Views.DescendantFocusability Value { get; } = value;
+
+        public bool Focusable { get; } = focusable;
     }
 
     private sealed class SplashHold(Android.Views.View content, AppStartup startup) : Java.Lang.Object, Android.Views.ViewTreeObserver.IOnPreDrawListener

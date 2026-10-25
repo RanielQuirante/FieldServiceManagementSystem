@@ -23,8 +23,9 @@
                    Style="{StaticResource FsTextEyebrow}"
                    Margin="0,0,0,2"
                    SemanticProperties.HeadingLevel="Level3" />
-            <VerticalStackLayout Spacing="{StaticResource FsSpace10}"
-                                 BindableLayout.ItemsSource="{Binding StatusOptions}">
+            <controls:OptionGroup Title="Change to"
+                                  Spacing="{StaticResource FsSpace10}"
+                                  BindableLayout.ItemsSource="{Binding StatusOptions}">
                 <BindableLayout.ItemTemplate>
                     <DataTemplate x:DataType="jobs:StatusOption">
                         <controls:OptionRow Title="{Binding Title}"
@@ -37,7 +38,7 @@
                                             CommandParameter="{Binding .}" />
                     </DataTemplate>
                 </BindableLayout.ItemTemplate>
-            </VerticalStackLayout>
+            </controls:OptionGroup>
         </VerticalStackLayout>
         <controls:FormField IsVisible="{Binding ShowsHoldReason}"
                             IsMultiline="True"
@@ -63,7 +64,8 @@
                                     Command="{Binding ConfirmStatusCommand}" />
             <Button Text="Cancel"
                     Style="{StaticResource FsQuietButton}"
-                    Command="{Binding CloseStatusSheetCommand}" />
+                    Command="{Binding CloseStatusSheetCommand}"
+                    controls:BottomSheet.InitialFocus="True" />
         </VerticalStackLayout>
     </VerticalStackLayout>
 </ContentView>

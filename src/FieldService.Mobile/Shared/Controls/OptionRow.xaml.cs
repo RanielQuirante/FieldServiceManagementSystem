@@ -2,10 +2,11 @@ using System.Windows.Input;
 
 namespace FieldService.Mobile.Shared.Controls;
 
-public partial class OptionRow : ContentView
+public partial class OptionRow : ContentView, IKeyboardRow
 {
     public const string AndroidClassName = "android.widget.RadioButton";
     public const string DisabledIconKey = "FsIconLock";
+    public const double CornerRadius = 16;
 
     public static readonly BindableProperty TitleProperty = BindableProperty.Create(
         nameof(Title),
@@ -61,7 +62,7 @@ public partial class OptionRow : ContentView
         UpdateLook();
     }
 
-    public static bool ExposesNativeState => OperatingSystem.IsAndroid();
+    public static bool ExposesNativeState => OperatingSystem.IsAndroid() || OperatingSystem.IsWindows();
 
     public string? Title
     {
@@ -128,6 +129,22 @@ public partial class OptionRow : ContentView
         get => (string)GetValue(DescriptionProperty);
         private set => SetValue(DescriptionProperty, value);
     }
+
+    public KeyboardRowRole Role => KeyboardRowRole.RadioButton;
+
+    public string AccessibleName => Describe(Title, Helper, IsSelected, IsAvailable, nativeState: true);
+
+    public string? AccessibleDetail => null;
+
+    public bool IsOn => IsSelected;
+
+    public bool IsOperable => IsAvailable && IsEnabled;
+
+    public double FocusCornerRadius => CornerRadius;
+
+    public Thickness FocusInset => Thickness.Zero;
+
+    public bool Operate() => Activate();
 
     public static string Describe(string? title, string? helper, bool isSelected, bool isAvailable, bool nativeState)
     {

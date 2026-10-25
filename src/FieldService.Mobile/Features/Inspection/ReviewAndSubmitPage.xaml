@@ -8,6 +8,9 @@
              Title="{x:Static inspection:ReviewAndSubmitViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
              SafeAreaEdges="None">
+    <Shell.BackButtonBehavior>
+        <BackButtonBehavior IsVisible="{OnPlatform WinUI=False, Default=True}" />
+    </Shell.BackButtonBehavior>
     <Grid SafeAreaEdges="None">
         <Grid x:Name="Column"
               RowDefinitions="*,Auto"

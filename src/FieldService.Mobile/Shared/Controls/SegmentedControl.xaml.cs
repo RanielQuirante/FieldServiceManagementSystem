@@ -214,6 +214,7 @@ public partial class SegmentedControl : ContentView
         width.SetDynamicResource(Label.FontSizeProperty, FontSizeKey(IsCompact));
         label.SetDynamicResource(Label.TextColorProperty, selected ? "FsInk" : IsOnDark ? "FsOnDark2" : "FsInk2");
         capsule.Variant = CapsuleFor(selected, IsOnDark);
+        FocusRing.SetIsOnDark(button, IsOnDark);
         button.SetDynamicResource(StyleProperty, IsOnDark ? "FsOverlayButtonOnDark" : "FsOverlayButton");
     }
 }

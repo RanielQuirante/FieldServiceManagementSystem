@@ -2,6 +2,8 @@ namespace FieldService.Mobile.Shared.Controls;
 
 public static class FocusMoves
 {
+    public const string RevealCommand = "FsRevealForFocus";
+
     public static bool IsShown(Element? element)
     {
         if (element is null)
@@ -22,13 +24,25 @@ public static class FocusMoves
 
     public static void MoveTo(VisualElement? target)
     {
-        if (target?.Handler is null || !IsShown(target))
+        if (target?.Handler is not { } handler || !IsShown(target))
         {
             return;
         }
 
+        handler.Invoke(RevealCommand);
         target.SetSemanticFocus();
         target.Focus();
+    }
+
+    public static bool MoveKeyboardFocus(VisualElement? target)
+    {
+        if (target?.Handler is not { } handler || !IsShown(target))
+        {
+            return false;
+        }
+
+        handler.Invoke(RevealCommand);
+        return target.Focus();
     }
 
     public static void MoveSoon(VisualElement? target, Func<bool> stillWanted)

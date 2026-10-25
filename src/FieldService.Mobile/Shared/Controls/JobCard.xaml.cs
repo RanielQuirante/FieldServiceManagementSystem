@@ -62,6 +62,8 @@ public partial class JobCard : ContentView, ITappableCard
 
     public static readonly BindableProperty ShowsSelectionProperty = BindableProperty.Create(nameof(ShowsSelection), typeof(bool), typeof(JobCard), false);
 
+    public const double Radius = 22;
+    public const double CompactRadius = 18;
     public const double ClockWidth = 16;
     public const double ClockGap = 8;
     public const double ChevronWidth = 20;
@@ -191,7 +193,7 @@ public partial class JobCard : ContentView, ITappableCard
         Card.SetDynamicResource(Border.StrokeProperty, ShowsSelection ? "FsTeal700Brush" : urgent ? "FsAccentBrush" : "FsGlassStrokeBrush");
         Card.StrokeThickness = ShowsSelection ? 2 : urgent ? 1.5 : 1;
         Card.SetDynamicResource(Border.ShadowProperty, urgent ? "FsShadowUrgentCard" : "FsShadowGlass");
-        Card.StrokeShape = new RoundRectangle { CornerRadius = IsCompact ? 18 : 22 };
+        Card.StrokeShape = new RoundRectangle { CornerRadius = IsCompact ? CompactRadius : Radius };
         Card.Padding = IsCompact ? new Thickness(6) : new Thickness(8);
         CardStack.Spacing = IsCompact ? 8 : 12;
         Summary.Spacing = IsCompact ? 8 : 10;

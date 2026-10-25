@@ -7,5 +7,8 @@
              Title="{x:Static jobs:JobDetailsViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
              SafeAreaEdges="None">
+    <Shell.BackButtonBehavior>
+        <BackButtonBehavior IsVisible="{OnPlatform WinUI=False, Default=True}" />
+    </Shell.BackButtonBehavior>
     <jobs:JobDetailsView />
 </ContentPage>
