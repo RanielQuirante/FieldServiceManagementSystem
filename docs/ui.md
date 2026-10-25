@@ -254,7 +254,10 @@ On Windows, at 900 units wide or more, My jobs shows the list and the selected j
 - A cancelled job's status line and reason are read as one item.
 - Status and priority always have a text label, as in the dashboard.
 - Each option in the Update status sheet is one screen-reader item with the role of a radio button and its checked state. A status change is announced when it succeeds, and focus moves to the next action.
-- When a sheet closes, its keyboard closes with it, and the sheet's title stays in view while the keyboard is open.
+- When a sheet closes, its keyboard closes with it, its fields stop taking input, and the sheet's title stays in view while the keyboard is open.
+- On Android, the page behind an open sheet is hidden from screen readers and is read again once the sheet closes. Closing a sheet without a change, with Cancel, a tap outside it or Back, returns focus to the button that opened it. On a phone, the action bar stays above an open keyboard, so focus can return to Update status.
+- My jobs' title and each day group are headings. On Android 9 and later, the list header's date, title, account button, sync line and Refresh are separate screen-reader items, in the order they appear.
+- On Android, choosing a segment or Refresh keeps screen-reader focus on it while the list reloads, and touching a button's icon reads the button.
 - Each answer option is one screen-reader item with its selected state. Choosing a result announces it with the new progress, and a submission is announced on My jobs.
 - A field error moves focus to its field and scrolls it, with its message, into view above the bottom action bar.
 - Icons beside text that can wrap stay level with the first line, at every text size.
