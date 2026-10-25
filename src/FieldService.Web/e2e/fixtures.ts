@@ -575,10 +575,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   expectedPageErrors: [nothingExpected, { option: true }],
 
   guards: [
-    async ({ baseURL, expectedConsole, expectedPageErrors, cspLog }, use, testInfo) => {
+    async ({ baseURL, expectedConsole, expectedPageErrors, cspLog, runId }, use, testInfo) => {
       if (baseURL === undefined) {
         throw new Error('The project has no baseURL.')
       }
+      testInfo.annotations.push({ type: 'e2e run', description: runId })
       const pause = budgetPauseFor(testReserve)
       if (pause > 0) {
         testInfo.setTimeout(testInfo.timeout + pause + 1_000)

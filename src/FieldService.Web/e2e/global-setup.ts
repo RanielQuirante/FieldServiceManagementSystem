@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type { FullConfig } from '@playwright/test'
 
 import { demoPassword } from './support/api.ts'
-import { newRunId, selectedBaseUrl } from './support/run.ts'
+import { newRunId, recordRunStart, selectedBaseUrl } from './support/run.ts'
 
 const readinessMilliseconds = 60_000
 
@@ -81,6 +81,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const runId = configured !== undefined && configured.length > 0 ? configured : newRunId()
   process.env.E2E_RUN_ID = runId
   const baseUrl = selectedBaseUrl(config)
+  recordRunStart(runId, baseUrl)
   const deadline = Date.now() + readinessMilliseconds
   await waitFor(dashboardServed, baseUrl, deadline)
   await waitFor(apiReachedThroughProxy, baseUrl, deadline)

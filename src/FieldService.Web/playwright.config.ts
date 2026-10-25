@@ -33,8 +33,13 @@ export default defineConfig({
         ['list'],
         ['html', { outputFolder: 'playwright-report', open: 'never' }],
         ['junit', { outputFile: 'test-results/e2e-junit.xml' }],
+        ['./e2e/support/report-scan.ts'],
       ]
-    : [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+    : [
+        ['list'],
+        ['html', { outputFolder: 'playwright-report', open: 'never' }],
+        ['./e2e/support/report-scan.ts'],
+      ],
   use: {
     ...devices['Desktop Chrome'],
     trace: 'retain-on-failure',
@@ -48,7 +53,13 @@ export default defineConfig({
   projects: [
     {
       name: 'compose',
-      use: { baseURL: baseUrl('http://127.0.0.1:8081') },
+      retries: 0,
+      use: {
+        baseURL: baseUrl('http://127.0.0.1:8081'),
+        trace: 'retain-on-first-failure',
+        screenshot: 'only-on-failure',
+        video: 'retain-on-failure',
+      },
     },
     {
       name: 'host',

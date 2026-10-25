@@ -105,7 +105,10 @@ test.describe('E2E-17 client error reporting (W6-AC5)', () => {
       (record) =>
         eventName(record) === 'client-error.reported' && record.CorrelationId === reference,
     )
-    expect(records.length, 'client-error.reported events with the toast reference').toBe(1)
+    expect(
+      records.map(eventName),
+      'client-error.reported events with the toast reference, by event name only',
+    ).toHaveLength(1)
     const logged = records[0] ?? {}
     expect(logged['@l']).toBe('Warning')
     expect(logged.Source).toBe('web')

@@ -10,7 +10,7 @@ import {
   type SessionResponse,
 } from './support/api.ts'
 import { dashboardCopy, documentTitle, jobsCopy, shellCopy, signInCopy } from './support/copy.ts'
-import { openInApp } from './support/run.ts'
+import { enterSecret, openInApp } from './support/run.ts'
 
 test.describe('E2E-01 administrator sign-in and route protection', () => {
   test.use({ expectedConsole: consolePatterns.anonymousRefresh })
@@ -43,7 +43,7 @@ test.describe('E2E-01 administrator sign-in and route protection', () => {
     await page.goto('/sign-in')
     await expect(page).toHaveURL('/sign-in')
     await page.getByLabel(signInCopy.email, { exact: true }).fill(demoAccounts.administrator)
-    await page.getByLabel(signInCopy.password, { exact: true }).fill(demoPassword())
+    await enterSecret(page.getByLabel(signInCopy.password, { exact: true }), demoPassword())
     const signInResponse = page.waitForResponse('**/api/auth/sign-in')
 
     await page.getByRole('button', { name: signInCopy.submit, exact: true }).click()
@@ -136,7 +136,7 @@ test.describe('E2E-02 wrong application refused', () => {
   }) => {
     await page.goto('/sign-in')
     await page.getByLabel(signInCopy.email, { exact: true }).fill(demoAccounts.technician)
-    await page.getByLabel(signInCopy.password, { exact: true }).fill(demoPassword())
+    await enterSecret(page.getByLabel(signInCopy.password, { exact: true }), demoPassword())
     const refusal = page.waitForResponse('**/api/auth/sign-in')
 
     await page.getByRole('button', { name: signInCopy.submit, exact: true }).click()

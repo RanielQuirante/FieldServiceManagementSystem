@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-import type { FullConfig, Page } from '@playwright/test'
+import type { FullConfig, Locator, Page } from '@playwright/test'
 
 export const webRoot = fileURLToPath(new URL('../../', import.meta.url))
 
@@ -28,7 +28,7 @@ export function currentRunId(): string {
   return value
 }
 
-function requestedProjects(argv: readonly string[]): string[] {
+export function requestedProjects(argv: readonly string[] = process.argv): string[] {
   const names: string[] = []
   argv.forEach((argument, index) => {
     if (argument.startsWith('--project=')) {
@@ -63,6 +63,33 @@ export function selectedBaseUrl(
     )
   }
   return unique[0]
+}
+
+export const composeProjectName = 'compose'
+
+export function isComposeRun(argv: readonly string[] = process.argv): boolean {
+  return requestedProjects(argv).includes(composeProjectName)
+}
+
+export interface RunStart {
+  readonly startedAt: string
+  readonly baseUrl: string
+}
+
+function runStartFile(runId: string): string {
+  return join(resultsRoot, 'run', `${runId}.json`)
+}
+
+export function recordRunStart(runId: string, baseUrl: string, now: Date = new Date()): void {
+  writeJsonFile(runStartFile(runId), { startedAt: now.toISOString(), baseUrl })
+}
+
+export function readRunStart(runId: string): RunStart {
+  const start = readJsonFile<RunStart | null>(runStartFile(runId), null)
+  if (start === null) {
+    throw new Error(`The run start of ${runId} was not recorded. The global setup records it.`)
+  }
+  return start
 }
 
 export function logsRoot(): string {
@@ -102,6 +129,17 @@ export function readRunFiles<T>(folder: string, runId: string): T[] {
 
 export function e2eTitle(runId: string, text: string): string {
   return `E2E ${runId} ${text}`
+}
+
+export async function enterSecret(field: Locator, value: string): Promise<void> {
+  await field.evaluate((element, secret) => {
+    if (!(element instanceof HTMLInputElement)) {
+      throw new Error('The secret field is not an input element.')
+    }
+    element.focus()
+    element.value = secret
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+  }, value)
 }
 
 export async function openInApp(page: Page, path: string): Promise<void> {

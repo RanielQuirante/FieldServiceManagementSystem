@@ -24,6 +24,7 @@ export const testReserve: BudgetReserve = { refreshes: 3, tickets: 3, administra
 
 interface BudgetState {
   readonly signIns: number
+  readonly signInTimes?: readonly number[]
   readonly refreshes: readonly number[]
   readonly tickets?: readonly number[]
   readonly administratorRequests?: readonly number[]
@@ -33,6 +34,7 @@ interface BudgetState {
 
 export interface BudgetSummary {
   readonly signIns: number
+  readonly busiestSignInMinute: number
   readonly refreshes: number
   readonly busiestRefreshMinute: number
   readonly tickets: number
@@ -46,6 +48,7 @@ export interface BudgetSummary {
 
 const emptyState: BudgetState = {
   signIns: 0,
+  signInTimes: [],
   refreshes: [],
   tickets: [],
   administratorRequests: [],
@@ -105,7 +108,10 @@ export function recordAuthCall(call: AuthCall, at: number = Date.now()): string 
     if (signIns > signInBudget) {
       violation = `Sign-in budget exceeded: sign-in ${signIns} of this run, the budget is ${signInBudget} per run.`
     }
-    next = { ...state, signIns }
+    next =
+      violation === null
+        ? { ...state, signIns, signInTimes: [...(state.signInTimes ?? []), at] }
+        : { ...state, signIns }
   } else if (call === 'refresh') {
     const refreshes = [...state.refreshes, at]
     const inWindow = callsWithin(refreshes, at)
@@ -192,6 +198,7 @@ export function budgetSummary(runId: string): BudgetSummary {
   const pauses = state.pauses ?? []
   return {
     signIns: state.signIns,
+    busiestSignInMinute: busiestMinute(state.signInTimes ?? []),
     refreshes: state.refreshes.length,
     busiestRefreshMinute: busiestMinute(state.refreshes),
     tickets: tickets.length,

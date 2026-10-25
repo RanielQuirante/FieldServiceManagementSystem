@@ -632,6 +632,12 @@ export class TechnicianApi {
       data: body,
     })
   }
+
+  requestSocketTicket(): Promise<APIResponse> {
+    return this.request.post(socketTicketsPath, {
+      headers: { Authorization: `Bearer ${this.accessToken}`, ...csrfHeader },
+    })
+  }
 }
 
 export async function signInTechnician(

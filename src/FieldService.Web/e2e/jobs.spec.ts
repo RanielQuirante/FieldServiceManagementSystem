@@ -483,6 +483,11 @@ test.describe('W1 job list', () => {
     await expect(page).toHaveURL(`/jobs/${job.id}`)
     await expect(page.getByRole('heading', { level: 1, name: job.title })).toBeVisible()
     await expect(page).toHaveTitle(documentTitle('JOB-1042'))
+    await openInApp(page, `/jobs/${job.id}`)
+    await expect(page.getByRole('heading', { level: 1, name: job.title })).toBeVisible()
+    await expect(page, 'the title after a navigation to the same path').toHaveTitle(
+      documentTitle('JOB-1042'),
+    )
     const details = page.getByRole('region', { name: jobDetailCopy.detailsCard })
     await expect(details).toContainText(job.customerName)
     await expect(details).toContainText(job.siteAddress)
