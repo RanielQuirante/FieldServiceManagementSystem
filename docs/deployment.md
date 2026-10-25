@@ -23,7 +23,7 @@ Measured on an Apple Silicon Mac (arm64), as disk use and compressed content siz
 - **Notification service.** `npm ci --ignore-scripts` and `tsc` in the build stage; `npm ci --omit=dev --ignore-scripts` in the runtime stage, which then deletes npm's folder `/root/.npm`, with its package cache and debug logs, and npm's compile cache in `/tmp` in the same step, so the image holds neither. The process starts as `node dist/main.js`, never through `npm start`.
 - **Web dashboard.** The build stage mirrors the repository layout, so `npm run generate:api` reads `docs/contracts/openapi.v1.json`, then runs `vite build` only; type checking runs in the build pipeline. The context includes `e2e/tsconfig.json`, which the dashboard's root `tsconfig.json` references, and nothing else of `e2e/`. nginx's own default site configuration is never loaded.
 - **No parser directive and no `HEALTHCHECK`** in any Dockerfile. Health checks live in the Compose file.
-- **Architectures.** The images build natively, arm64 on Apple Silicon and amd64 on the build pipeline's runners. Release images come from the pipeline.
+- **Architectures.** The images build natively, arm64 on Apple Silicon and amd64 on the build pipeline's runners. The pipeline's `e2e` job builds all four images for every pull request and every push to `main`, starts the `full` profile from them and runs the end-to-end tests against nginx; it neither uploads nor pushes the images. Release images come from the pipeline.
 
 ## Running the Staging stack with Compose
 
