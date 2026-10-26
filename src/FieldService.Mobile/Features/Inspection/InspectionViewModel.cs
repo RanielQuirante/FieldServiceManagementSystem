@@ -94,6 +94,9 @@ public sealed partial class InspectionViewModel : ScreenViewModel, IQueryAttribu
     public partial IReadOnlyList<InspectionItemViewModel> Items { get; private set; }
 
     [ObservableProperty]
+    public partial int TitleFocusRequest { get; private set; }
+
+    [ObservableProperty]
     public partial string TemplateName { get; private set; } = string.Empty;
 
     [ObservableProperty]
@@ -299,6 +302,8 @@ public sealed partial class InspectionViewModel : ScreenViewModel, IQueryAttribu
     }
 
     protected override Task ReloadAsync(CancellationToken cancellationToken) => RetryLoadAsync();
+
+    protected override void RequestContentFocus() => TitleFocusRequest++;
 
     protected override void OnActivated()
     {

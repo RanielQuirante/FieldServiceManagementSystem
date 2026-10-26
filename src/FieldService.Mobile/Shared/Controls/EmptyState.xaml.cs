@@ -22,6 +22,13 @@ public partial class EmptyState : ContentView
 
     public static readonly BindableProperty HasActionProperty = BindableProperty.Create(nameof(HasAction), typeof(bool), typeof(EmptyState), false);
 
+    public static readonly BindableProperty TitleFocusRequestProperty = BindableProperty.Create(
+        nameof(TitleFocusRequest),
+        typeof(int),
+        typeof(EmptyState),
+        0,
+        propertyChanged: (bindable, oldValue, newValue) => ((EmptyState)bindable).OnTitleFocusRequested((int)oldValue, (int)newValue));
+
     public EmptyState()
     {
         InitializeComponent();
@@ -67,5 +74,19 @@ public partial class EmptyState : ContentView
     {
         get => (bool)GetValue(HasActionProperty);
         private set => SetValue(HasActionProperty, value);
+    }
+
+    public int TitleFocusRequest
+    {
+        get => (int)GetValue(TitleFocusRequestProperty);
+        set => SetValue(TitleFocusRequestProperty, value);
+    }
+
+    private void OnTitleFocusRequested(int previous, int requested)
+    {
+        if (requested != previous && requested != 0 && TitleLabel is not null)
+        {
+            FocusMoves.MoveWhenReady(TitleLabel);
+        }
     }
 }

@@ -7,7 +7,8 @@
              x:DataType="signIn:SignInViewModel"
              Title="Sign in"
              Shell.NavBarIsVisible="False"
-             SafeAreaEdges="None">
+             SafeAreaEdges="None"
+             controls:ScreenFocus.Watches="True">
     <Grid SafeAreaEdges="None">
         <ScrollView x:Name="SignInScroll"
                     SafeAreaEdges="None,None,None,SoftInput">
@@ -33,6 +34,7 @@
                                          Title="{x:Static signIn:SignInViewModel.SessionEndedTitle}"
                                          Message="{x:Static signIn:SignInViewModel.SessionEndedMessage}" />
                         <controls:FormField Label="Email"
+                                            controls:ScreenFocus.IsStart="True"
                                             FocusRequest="{Binding EmailFocusRequest}"
                                             Text="{Binding Email}"
                                             IconData="{StaticResource FsIconMail}"

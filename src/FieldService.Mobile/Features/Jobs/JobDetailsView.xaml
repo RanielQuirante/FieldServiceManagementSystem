@@ -32,7 +32,8 @@
                                     StatusLineText="{Binding StatusLine}"
                                     ReasonText="{Binding ReasonLine}"
                                     StatusDescription="{Binding StatusDescription}"
-                                    SummaryFocusRequest="{Binding TitleFocusRequest}" />
+                                    SummaryFocusRequest="{Binding TitleFocusRequest}"
+                                    StartFocusRequest="{Binding StartFocusRequest}" />
                 <VerticalStackLayout Padding="{Binding ContentPadding}"
                                      Spacing="{StaticResource FsSpace16}">
                     <Border Style="{StaticResource FsPaneHero}"
@@ -218,32 +219,29 @@
                                      Title="{x:Static jobs:JobDetailsViewModel.OfflineTitle}"
                                      Message="{Binding OfflineMessage}"
                                      ActionText="Try again"
-                                     ActionCommand="{Binding RetryCommand}" />
+                                     ActionCommand="{Binding RetryCommand}"
+                                     LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                     <controls:Banner Variant="Error"
                                      IsVisible="{Binding HasRefreshError}"
                                      Title="{Binding RefreshError.Title}"
                                      Message="{Binding RefreshError.Message}"
                                      Reference="{Binding RefreshError.Reference}"
                                      ActionText="Try again"
-                                     ActionCommand="{Binding RetryCommand}" />
+                                     ActionCommand="{Binding RetryCommand}"
+                                     LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                     <controls:Banner Variant="Error"
                                      IsVisible="{Binding IsError}"
                                      Title="{Binding Error.Title}"
                                      Message="{Binding Error.Message}"
                                      Reference="{Binding Error.Reference}"
                                      ActionText="Try again"
-                                     ActionCommand="{Binding RetryCommand}" />
+                                     ActionCommand="{Binding RetryCommand}"
+                                     LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                     <controls:JobCard IsLoading="True"
                                       IsVisible="{Binding IsLoading}" />
-                    <Grid IsVisible="{Binding ShowsContent}"
-                          ColumnDefinitions="*,*"
-                          RowDefinitions="Auto,Auto"
-                          ColumnSpacing="{StaticResource FsSpace20}"
-                          RowSpacing="{StaticResource FsSpace16}">
-                        <Border Grid.Row="0"
-                                Grid.Column="0"
-                                Grid.ColumnSpan="{Binding InfoColumnSpan}"
-                                Style="{StaticResource FsInfoListCard}"
+                    <controls:PaneColumnsLayout IsVisible="{Binding ShowsContent}"
+                                                AllowsTwoColumns="{Binding IsInPane}">
+                        <Border Style="{StaticResource FsInfoListCard}"
                                 VerticalOptions="Start">
                             <VerticalStackLayout>
                                 <controls:InfoRow IconData="{StaticResource FsIconBuilding}"
@@ -285,10 +283,7 @@
                                                   IsVisible="{Binding ShowsChecklistRow}" />
                             </VerticalStackLayout>
                         </Border>
-                        <VerticalStackLayout Grid.Row="{Binding DetailsRow}"
-                                             Grid.Column="{Binding DetailsColumn}"
-                                             Grid.ColumnSpan="{Binding DetailsColumnSpan}"
-                                             Spacing="{StaticResource FsSpace16}">
+                        <VerticalStackLayout Spacing="{Binding DetailsSpacing}">
                             <Border Style="{StaticResource FsGlassCard}">
                                 <VerticalStackLayout Spacing="{StaticResource FsSpace12}">
                                     <Label Text="Description"
@@ -313,7 +308,7 @@
                                                LinkDescription="{Binding ChecklistLinkDescription}"
                                                Command="{Binding OpenChecklistCommand}" />
                         </VerticalStackLayout>
-                    </Grid>
+                    </controls:PaneColumnsLayout>
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>

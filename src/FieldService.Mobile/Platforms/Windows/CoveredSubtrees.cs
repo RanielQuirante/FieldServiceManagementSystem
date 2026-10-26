@@ -89,12 +89,7 @@ public static class CoveredSubtrees
         }
 
         saved.View = element.ReadLocalValue(PlatformAutomationProperties.AccessibilityViewProperty);
-        saved.TabStop = element.ReadLocalValue(UIElement.IsTabStopProperty);
         element.SetValue(PlatformAutomationProperties.AccessibilityViewProperty, AccessibilityView.Raw);
-        if (element.IsTabStop)
-        {
-            element.IsTabStop = false;
-        }
     }
 
     private static void Uncover(UIElement element)
@@ -111,7 +106,6 @@ public static class CoveredSubtrees
         }
 
         Restore(element, PlatformAutomationProperties.AccessibilityViewProperty, saved.View);
-        Restore(element, UIElement.IsTabStopProperty, saved.TabStop);
     }
 
     private static void Restore(UIElement element, DependencyProperty property, object value)
@@ -131,8 +125,6 @@ public static class CoveredSubtrees
         public int Count { get; set; }
 
         public object View { get; set; } = DependencyProperty.UnsetValue;
-
-        public object TabStop { get; set; } = DependencyProperty.UnsetValue;
     }
 
     private sealed class Root

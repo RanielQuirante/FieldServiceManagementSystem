@@ -141,6 +141,20 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         0,
         propertyChanged: (bindable, oldValue, newValue) => ((AppHeader)bindable).OnAvatarFocusRequested((int)oldValue, (int)newValue));
 
+    public static readonly BindableProperty StartFocusRequestProperty = BindableProperty.Create(
+        nameof(StartFocusRequest),
+        typeof(int),
+        typeof(AppHeader),
+        0,
+        propertyChanged: (bindable, oldValue, newValue) => ((AppHeader)bindable).OnStartFocusRequested((int)oldValue, (int)newValue));
+
+    public static readonly BindableProperty TitleFocusRequestProperty = BindableProperty.Create(
+        nameof(TitleFocusRequest),
+        typeof(int),
+        typeof(AppHeader),
+        0,
+        propertyChanged: (bindable, oldValue, newValue) => ((AppHeader)bindable).OnTitleFocusRequested((int)oldValue, (int)newValue));
+
     public static readonly BindableProperty UpdatedTextProperty = BindableProperty.Create(
         nameof(UpdatedText),
         typeof(string),
@@ -444,6 +458,33 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         set => SetValue(SummaryFocusRequestProperty, value);
     }
 
+    public int StartFocusRequest
+    {
+        get => (int)GetValue(StartFocusRequestProperty);
+        set => SetValue(StartFocusRequestProperty, value);
+    }
+
+    public int TitleFocusRequest
+    {
+        get => (int)GetValue(TitleFocusRequestProperty);
+        set => SetValue(TitleFocusRequestProperty, value);
+    }
+
+    public static string StartControlName(AppHeaderVariant variant) => variant switch
+    {
+        AppHeaderVariant.List => nameof(ListAvatarButton),
+        AppHeaderVariant.DesktopTopBar => nameof(TopBarAvatarButton),
+        AppHeaderVariant.Pushed => nameof(BackButton),
+        _ => string.Empty,
+    };
+
+    public static string TitleLabelName(AppHeaderVariant variant) => variant switch
+    {
+        AppHeaderVariant.List => nameof(ListTitleLabel),
+        AppHeaderVariant.Pushed => nameof(PushedTitleLabel),
+        _ => string.Empty,
+    };
+
     public bool HasStatusLine
     {
         get => (bool)GetValue(HasStatusLineProperty);
@@ -585,7 +626,23 @@ public partial class AppHeader : ContentView, ISystemBarInsetsAware
         var avatar = IsDesktopTopBar ? TopBarAvatarButton : ListAvatarButton;
         if (avatar?.Handler is not null)
         {
-            Dispatcher.Dispatch(() => FocusMoves.MoveTo(avatar));
+            FocusMoves.MoveWhenReady(avatar);
+        }
+    }
+
+    private void OnStartFocusRequested(int previous, int requested)
+    {
+        if (requested != previous && requested != 0 && FindByName(StartControlName(Variant)) is VisualElement start)
+        {
+            FocusMoves.MoveWhenReady(start);
+        }
+    }
+
+    private void OnTitleFocusRequested(int previous, int requested)
+    {
+        if (requested != previous && requested != 0 && FindByName(TitleLabelName(Variant)) is VisualElement title)
+        {
+            FocusMoves.MoveWhenReady(title);
         }
     }
 

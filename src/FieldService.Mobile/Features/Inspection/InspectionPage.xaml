@@ -7,7 +7,8 @@
              x:DataType="inspection:InspectionViewModel"
              Title="{x:Static inspection:InspectionViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
-             SafeAreaEdges="None">
+             SafeAreaEdges="None"
+             controls:ScreenFocus.Watches="True">
     <Shell.BackButtonBehavior>
         <BackButtonBehavior IsVisible="{OnPlatform WinUI=False, Default=True}" />
     </Shell.BackButtonBehavior>
@@ -27,7 +28,8 @@
                                         Title="{x:Static inspection:InspectionViewModel.PageTitle}"
                                         Subtitle="{Binding JobNumber}"
                                         BackCommand="{Binding BackCommand}"
-                                        BackDescription="{x:Static inspection:InspectionViewModel.BackDescription}">
+                                        BackDescription="{x:Static inspection:InspectionViewModel.BackDescription}"
+                                        TitleFocusRequest="{Binding TitleFocusRequest}">
                         <controls:AppHeader.PushedBody>
                             <VerticalStackLayout Spacing="{StaticResource FsSpace10}"
                                                  x:DataType="inspection:InspectionViewModel">
@@ -69,12 +71,10 @@
                                                Margin="0,0,0,4"
                                                VerticalOptions="End" />
                                     </HorizontalStackLayout>
-                                    <FlexLayout Wrap="Wrap"
-                                                Direction="Row"
-                                                AlignItems="Center"
-                                                AutomationProperties.ExcludedWithChildren="True">
-                                        <Border Style="{StaticResource FsCountPillOnDark}"
-                                                Margin="0,0,8,8">
+                                    <controls:WrapRowLayout ColumnSpacing="{StaticResource FsSpace8}"
+                                                            RowSpacing="{StaticResource FsSpace8}"
+                                                            AutomationProperties.ExcludedWithChildren="True">
+                                        <Border Style="{StaticResource FsCountPillOnDark}">
                                             <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
                                                                    VerticalOptions="Center">
                                                 <controls:Icon PathData="{StaticResource FsIconCheck}"
@@ -85,8 +85,7 @@
                                                        Style="{StaticResource FsTextPillOnDark}" />
                                             </HorizontalStackLayout>
                                         </Border>
-                                        <Border Style="{StaticResource FsCountPillOnDark}"
-                                                Margin="0,0,8,8">
+                                        <Border Style="{StaticResource FsCountPillOnDark}">
                                             <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
                                                                    VerticalOptions="Center">
                                                 <controls:Icon PathData="{StaticResource FsIconX}"
@@ -97,8 +96,7 @@
                                                        Style="{StaticResource FsTextPillOnDark}" />
                                             </HorizontalStackLayout>
                                         </Border>
-                                        <Border Style="{StaticResource FsCountPillOnDark}"
-                                                Margin="0,0,8,8">
+                                        <Border Style="{StaticResource FsCountPillOnDark}">
                                             <HorizontalStackLayout Spacing="{StaticResource FsSpace6}"
                                                                    VerticalOptions="Center">
                                                 <controls:Icon PathData="{StaticResource FsIconMinus}"
@@ -109,7 +107,7 @@
                                                        Style="{StaticResource FsTextPillOnDark}" />
                                             </HorizontalStackLayout>
                                         </Border>
-                                    </FlexLayout>
+                                    </controls:WrapRowLayout>
                                 </VerticalStackLayout>
                             </VerticalStackLayout>
                         </controls:AppHeader.PushedBody>
@@ -131,14 +129,16 @@
                                          Message="{Binding RefreshError.Message}"
                                          Reference="{Binding RefreshError.Reference}"
                                          ActionText="Try again"
-                                         ActionCommand="{Binding RetryCommand}" />
+                                         ActionCommand="{Binding RetryCommand}"
+                                         LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                         <controls:Banner Variant="Error"
                                          IsVisible="{Binding IsError}"
                                          Title="{Binding Error.Title}"
                                          Message="{Binding Error.Message}"
                                          Reference="{Binding Error.Reference}"
                                          ActionText="Try again"
-                                         ActionCommand="{Binding RetryCommand}" />
+                                         ActionCommand="{Binding RetryCommand}"
+                                         LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                         <VerticalStackLayout Spacing="{StaticResource FsSpace12}"
                                              IsVisible="{Binding IsLoading}"
                                              InputTransparent="True"

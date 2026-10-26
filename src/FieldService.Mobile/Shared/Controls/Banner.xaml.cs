@@ -64,7 +64,12 @@ public partial class Banner : ContentView
 
     public static readonly BindableProperty AnnouncesProperty = BindableProperty.Create(nameof(Announces), typeof(bool), typeof(Banner), true);
 
-    private string? _announced;
+    public static readonly BindableProperty LeaveFocusCommandProperty = BindableProperty.Create(nameof(LeaveFocusCommand), typeof(ICommand), typeof(Banner));
+
+    private BannerText? _announced;
+    private bool _announcePending;
+    private bool _focusWithinOnLeave;
+    private bool _focusSeenThisTurn;
 
     public Banner()
     {
@@ -145,6 +150,30 @@ public partial class Banner : ContentView
         set => SetValue(AnnouncesProperty, value);
     }
 
+    public ICommand? LeaveFocusCommand
+    {
+        get => (ICommand?)GetValue(LeaveFocusCommandProperty);
+        set => SetValue(LeaveFocusCommandProperty, value);
+    }
+
+    public static bool ShouldAnnounce(BannerText? announced, BannerText next)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+
+        if (!next.HasText)
+        {
+            return false;
+        }
+
+        return announced is null
+            || Adds(announced.Title, next.Title)
+            || Adds(announced.Message, next.Message)
+            || Adds(announced.Reference, next.Reference);
+    }
+
+    private static bool Adds(string? before, string? after) =>
+        !string.IsNullOrWhiteSpace(after) && !string.Equals(before, after, StringComparison.Ordinal);
+
     public static string DefaultIconKey(BannerVariant variant) => variant switch
     {
         BannerVariant.Error => "FsIconAlertTriangle",
@@ -170,24 +199,40 @@ public partial class Banner : ContentView
         return string.Join(" ", parts);
     }
 
+    protected override void OnPropertyChanging([CallerMemberName] string? propertyName = null)
+    {
+        base.OnPropertyChanging(propertyName);
+        if (propertyName == IsVisibleProperty.PropertyName)
+        {
+            _focusWithinOnLeave = IsVisible && LeaveFocusCommand is not null && (_focusSeenThisTurn || FocusMoves.HasFocusWithin(this) == true);
+        }
+    }
+
     protected override void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         base.OnPropertyChanged(propertyName);
-        if (propertyName == IsVisibleProperty.PropertyName)
+        if (propertyName != IsVisibleProperty.PropertyName)
         {
-            if (!IsVisible)
-            {
-                _announced = null;
-            }
-
-            Announce();
+            return;
         }
+
+        if (!IsVisible)
+        {
+            _announced = null;
+            if (_focusWithinOnLeave && LeaveFocusCommand is { } command && command.CanExecute(null))
+            {
+                command.Execute(null);
+            }
+        }
+
+        _focusWithinOnLeave = false;
+        ScheduleAnnounce();
     }
 
     protected override void OnHandlerChanged()
     {
         base.OnHandlerChanged();
-        Announce();
+        ScheduleAnnounce();
     }
 
     private void ApplyVariant()
@@ -214,20 +259,52 @@ public partial class Banner : ContentView
         HasAction = !string.IsNullOrEmpty(ActionText);
         MessageSeparator = string.IsNullOrEmpty(Message) ? string.Empty : " ";
         SpokenText = Speak(Title, Message, Reference);
-        _announced = null;
-        Announce();
+        NoteFocusWithin();
+        ScheduleAnnounce();
     }
 
-    private void Announce()
+    private void NoteFocusWithin()
     {
-        if (!Announces || !IsVisible || Handler is null || string.IsNullOrWhiteSpace(SpokenText) || SpokenText == _announced)
+        if (_focusSeenThisTurn || !IsVisible || LeaveFocusCommand is null || Handler is null || FocusMoves.HasFocusWithin(this) != true)
         {
             return;
         }
 
-        _announced = SpokenText;
+        _focusSeenThisTurn = true;
+        Dispatcher.Dispatch(() => _focusSeenThisTurn = false);
+    }
+
+    private void ScheduleAnnounce()
+    {
+        if (_announcePending || Handler is null)
+        {
+            return;
+        }
+
+        _announcePending = true;
+        Dispatcher.Dispatch(() =>
+        {
+            _announcePending = false;
+            Announce();
+        });
+    }
+
+    private void Announce()
+    {
+        var text = new BannerText(Title, Message, Reference);
+        if (!Announces || !IsVisible || Handler is null || !ShouldAnnounce(_announced, text))
+        {
+            return;
+        }
+
+        _announced = text;
         SemanticScreenReader.Default.Announce(SpokenText);
     }
 }
 
 public sealed record BannerLook(string Surface, string Stroke, string Padding, string Shadow, string Tile, string TileStroke, string TileIcon);
+
+public sealed record BannerText(string? Title, string? Message, string? Reference)
+{
+    public bool HasText => !string.IsNullOrWhiteSpace(Banner.Speak(Title, Message, Reference));
+}

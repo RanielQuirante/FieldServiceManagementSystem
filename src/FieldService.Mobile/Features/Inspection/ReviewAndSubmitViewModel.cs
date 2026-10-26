@@ -132,6 +132,9 @@ public sealed partial class ReviewAndSubmitViewModel : ScreenViewModel, IQueryAt
     public partial int NotesFocusRequest { get; private set; }
 
     [ObservableProperty]
+    public partial int TitleFocusRequest { get; private set; }
+
+    [ObservableProperty]
     public partial bool IsConfirmed { get; set; }
 
     [ObservableProperty]
@@ -254,6 +257,8 @@ public sealed partial class ReviewAndSubmitViewModel : ScreenViewModel, IQueryAt
     }
 
     protected override Task ReloadAsync(CancellationToken cancellationToken) => LoadAsync();
+
+    protected override void RequestContentFocus() => TitleFocusRequest++;
 
     protected override void OnActivated()
     {

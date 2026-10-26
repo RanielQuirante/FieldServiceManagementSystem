@@ -29,6 +29,7 @@
                           Margin="0,1,0,0"
                           VerticalOptions="Start"
                           InputTransparent="True"
+                          controls:TabStop.IsStop="False"
                           AutomationProperties.IsInAccessibleTree="False" />
                 <Label Grid.Column="1"
                        Text="{Binding Text}"

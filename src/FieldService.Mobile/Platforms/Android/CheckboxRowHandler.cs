@@ -20,11 +20,31 @@ public sealed class CheckboxRowHandler : ContentViewHandler
     {
     }
 
-    protected override ContentViewGroup CreatePlatformView() => new CheckboxRowView(Context, this);
+    protected override ContentViewGroup CreatePlatformView()
+    {
+        var view = new CheckboxRowView(Context, this);
+        KeyboardRing.TurnOffDefaultHighlight(view);
+        return view;
+    }
 
     private sealed class CheckboxRowView(Context context, CheckboxRowHandler handler) : ContentViewGroup(context)
     {
         private CheckboxRow? Row => handler.VirtualView as CheckboxRow;
+
+        protected override void DispatchDraw(Android.Graphics.Canvas canvas)
+        {
+            base.DispatchDraw(canvas);
+            if (Row is { } row && KeyboardRing.Shows(this))
+            {
+                KeyboardRing.Draw(canvas, this, row.FocusCornerRadius, row.FocusInset);
+            }
+        }
+
+        protected override void OnFocusChanged(bool gainFocus, Android.Views.FocusSearchDirection direction, Android.Graphics.Rect? previouslyFocusedRect)
+        {
+            base.OnFocusChanged(gainFocus, direction, previouslyFocusedRect);
+            KeyboardRing.Invalidate(this);
+        }
 
         public override void OnInitializeAccessibilityNodeInfo(AccessibilityNodeInfo? info)
         {

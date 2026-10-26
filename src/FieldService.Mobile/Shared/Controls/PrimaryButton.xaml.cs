@@ -42,13 +42,7 @@ public partial class PrimaryButton : ContentView
         nameof(IconKey),
         typeof(string),
         typeof(PrimaryButton),
-        propertyChanged: (bindable, _, newValue) =>
-        {
-            if (newValue is string { Length: > 0 } key)
-            {
-                ((PrimaryButton)bindable).SetDynamicResource(IconDataProperty, key);
-            }
-        });
+        propertyChanged: (bindable, _, newValue) => ApplyIconKey((PrimaryButton)bindable, IconDataProperty, newValue as string));
 
     public static readonly BindableProperty SemanticFocusRequestProperty = BindableProperty.Create(
         nameof(SemanticFocusRequest),
@@ -138,6 +132,22 @@ public partial class PrimaryButton : ContentView
     {
         get => (string?)GetValue(ButtonTextProperty);
         private set => SetValue(ButtonTextProperty, value);
+    }
+
+    public static void ApplyIconKey(Element element, BindableProperty property, string? key)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(property);
+
+        if (!string.IsNullOrEmpty(key))
+        {
+            element.ClearValue(property);
+            element.SetDynamicResource(property, key);
+            return;
+        }
+
+        element.RemoveDynamicResource(property);
+        element.SetValue(property, null);
     }
 
     private void OnSemanticFocusRequested(int previous, int requested)

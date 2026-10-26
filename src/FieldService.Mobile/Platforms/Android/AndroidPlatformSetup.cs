@@ -13,6 +13,7 @@ public static class AndroidPlatformSetup
     public const string FieldChromeMappingKey = "FsFieldChrome";
     public const string SystemBarInsetsMappingKey = "FsSystemBarInsets";
     public const string UnclippedMappingKey = "FsUnclipped";
+    public const string ContainerMappingKey = "FsContainerNotAStop";
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Android.Views.ViewGroup, FocusabilityBox> _focusability = new();
 
@@ -96,12 +97,81 @@ public static class AndroidPlatformSetup
                 platformView.ScreenReaderFocusable = ListSemantics.GetIsOwnStop(element);
             }
         });
+        ViewHandler.ViewCommandMapper.AppendToMapping(FocusMoves.FocusWithinCommand, (handler, _, args) =>
+        {
+            if (args is FocusQuery query && handler.PlatformView is Android.Views.View platformView)
+            {
+                query.HasFocusWithin = platformView.HasFocus || HasAccessibilityFocusWithin(platformView);
+            }
+        });
         EntryHandler.CommandMapper.AppendToMapping(FormField.EndInputCommand, (handler, _, _) => EndInputSession(handler.PlatformView));
         EditorHandler.CommandMapper.AppendToMapping(FormField.EndInputCommand, (handler, _, _) => EndInputSession(handler.PlatformView));
         LayoutHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => KeepEffectsUnclipped(handler.PlatformView));
         BorderHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => KeepEffectsUnclipped(handler.PlatformView));
         ContentViewHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => KeepEffectsUnclipped(handler.PlatformView));
         CollectionViewHandler.Mapper.AppendToMapping(UnclippedMappingKey, (handler, _) => Unclip(handler.PlatformView));
+        CollectionViewHandler.Mapper.AppendToMapping(ContainerMappingKey, (handler, _) => NotAKeyboardStop(handler.PlatformView));
+        ScrollViewHandler.Mapper.AppendToMapping(ContainerMappingKey, (handler, _) => NotAKeyboardStop(handler.PlatformView));
+        ContentViewHandler.Mapper.AppendToMapping(ContainerMappingKey, (handler, view) =>
+        {
+            if (view is Page)
+            {
+                KeepAncestorsOutOfTabOrder(handler.PlatformView);
+            }
+        });
+    }
+
+    public static void NotAKeyboardStop(Android.Views.View view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        view.Focusable = false;
+        view.FocusableInTouchMode = false;
+    }
+
+    private static void KeepAncestorsOutOfTabOrder(Android.Views.View page)
+    {
+        void Apply()
+        {
+            for (var parent = page.Parent; parent is Android.Views.View container; parent = container.Parent)
+            {
+                NotAKeyboardStop(container);
+            }
+        }
+
+        page.ViewAttachedToWindow += (_, _) => Apply();
+        if (page.IsAttachedToWindow)
+        {
+            Apply();
+        }
+    }
+
+    public static bool HasAccessibilityFocusWithin(Android.Views.View view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        using (var info = view.CreateAccessibilityNodeInfo())
+        {
+            if (info?.AccessibilityFocused == true)
+            {
+                return true;
+            }
+        }
+
+        if (view is not Android.Views.ViewGroup group)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < group.ChildCount; index++)
+        {
+            if (group.GetChildAt(index) is { } child && HasAccessibilityFocusWithin(child))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void KeepEffectsUnclipped(Android.Views.ViewGroup platformView)

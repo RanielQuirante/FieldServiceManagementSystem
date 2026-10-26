@@ -106,11 +106,10 @@ public sealed class KeyboardAndNarratorTests
 
         var covered = Source("Platforms/Windows/CoveredSubtrees.cs");
         Assert.Contains("AccessibilityView.Raw", covered, StringComparison.Ordinal);
-        Assert.Contains("element.IsTabStop = false", covered, StringComparison.Ordinal);
         Assert.Contains("root.Loaded += OnRootLoaded", covered, StringComparison.Ordinal);
         Assert.Contains("VisualTreeHelper.GetChild(node, index)", covered, StringComparison.Ordinal);
         Assert.Contains("Restore(element, PlatformAutomationProperties.AccessibilityViewProperty, saved.View)", covered, StringComparison.Ordinal);
-        Assert.Contains("Restore(element, UIElement.IsTabStopProperty, saved.TabStop)", covered, StringComparison.Ordinal);
+        Assert.Contains("KeyboardNavigationMode.Cycle", Source("Platforms/Windows/SheetKeys.cs"), StringComparison.Ordinal);
 
         var page = Load("Features/Jobs/MyJobsPage.xaml");
         Assert.Contains(page.Descendants(_maui + "Grid"), grid => grid.Attribute("AutomationProperties.ExcludedWithChildren")?.Value == "{Binding HasOpenSheet}");

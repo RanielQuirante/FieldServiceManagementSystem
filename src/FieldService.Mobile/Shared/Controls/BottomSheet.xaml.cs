@@ -9,6 +9,7 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
     public const double TopGap = 24;
     public const double MinimumContentHeight = 160;
     public const double CentredWidth = 480;
+    public const double CentredMargin = 16;
     public const double HandleHeight = 5;
     public const double ContentSpacing = 18;
     public const double ContentSide = 16;
@@ -16,6 +17,8 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
     public const double ContentTopUnderHeader = 8;
 
     public static readonly Thickness BasePadding = new(0, 10, 0, 28);
+
+    public static readonly Thickness CentredPadding = new(0, 24, 0, 28);
 
     public static readonly BindableProperty HeaderProperty = BindableProperty.Create(
         nameof(Header),
@@ -202,9 +205,11 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
     public static Thickness PaddingFor(double navigationBar) => PaddingFor(navigationBar, 0, false);
 
     public static Thickness PaddingFor(double navigationBar, double keyboard, bool centred) =>
-        centred || keyboard > 0
-            ? BasePadding
-            : new(BasePadding.Left, BasePadding.Top, BasePadding.Right, BasePadding.Bottom + Math.Max(0, navigationBar));
+        centred
+            ? CentredPadding
+            : keyboard > 0
+                ? BasePadding
+                : new(BasePadding.Left, BasePadding.Top, BasePadding.Right, BasePadding.Bottom + Math.Max(0, navigationBar));
 
     public static Thickness ContentPaddingFor(bool hasHeader) => new(ContentSide, hasHeader ? ContentTopUnderHeader : 0, ContentSide, 0);
 
@@ -214,6 +219,9 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
         Math.Max(
             MinimumContentHeight,
             window - Math.Max(0, statusBar) - TopGap - Math.Max(0, keyboard) - padding.Top - padding.Bottom - HandleHeight - ContentSpacing - Math.Max(0, header));
+
+    public static double CentredMaxContentHeightFor(double window, Thickness padding, double header) =>
+        Math.Max(MinimumContentHeight, window - (2 * CentredMargin) - padding.Top - padding.Bottom - Math.Max(0, header));
 
     public static double KeyboardFrom(double rootHeight, double surfaceY, double surfaceHeight) =>
         rootHeight <= 0 || surfaceHeight <= 0 ? 0 : Math.Max(0, Math.Round(rootHeight - (surfaceY + surfaceHeight)));
@@ -376,7 +384,9 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
         if (window > 0)
         {
             var header = HasHeader && _header is { Height: > 0 } shown ? shown.Height + HairlineHeight : 0;
-            var maximum = MaxContentHeightFor(window, IsCentred ? 0 : _statusBar, _keyboard, padding, header);
+            var maximum = IsCentred
+                ? CentredMaxContentHeightFor(window, padding, header)
+                : MaxContentHeightFor(window, _statusBar, _keyboard, padding, header);
             if (Math.Abs(maximum - ContentMaxHeight) >= 1)
             {
                 ContentMaxHeight = maximum;
@@ -397,7 +407,7 @@ public partial class BottomSheet : ContentView, ISystemBarInsetsAware, IKeepInVi
             _surface.VerticalOptions = LayoutOptions.Center;
             _surface.HorizontalOptions = LayoutOptions.Center;
             _surface.WidthRequest = CentredWidth;
-            _surface.Margin = new Thickness(16);
+            _surface.Margin = new Thickness(CentredMargin);
         }
 
         if (_handle is not null)

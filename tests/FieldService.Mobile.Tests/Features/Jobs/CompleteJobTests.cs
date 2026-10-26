@@ -126,6 +126,34 @@ public sealed class CompleteJobTests
     }
 
     [Fact]
+    public async Task ReopenedAfterAChoiceAndCancelTheTwoRowSheetsDisabledConfirmAsksForNoIcon()
+    {
+        var job = JobDtoBuilder.Details1042();
+        var (viewModel, _) = await OpenAsync(job with { Affordances = job.Affordances with { CanSubmit = _allowed } });
+        var iconKeys = new List<string?>();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(JobDetailsViewModel.ConfirmIconKey))
+            {
+                iconKeys.Add(viewModel.ConfirmIconKey);
+            }
+        };
+
+        viewModel.OpenStatusSheetCommand.Execute(null);
+        viewModel.SelectStatusOptionCommand.Execute(viewModel.StatusOptions[0]);
+        Assert.Equal("FsIconPauseCircle", viewModel.ConfirmIconKey);
+        viewModel.CloseStatusSheetCommand.Execute(null);
+        viewModel.OpenStatusSheetCommand.Execute(null);
+
+        Assert.Null(viewModel.SelectedStatusOption);
+        Assert.Equal("Update status", viewModel.ConfirmText);
+        Assert.False(viewModel.ConfirmStatusCommand.CanExecute(null));
+        Assert.Null(viewModel.ConfirmIconKey);
+        Assert.Equal("FsIconPauseCircle", iconKeys[0]);
+        Assert.Null(iconKeys[^1]);
+    }
+
+    [Fact]
     public async Task CompleteJobTurnsTheConfirmButtonIntoReviewAndSubmitWhichOpensTheReviewWithoutARequest()
     {
         var job = JobDtoBuilder.Details1042();

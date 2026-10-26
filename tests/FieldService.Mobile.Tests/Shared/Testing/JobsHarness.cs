@@ -32,7 +32,9 @@ public sealed class JobsHarness
         Clock.SetLocalTimeZone(JobDtoBuilder.Zone);
         Connectivity = Substitute.For<IConnectivity>();
         Connectivity.NetworkAccess.Returns(_ => _access);
-        Network = new NetworkStatus(Connectivity);
+        Device = Substitute.For<IDeviceInfo>();
+        Device.Platform.Returns(platform ?? DevicePlatform.Android);
+        Network = new NetworkStatus(Connectivity, Device);
         Session = session ?? SignedInAsMarco();
         Navigator = navigator ?? Substitute.For<INavigator>();
         Startup = new AppStartup(Session, Navigator, Clock, Logs.CreateLogger<AppStartup>());
@@ -40,8 +42,6 @@ public sealed class JobsHarness
         Map.TryOpenAsync(Arg.Any<Placemark>(), Arg.Any<MapLaunchOptions>()).Returns(true);
         Dialer = Substitute.For<IPhoneDialer>();
         Dialer.IsSupported.Returns(dialerSupported);
-        Device = Substitute.For<IDeviceInfo>();
-        Device.Platform.Returns(platform ?? DevicePlatform.Android);
         Launcher = Substitute.For<ILauncher>();
         ScreenReader = Substitute.For<ISemanticScreenReader>();
         Layout = Substitute.For<IWindowLayout>();
@@ -92,7 +92,7 @@ public sealed class JobsHarness
     public JobsApiClient Jobs { get; }
 
     public JobDetailsViewModel CreateDetails() =>
-        new(Jobs, Store, Session, Map, Dialer, Device, Launcher, Navigator, ScreenReader, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
+        new(Jobs, Store, Session, Map, Dialer, Device, Launcher, Navigator, ScreenReader, Layout, Network, Clock, Logs.CreateLogger<JobDetailsViewModel>());
 
     public MyJobsViewModel CreateMyJobs() =>
         new(Jobs, Session, Navigator, Startup, Layout, CreateDetails, ScreenReader, Network, Clock, Logs.CreateLogger<MyJobsViewModel>());

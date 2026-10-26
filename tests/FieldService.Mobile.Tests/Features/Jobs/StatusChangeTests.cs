@@ -723,6 +723,128 @@ public sealed class StatusChangeTests
     }
 
     [Fact]
+    public async Task OnTheTwoPaneLayoutAConflictReloadsTheListAndACancelledJobLeavesActiveWhileThePaneKeepsItWithNoCardSelected()
+    {
+        var routes = new StatusRoutes();
+        routes.Gets.Enqueue(Answer(JobDtoBuilder.MarcoActive()));
+        routes.Gets.Enqueue(Answer(Assigned1053()));
+        routes.Puts.Enqueue(Problem(HttpStatusCode.Conflict, JobDetailsViewModel.InvalidTransitionCode));
+        routes.Gets.Enqueue(Answer(Cancelled1053()));
+        routes.Gets.Enqueue(Answer(new GetAssignedJobsResponse([JobDtoBuilder.Job1042Summary(), JobDtoBuilder.Job1047Summary()])));
+        var harness = new JobsHarness(new StubHttpMessageHandler(routes.RespondAsync), twoPane: true);
+        var viewModel = harness.CreateMyJobs();
+        await viewModel.AppearingCommand.ExecuteAsync(null);
+        var job = viewModel.Groups.SelectMany(group => group).Single(item => item.Id == JobDtoBuilder.Job1053);
+        viewModel.SelectedJob = job;
+        await viewModel.OpenJobCommand.ExecuteAsync(job);
+        var paneShown = new List<bool>();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MyJobsViewModel.ShowsPaneJob))
+            {
+                paneShown.Add(viewModel.ShowsPaneJob);
+            }
+        };
+
+        await viewModel.Details.StartJobCommand.ExecuteAsync(null);
+        await WaitFor(() => harness.Stub.Requests.Count == 5 && !viewModel.IsBusy);
+
+        Assert.Equal("/api/technicians/me/jobs", harness.Stub.Requests[4].Path);
+        Assert.DoesNotContain(viewModel.Groups.SelectMany(group => group), item => item.Id == JobDtoBuilder.Job1053);
+        Assert.Equal(2, viewModel.ActiveCount);
+        Assert.Null(viewModel.SelectedJob);
+        Assert.False(viewModel.HasSelection);
+        Assert.True(viewModel.KeepsPaneJob);
+        Assert.True(viewModel.ShowsPaneJob);
+        Assert.False(viewModel.ShowsNoSelection);
+        Assert.DoesNotContain(false, paneShown);
+        Assert.Equal(JobDtoBuilder.Job1053, viewModel.Details.JobId);
+        Assert.Equal(JobStatus.Cancelled, viewModel.Details.Status);
+        Assert.Equal(
+            new PageBanner(BannerVariant.Conflict, "JOB-1053 can no longer be started.", "Its status changed after you opened it. The latest version is shown.", null),
+            viewModel.Details.ActionBanner);
+        Assert.Equal(1, viewModel.Details.TitleFocusRequest);
+
+        var next = viewModel.Groups[0][0];
+        viewModel.SelectedJob = next;
+
+        Assert.False(viewModel.KeepsPaneJob);
+        Assert.True(viewModel.ShowsPaneJob);
+    }
+
+    [Fact]
+    public async Task AJobKeptInThePaneAfterAConflictGivesWayToSelectAJobWhenTheSegmentChanges()
+    {
+        var routes = new StatusRoutes();
+        routes.Gets.Enqueue(Answer(JobDtoBuilder.MarcoActive()));
+        routes.Gets.Enqueue(Answer(Assigned1053()));
+        routes.Puts.Enqueue(Problem(HttpStatusCode.Conflict, JobDetailsViewModel.InvalidTransitionCode));
+        routes.Gets.Enqueue(Answer(Cancelled1053()));
+        routes.Gets.Enqueue(Answer(new GetAssignedJobsResponse([JobDtoBuilder.Job1042Summary(), JobDtoBuilder.Job1047Summary()])));
+        routes.Gets.Enqueue(Answer(JobDtoBuilder.MarcoCompleted()));
+        var harness = new JobsHarness(new StubHttpMessageHandler(routes.RespondAsync), twoPane: true);
+        var viewModel = harness.CreateMyJobs();
+        await viewModel.AppearingCommand.ExecuteAsync(null);
+        var job = viewModel.Groups.SelectMany(group => group).Single(item => item.Id == JobDtoBuilder.Job1053);
+        viewModel.SelectedJob = job;
+        await viewModel.OpenJobCommand.ExecuteAsync(job);
+        await viewModel.Details.StartJobCommand.ExecuteAsync(null);
+        await WaitFor(() => harness.Stub.Requests.Count == 5 && !viewModel.IsBusy);
+        Assert.True(viewModel.KeepsPaneJob);
+
+        await viewModel.SelectViewCommand.ExecuteAsync(AssignedJobsView.Completed);
+
+        Assert.False(viewModel.KeepsPaneJob);
+        Assert.False(viewModel.ShowsPaneJob);
+        Assert.True(viewModel.ShowsNoSelection);
+    }
+
+    [Fact]
+    public async Task OnTheTwoPaneLayoutAConflictForAJobThatStaysActiveReloadsItsCardWithTheNewStatusAndKeepsItSelected()
+    {
+        var routes = new StatusRoutes();
+        routes.Gets.Enqueue(Answer(JobDtoBuilder.MarcoActive()));
+        routes.Gets.Enqueue(Answer(JobDtoBuilder.Details1042()));
+        routes.Puts.Enqueue(Problem(HttpStatusCode.Conflict, JobDetailsViewModel.ConcurrencyConflictCode));
+        routes.Gets.Enqueue(Answer(OnHold1042("Waiting for the roof key.")));
+        routes.Gets.Enqueue(Answer(new GetAssignedJobsResponse([JobDtoBuilder.Job1042Summary() with { Status = JobStatus.OnHold }, JobDtoBuilder.Job1047Summary(), JobDtoBuilder.Job1053Summary()])));
+        var harness = new JobsHarness(new StubHttpMessageHandler(routes.RespondAsync), twoPane: true);
+        var viewModel = harness.CreateMyJobs();
+        await viewModel.AppearingCommand.ExecuteAsync(null);
+        var job = viewModel.Groups[0][0];
+        viewModel.SelectedJob = job;
+        await viewModel.OpenJobCommand.ExecuteAsync(job);
+        viewModel.Details.OpenStatusSheetCommand.Execute(null);
+        viewModel.Details.HoldReason = HoldNote;
+
+        await viewModel.Details.ConfirmStatusCommand.ExecuteAsync(null);
+        await WaitFor(() => harness.Stub.Requests.Count == 5 && !viewModel.IsBusy);
+
+        Assert.Equal("/api/technicians/me/jobs", harness.Stub.Requests[4].Path);
+        Assert.Equal(JobDtoBuilder.Job1042, viewModel.SelectedJob?.Id);
+        Assert.Equal(JobStatus.OnHold, viewModel.SelectedJob?.Status);
+        Assert.False(viewModel.KeepsPaneJob);
+        Assert.True(viewModel.ShowsPaneJob);
+        Assert.Equal(JobStatus.OnHold, viewModel.Details.Status);
+        Assert.Equal(3, viewModel.ActiveCount);
+    }
+
+    [Fact]
+    public async Task OnThePhoneJobDetailsAConflictRaisesTheSameStatusChangedAsASuccessWithNoListToReload()
+    {
+        var (viewModel, harness, routes) = await OpenAsync(JobDtoBuilder.Details1047());
+        routes.Puts.Enqueue(Problem(HttpStatusCode.Conflict, JobDetailsViewModel.InvalidTransitionCode));
+        routes.Gets.Enqueue(Answer(Started1047()));
+        var raised = 0;
+        viewModel.StatusChanged += (_, _) => raised++;
+
+        await viewModel.StartJobCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, raised);
+        Assert.Equal(3, harness.Stub.Requests.Count);
+    }
+
+    [Fact]
     public async Task StatusLogsHoldIdentifiersAndNeverTheReason()
     {
         var (viewModel, harness, routes) = await OpenAsync(JobDtoBuilder.Details1042());
@@ -770,6 +892,35 @@ public sealed class StatusChangeTests
             History = [.. job.History, JobDtoBuilder.History(JobHistoryAction.Started, JobStatus.Assigned, JobStatus.InProgress, _marco, null, null, JobDtoBuilder.Local(10, 19, 10, 44))],
             Version = 10,
             Affordances = new JobAffordances([new AllowedStatusChange(JobStatus.OnHold, true)], false),
+        };
+    }
+
+    private static JobDetailsResponse Assigned1053() => JobDtoBuilder.Details1047() with
+    {
+        Id = JobDtoBuilder.Job1053,
+        Number = 1053,
+        Title = "Rooftop unit preventive maintenance",
+        Description = "Seasonal preventive maintenance on the rooftop units before the heating season.",
+        Priority = JobPriority.Low,
+        CustomerName = "Harborview Apartments",
+        SiteAddress = "600 Bayfront Avenue",
+        ContactPhone = null,
+        ScheduledStart = JobDtoBuilder.Local(10, 20, 13, 0),
+        ScheduledEnd = JobDtoBuilder.Local(10, 20, 15, 0),
+        Version = 4,
+    };
+
+    private static JobDetailsResponse Cancelled1053()
+    {
+        var job = Assigned1053();
+        var dana = new UserReference(JobDtoBuilder.Dana, "Dana Whitfield");
+        return job with
+        {
+            Status = JobStatus.Cancelled,
+            CancelledAt = JobDtoBuilder.Local(10, 19, 10, 40),
+            History = [.. job.History, JobDtoBuilder.History(JobHistoryAction.Cancelled, JobStatus.Assigned, JobStatus.Cancelled, dana, null, "Created in error for a device check.", JobDtoBuilder.Local(10, 19, 10, 40))],
+            Version = 5,
+            Affordances = new JobAffordances([], false),
         };
     }
 

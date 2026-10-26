@@ -44,11 +44,13 @@ public static class WindowsPlatformSetup
         {
             handler.PlatformView.BorderThickness = new PlatformThickness(0);
             handler.PlatformView.Resources[FocusedBorderThicknessKey] = new PlatformThickness(0);
+            handler.PlatformView.Padding = ToPlatform(TextFieldInsets.WindowsEntryPadding);
         });
         EditorHandler.Mapper.AppendToMapping(FieldChromeMappingKey, (handler, _) =>
         {
             handler.PlatformView.BorderThickness = new PlatformThickness(0);
             handler.PlatformView.Resources[FocusedBorderThicknessKey] = new PlatformThickness(0);
+            handler.PlatformView.Padding = ToPlatform(TextFieldInsets.WindowsEditorPadding);
         });
         CheckBoxHandler.Mapper.AppendToMapping(CheckBoxLookMappingKey, (handler, _) =>
         {
@@ -63,6 +65,8 @@ public static class WindowsPlatformSetup
 
             handler.PlatformView.Loaded -= FitCheckBoxBox;
             handler.PlatformView.Loaded += FitCheckBoxBox;
+            handler.PlatformView.SizeChanged -= FitCheckBoxBoxOnResize;
+            handler.PlatformView.SizeChanged += FitCheckBoxBoxOnResize;
         });
         LabelHandler.Mapper.AppendToMapping(TextSelection.MappingKey, (handler, view) =>
         {
@@ -101,9 +105,33 @@ public static class WindowsPlatformSetup
                 CoveredSubtrees.Apply(platformView, AutomationProperties.GetExcludedWithChildren(element) == true);
             }
         });
+        ViewHandler.ViewMapper.AppendToMapping(TabStop.IsStopProperty.PropertyName, (handler, view) =>
+        {
+            if (view is BindableObject element && !TabStop.GetIsStop(element) && handler.PlatformView is FrameworkElement platformView)
+            {
+                KeyboardFocus.KeepPointerFocus(platformView);
+            }
+        });
+        foreach (var command in new[] { FocusMoves.FocusWithinCommand, ScreenFocus.KeyboardFocusWithinCommand })
+        {
+            ViewHandler.ViewCommandMapper.AppendToMapping(command, (handler, _, args) =>
+            {
+                if (args is FocusQuery query && handler.PlatformView is FrameworkElement platformView)
+                {
+                    query.HasFocusWithin = KeyboardFocus.IsWithin(platformView);
+                }
+            });
+        }
+
         ViewHandler.ViewCommandMapper.AppendToMapping(FocusMoves.RevealCommand, (handler, _, _) =>
         {
-            if (handler.PlatformView is FrameworkElement { ActualWidth: > 0, ActualHeight: > 0 } element)
+            if (handler.PlatformView is not FrameworkElement platformView)
+            {
+                return;
+            }
+
+            platformView.UpdateLayout();
+            if (platformView is { ActualWidth: > 0, ActualHeight: > 0 } element)
             {
                 var clearance = ScrollRequests.RevealClearance;
                 element.StartBringIntoView(new BringIntoViewOptions
@@ -140,11 +168,23 @@ public static class WindowsPlatformSetup
         }
     }
 
-    private static void FitCheckBoxBox(object sender, RoutedEventArgs e)
+    private static void FitCheckBoxBox(object sender, RoutedEventArgs e) => FitCheckBox(sender as PlatformCheckBox);
+
+    private static void FitCheckBoxBoxOnResize(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e) => FitCheckBox(sender as PlatformCheckBox);
+
+    private static void FitCheckBox(PlatformCheckBox? box)
     {
-        if (sender is not PlatformCheckBox box
-            || CheckBoxLook.InsetFor(box.Width, box.Height) is not { } inset
-            || VisualTreeHelper.GetChildrenCount(box) == 0
+        if (box is null || CheckBoxLook.InsetFor(box.Width, box.Height) is not { } inset)
+        {
+            return;
+        }
+
+        if (VisualTreeHelper.GetChildrenCount(box) == 0)
+        {
+            box.ApplyTemplate();
+        }
+
+        if (VisualTreeHelper.GetChildrenCount(box) == 0
             || VisualTreeHelper.GetChild(box, 0) is not FrameworkElement root)
         {
             return;
@@ -156,6 +196,8 @@ public static class WindowsPlatformSetup
             part.StrokeThickness = CheckBoxLook.BorderWidth;
         }
     }
+
+    private static PlatformThickness ToPlatform(Microsoft.Maui.Thickness thickness) => new(thickness.Left, thickness.Top, thickness.Right, thickness.Bottom);
 
     private static FrameworkElement? FindPart(DependencyObject parent, string name)
     {

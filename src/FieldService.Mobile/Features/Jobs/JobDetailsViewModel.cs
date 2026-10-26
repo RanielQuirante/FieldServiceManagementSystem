@@ -36,6 +36,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     private readonly ILauncher _launcher;
     private readonly INavigator _navigator;
     private readonly ISemanticScreenReader _screenReader;
+    private readonly IWindowLayout _layout;
     private readonly TimeProvider _clock;
     private readonly ILogger<JobDetailsViewModel> _logger;
     private CancellationTokenSource? _load;
@@ -55,6 +56,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         ILauncher launcher,
         INavigator navigator,
         ISemanticScreenReader screenReader,
+        IWindowLayout layout,
         NetworkStatus network,
         TimeProvider clock,
         ILogger<JobDetailsViewModel> logger)
@@ -69,6 +71,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         _launcher = launcher;
         _navigator = navigator;
         _screenReader = screenReader;
+        _layout = layout;
         _clock = clock;
         _logger = logger;
         Timeline = [];
@@ -125,10 +128,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         nameof(ShowsPushedHeader),
         nameof(ShowsPaneHero),
         nameof(ContentPadding),
-        nameof(InfoColumnSpan),
-        nameof(DetailsRow),
-        nameof(DetailsColumn),
-        nameof(DetailsColumnSpan))]
+        nameof(DetailsSpacing))]
     public partial bool IsInPane { get; set; }
 
     [ObservableProperty]
@@ -274,13 +274,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     public Thickness ContentPadding => IsInPane ? Thickness.Zero : new Thickness(16, 20, 16, 24);
 
-    public int InfoColumnSpan => IsInPane ? 1 : 2;
-
-    public int DetailsRow => IsInPane ? 0 : 1;
-
-    public int DetailsColumn => IsInPane ? 1 : 0;
-
-    public int DetailsColumnSpan => IsInPane ? 1 : 2;
+    public double DetailsSpacing => PaneColumnsLayout.GapFor(IsInPane);
 
     private string? ContactName => Blank(Job?.ContactName);
 
@@ -413,11 +407,18 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
 
     protected override Task ReloadAsync(CancellationToken cancellationToken) => LoadJobAsync();
 
+    protected override void RequestContentFocus() => TitleFocusRequest++;
+
     protected override void OnActivated()
     {
         _context = SynchronizationContext.Current;
         _session.SessionEnded += OnSessionEnded;
         _inspections.Changed += OnInspectionsChanged;
+        if (!IsInPane)
+        {
+            _layout.Changed += OnWindowLayoutChanged;
+        }
+
         _timer?.Dispose();
         _timer = _clock.CreateTimer(_ => OnMinute(), null, MetaRefreshInterval, MetaRefreshInterval);
         UpdateStartsLine();
@@ -432,6 +433,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     {
         _session.SessionEnded -= OnSessionEnded;
         _inspections.Changed -= OnInspectionsChanged;
+        _layout.Changed -= OnWindowLayoutChanged;
         _timer?.Dispose();
         _timer = null;
     }

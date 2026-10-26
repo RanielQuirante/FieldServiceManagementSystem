@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:FieldService.Mobile.Shared.Controls"
              xmlns:jobs="clr-namespace:FieldService.Mobile.Features.Jobs"
              x:Class="FieldService.Mobile.Features.Jobs.JobDetailsPage"
              x:DataType="jobs:JobDetailsViewModel"
              Title="{x:Static jobs:JobDetailsViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
-             SafeAreaEdges="None">
+             SafeAreaEdges="None"
+             controls:ScreenFocus.Watches="True">
     <Shell.BackButtonBehavior>
         <BackButtonBehavior IsVisible="{OnPlatform WinUI=False, Default=True}" />
     </Shell.BackButtonBehavior>

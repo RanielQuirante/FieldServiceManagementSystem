@@ -62,6 +62,25 @@ public sealed class CheckBoxLookTests
     }
 
     [Fact]
+    public void OnWindowsTheBoxIsFittedAgainWhenItsTemplateArrivesAfterItLoadedSoNoPathKeepsWinUisOnePixelBorder()
+    {
+        var setup = Source("Platforms/Windows/WindowsPlatformSetup.cs");
+        var mapping = setup[setup.IndexOf("CheckBoxHandler.Mapper.AppendToMapping(CheckBoxLookMappingKey", StringComparison.Ordinal)..setup.IndexOf("LabelHandler.Mapper.AppendToMapping(TextSelection.MappingKey", StringComparison.Ordinal)];
+        var fit = setup[setup.IndexOf("private static void FitCheckBox(PlatformCheckBox? box)", StringComparison.Ordinal)..];
+
+        Assert.Contains("handler.PlatformView.Loaded += FitCheckBoxBox;", mapping, StringComparison.Ordinal);
+        Assert.Contains("handler.PlatformView.SizeChanged -= FitCheckBoxBoxOnResize;", mapping, StringComparison.Ordinal);
+        Assert.Contains("handler.PlatformView.SizeChanged += FitCheckBoxBoxOnResize;", mapping, StringComparison.Ordinal);
+        Assert.Contains("private static void FitCheckBoxBox(object sender, RoutedEventArgs e) => FitCheckBox(sender as PlatformCheckBox);", setup, StringComparison.Ordinal);
+        Assert.Contains("private static void FitCheckBoxBoxOnResize(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e) => FitCheckBox(sender as PlatformCheckBox);", setup, StringComparison.Ordinal);
+        var apply = fit.IndexOf("box.ApplyTemplate();", StringComparison.Ordinal);
+        var child = fit.IndexOf("VisualTreeHelper.GetChild(box, 0) is not FrameworkElement root", StringComparison.Ordinal);
+        var stroke = fit.IndexOf("part.StrokeThickness = CheckBoxLook.BorderWidth;", StringComparison.Ordinal);
+        Assert.True(apply > 0 && apply < child && child < stroke);
+        Assert.Contains("if (VisualTreeHelper.GetChildrenCount(box) == 0)\n        {\n            box.ApplyTemplate();", fit.Replace("\r\n", "\n", StringComparison.Ordinal), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AndroidKeepsItsOwnCheckBoxLook()
     {
         var android = RepositoryPaths.MobileSources("*.cs")

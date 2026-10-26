@@ -7,6 +7,7 @@ using FieldService.Mobile.Shared.Navigation;
 using FieldService.Mobile.Shared.Session;
 using FieldService.Mobile.Tests.Shared.Testing;
 using Microsoft.Extensions.Time.Testing;
+using Microsoft.Maui.Devices;
 using Microsoft.Maui.Networking;
 using NSubstitute;
 
@@ -87,7 +88,7 @@ public sealed class SignInViewModelTests
         var connectivity = Substitute.For<IConnectivity>();
         connectivity.NetworkAccess.Returns(NetworkAccess.Internet);
         var startup = Startup(harness);
-        var viewModel = new SignInViewModel(harness.Session, harness.Navigator, new NetworkStatus(connectivity), startup);
+        var viewModel = new SignInViewModel(harness.Session, harness.Navigator, new NetworkStatus(connectivity, AndroidDevice()), startup);
         viewModel.LoadedCommand.Execute(null);
         var appearing = viewModel.AppearingCommand.ExecuteAsync(null);
         Assert.False(viewModel.ShowsSessionNotice);
@@ -232,7 +233,7 @@ public sealed class SignInViewModelTests
             () => ProblemResponses.Session(TestSession.NewAccessToken(), TestSession.NewRefreshToken(), _technicianId, "Aisha Karim")));
         var connectivity = Substitute.For<IConnectivity>();
         connectivity.NetworkAccess.Returns(NetworkAccess.None);
-        var network = new NetworkStatus(connectivity);
+        var network = new NetworkStatus(connectivity, AndroidDevice());
         var viewModel = new SignInViewModel(harness.Session, harness.Navigator, network, CompletedStartup(harness));
         Fill(viewModel);
         await viewModel.SignInCommand.ExecuteAsync(null);
@@ -417,7 +418,7 @@ public sealed class SignInViewModelTests
         var connectivity = Substitute.For<IConnectivity>();
         connectivity.NetworkAccess.Returns(NetworkAccess.Internet);
         var startup = Startup(harness);
-        var viewModel = new SignInViewModel(harness.Session, harness.Navigator, new NetworkStatus(connectivity), startup);
+        var viewModel = new SignInViewModel(harness.Session, harness.Navigator, new NetworkStatus(connectivity, AndroidDevice()), startup);
         viewModel.Email = Email;
         viewModel.LoadedCommand.Execute(null);
         var appearing = viewModel.AppearingCommand.ExecuteAsync(null);
@@ -465,7 +466,7 @@ public sealed class SignInViewModelTests
         connectivity.NetworkAccess.Returns(NetworkAccess.Internet);
         var startup = new AppStartup(session, Substitute.For<INavigator>(), new FakeTimeProvider(), new CapturingLoggerProvider().CreateLogger<AppStartup>());
         var screen = new QueuedSynchronizationContext();
-        var viewModel = QueuedSynchronizationContext.CreateOn(screen, () => new SignInViewModel(session, Substitute.For<INavigator>(), new NetworkStatus(connectivity), startup));
+        var viewModel = QueuedSynchronizationContext.CreateOn(screen, () => new SignInViewModel(session, Substitute.For<INavigator>(), new NetworkStatus(connectivity, AndroidDevice()), startup));
         Fill(viewModel);
 
         await Task.Run(() => session.SessionEnded += Raise.Event(), TestContext.Current.CancellationToken);
@@ -486,7 +487,7 @@ public sealed class SignInViewModelTests
         var connectivity = Substitute.For<IConnectivity>();
         connectivity.NetworkAccess.Returns(NetworkAccess.Internet);
         var startup = new AppStartup(session, Substitute.For<INavigator>(), new FakeTimeProvider(), new CapturingLoggerProvider().CreateLogger<AppStartup>());
-        var viewModel = new SignInViewModel(session, Substitute.For<INavigator>(), new NetworkStatus(connectivity), startup);
+        var viewModel = new SignInViewModel(session, Substitute.For<INavigator>(), new NetworkStatus(connectivity, AndroidDevice()), startup);
         Fill(viewModel);
         viewModel.EmailError = "Enter a complete email address, such as name@fieldservice.example.";
         viewModel.Failure = new SignInFailure("The email or password is incorrect.", null, null);
@@ -566,12 +567,19 @@ public sealed class SignInViewModelTests
         var harness = TestSession.Create(stub, logs);
         var connectivity = Substitute.For<IConnectivity>();
         connectivity.NetworkAccess.Returns(access);
-        var viewModel = new SignInViewModel(harness.Session, harness.Navigator, new NetworkStatus(connectivity), CompletedStartup(harness));
+        var viewModel = new SignInViewModel(harness.Session, harness.Navigator, new NetworkStatus(connectivity, AndroidDevice()), CompletedStartup(harness));
         return (viewModel, harness);
     }
 
     private static AppStartup Startup(TestSession harness) =>
         new(harness.Session, harness.Navigator, new FakeTimeProvider(), harness.Logs.CreateLogger<AppStartup>());
+
+    private static IDeviceInfo AndroidDevice()
+    {
+        var device = Substitute.For<IDeviceInfo>();
+        device.Platform.Returns(DevicePlatform.Android);
+        return device;
+    }
 
     private static AppStartup CompletedStartup(TestSession harness)
     {

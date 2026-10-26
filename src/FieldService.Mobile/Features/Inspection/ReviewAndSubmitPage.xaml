@@ -7,7 +7,8 @@
              x:DataType="inspection:ReviewAndSubmitViewModel"
              Title="{x:Static inspection:ReviewAndSubmitViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
-             SafeAreaEdges="None">
+             SafeAreaEdges="None"
+             controls:ScreenFocus.Watches="True">
     <Shell.BackButtonBehavior>
         <BackButtonBehavior IsVisible="{OnPlatform WinUI=False, Default=True}" />
     </Shell.BackButtonBehavior>
@@ -27,7 +28,8 @@
                                         Title="{x:Static inspection:ReviewAndSubmitViewModel.PageTitle}"
                                         Subtitle="{Binding JobNumber}"
                                         BackCommand="{Binding BackCommand}"
-                                        BackDescription="{Binding BackDescription}">
+                                        BackDescription="{Binding BackDescription}"
+                                        TitleFocusRequest="{Binding TitleFocusRequest}">
                         <controls:AppHeader.PushedBody>
                             <Label Text="{Binding JobTitle}"
                                    Style="{StaticResource FsTextBodyOnDark}"
@@ -51,14 +53,16 @@
                                          Message="{Binding RefreshError.Message}"
                                          Reference="{Binding RefreshError.Reference}"
                                          ActionText="Try again"
-                                         ActionCommand="{Binding RetryCommand}" />
+                                         ActionCommand="{Binding RetryCommand}"
+                                         LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                         <controls:Banner Variant="Error"
                                          IsVisible="{Binding IsError}"
                                          Title="{Binding Error.Title}"
                                          Message="{Binding Error.Message}"
                                          Reference="{Binding Error.Reference}"
                                          ActionText="Try again"
-                                         ActionCommand="{Binding RetryCommand}" />
+                                         ActionCommand="{Binding RetryCommand}"
+                                         LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                         <Border Style="{StaticResource FsGlassCard}"
                                 IsVisible="{Binding IsLoading}"
                                 SemanticProperties.Description="{x:Static inspection:ReviewAndSubmitViewModel.LoadingText}">
@@ -89,19 +93,15 @@
                                     <VerticalStackLayout Spacing="{StaticResource FsSpace8}">
                                         <Label Text="{x:Static inspection:ReviewAndSubmitViewModel.ChecklistLabel}"
                                                Style="{StaticResource FsTextInfoLabel}" />
-                                        <FlexLayout Wrap="Wrap"
-                                                    Direction="Row"
-                                                    AlignItems="Center">
+                                        <controls:WrapRowLayout ColumnSpacing="{StaticResource FsSpace8}"
+                                                                RowSpacing="{StaticResource FsSpace8}">
                                             <controls:StatusChip Result="Pass"
-                                                                 Count="{Binding PassCount}"
-                                                                 Margin="0,0,8,8" />
+                                                                 Count="{Binding PassCount}" />
                                             <controls:StatusChip Result="Fail"
-                                                                 Count="{Binding FailCount}"
-                                                                 Margin="0,0,8,8" />
+                                                                 Count="{Binding FailCount}" />
                                             <controls:StatusChip Result="NotApplicable"
-                                                                 Count="{Binding NotApplicableCount}"
-                                                                 Margin="0,0,8,8" />
-                                        </FlexLayout>
+                                                                 Count="{Binding NotApplicableCount}" />
+                                        </controls:WrapRowLayout>
                                     </VerticalStackLayout>
                                 </VerticalStackLayout>
                             </Border>

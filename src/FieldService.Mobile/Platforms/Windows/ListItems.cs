@@ -12,6 +12,24 @@ namespace FieldService.Mobile.WinUI;
 
 public static class ListItems
 {
+    public const string SelectionIndicatorKey = "ListViewItemSelectionIndicatorVisualEnabled";
+    public const string EmptyViewPartName = "EmptyViewContentControl";
+
+    public static readonly string[] ItemBrushKeys =
+    [
+        "ListViewItemBackground",
+        "ListViewItemBackgroundPointerOver",
+        "ListViewItemBackgroundPressed",
+        "ListViewItemBackgroundSelected",
+        "ListViewItemBackgroundSelectedPointerOver",
+        "ListViewItemBackgroundSelectedPressed",
+        "ListViewItemBackgroundSelectedDisabled",
+        "ListViewItemSelectionIndicatorBrush",
+        "ListViewItemSelectionIndicatorPointerOverBrush",
+        "ListViewItemSelectionIndicatorPressedBrush",
+        "ListViewItemSelectionIndicatorDisabledBrush",
+    ];
+
     private static readonly ConditionalWeakTable<FrameworkElement, JobCard> _cards = new();
     private static readonly ConditionalWeakTable<TextBlock, Label> _headers = new();
 
@@ -20,11 +38,64 @@ public static class ListItems
         ArgumentNullException.ThrowIfNull(list);
         ArgumentNullException.ThrowIfNull(view);
 
+        var clear = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        foreach (var key in ItemBrushKeys)
+        {
+            list.Resources[key] = clear;
+        }
+
+        list.Resources[SelectionIndicatorKey] = false;
         list.SingleSelectionFollowsFocus = false;
         if (ListSemantics.GetName(view) is { Length: > 0 } name)
         {
             AutomationProperties.SetName(list, name);
         }
+
+        list.Loaded -= OnListLoaded;
+        list.Loaded += OnListLoaded;
+        if (list.IsLoaded)
+        {
+            KeepEmptyViewOutOfTabOrder(list);
+        }
+    }
+
+    public static void KeepEmptyViewOutOfTabOrder(ListViewBase list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+
+        if (Descendant<Control>(list, EmptyViewPartName) is { } emptyView)
+        {
+            emptyView.IsTabStop = false;
+        }
+    }
+
+    private static void OnListLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is ListViewBase list)
+        {
+            KeepEmptyViewOutOfTabOrder(list);
+        }
+    }
+
+    private static T? Descendant<T>(DependencyObject parent, string name)
+        where T : FrameworkElement
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T found && found.Name == name)
+            {
+                return found;
+            }
+
+            if (Descendant<T>(child, name) is { } nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     public static void AttachCard(FrameworkElement card, JobCard view)

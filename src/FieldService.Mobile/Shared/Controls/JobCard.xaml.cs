@@ -58,6 +58,13 @@ public partial class JobCard : ContentView, ITappableCard
         false,
         propertyChanged: (bindable, _, _) => ((JobCard)bindable).ApplyLook());
 
+    public static readonly BindableProperty HasShadowProperty = BindableProperty.Create(
+        nameof(HasShadow),
+        typeof(bool),
+        typeof(JobCard),
+        true,
+        propertyChanged: (bindable, _, _) => ((JobCard)bindable).ApplyLook());
+
     public static readonly BindableProperty ShowsContentProperty = BindableProperty.Create(nameof(ShowsContent), typeof(bool), typeof(JobCard), true);
 
     public static readonly BindableProperty ShowsSelectionProperty = BindableProperty.Create(nameof(ShowsSelection), typeof(bool), typeof(JobCard), false);
@@ -150,6 +157,12 @@ public partial class JobCard : ContentView, ITappableCard
         set => SetValue(IsSelectedProperty, value);
     }
 
+    public bool HasShadow
+    {
+        get => (bool)GetValue(HasShadowProperty);
+        set => SetValue(HasShadowProperty, value);
+    }
+
     public bool ShowsContent
     {
         get => (bool)GetValue(ShowsContentProperty);
@@ -165,6 +178,8 @@ public partial class JobCard : ContentView, ITappableCard
     public bool ActsAsButton => TappableCard.ActsAsButton(IsLoading, Description);
 
     public static string MetaStyleKey(bool isCompact) => isCompact ? "FsTextCompactMeta" : "FsTextCardMeta";
+
+    public static string ShadowKey(bool hasShadow, bool urgent) => !hasShadow ? "FsShadowNone" : urgent ? "FsShadowUrgentCard" : "FsShadowGlass";
 
     public static double TimeGroupWidth(double timeWidth) => ClockWidth + ClockGap + timeWidth;
 
@@ -192,7 +207,7 @@ public partial class JobCard : ContentView, ITappableCard
         Card.SetDynamicResource(Border.BackgroundProperty, urgent ? "FsCardUrgentBrush" : "FsGlassBrush");
         Card.SetDynamicResource(Border.StrokeProperty, ShowsSelection ? "FsTeal700Brush" : urgent ? "FsAccentBrush" : "FsGlassStrokeBrush");
         Card.StrokeThickness = ShowsSelection ? 2 : urgent ? 1.5 : 1;
-        Card.SetDynamicResource(Border.ShadowProperty, urgent ? "FsShadowUrgentCard" : "FsShadowGlass");
+        Card.SetDynamicResource(Border.ShadowProperty, ShadowKey(HasShadow, urgent));
         Card.StrokeShape = new RoundRectangle { CornerRadius = IsCompact ? CompactRadius : Radius };
         Card.Padding = IsCompact ? new Thickness(6) : new Thickness(8);
         CardStack.Spacing = IsCompact ? 8 : 12;

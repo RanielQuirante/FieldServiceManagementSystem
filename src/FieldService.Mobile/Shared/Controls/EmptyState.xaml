@@ -12,7 +12,8 @@
             <controls:IconTile IconData="{Binding IconData}"
                                TileSize="56" />
             <VerticalStackLayout Spacing="{StaticResource FsSpace6}">
-                <Label Text="{Binding Title}"
+                <Label x:Name="TitleLabel"
+                       Text="{Binding Title}"
                        Style="{StaticResource FsTextLargeHeading}"
                        SemanticProperties.HeadingLevel="Level2"
                        controls:ListSemantics.IsOwnStop="True" />

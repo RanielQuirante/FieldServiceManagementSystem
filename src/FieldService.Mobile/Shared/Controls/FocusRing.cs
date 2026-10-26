@@ -34,6 +34,18 @@ public static class FocusRing
         view.SetValue(IsOnDarkProperty, value);
     }
 
+    public static double CentreLineOffset => Gap + (Thickness / 2);
+
+    public static double OuterRadius(double radius) => Math.Max(0, radius) + Gap + Thickness;
+
+    public static double CentreLineRadius(double radius) => Math.Max(0, radius) + CentreLineOffset;
+
+    public static Rect CentreLine(double width, double height, Thickness inset) => new(
+        inset.Left - CentreLineOffset,
+        inset.Top - CentreLineOffset,
+        Math.Max(0, width - inset.Left - inset.Right) + (2 * CentreLineOffset),
+        Math.Max(0, height - inset.Top - inset.Bottom) + (2 * CentreLineOffset));
+
     public static Thickness MarginAround(Thickness inset) =>
         new(inset.Left + ControlMargin, inset.Top + ControlMargin, inset.Right + ControlMargin, inset.Bottom + ControlMargin);
 

@@ -2,7 +2,7 @@ using System.Windows.Input;
 
 namespace FieldService.Mobile.Shared.Controls;
 
-public partial class FormField : ContentView, IReleasesInput
+public partial class FormField : ContentView, IReleasesInput, IFocusForwarder
 {
     public const string ShowPasswordDescription = "Show password";
     public const string HidePasswordDescription = "Hide password";
@@ -442,6 +442,8 @@ public partial class FormField : ContentView, IReleasesInput
 
     public bool HoldsInput => (Input?.IsFocused ?? false) || (Area?.IsFocused ?? false);
 
+    public VisualElement? FocusTarget => IsMultiline ? Area : Input;
+
     public void ReleaseInput()
     {
         foreach (var field in new InputView?[] { Input, Area })
@@ -475,14 +477,7 @@ public partial class FormField : ContentView, IReleasesInput
             return;
         }
 
-        if (IsMultiline)
-        {
-            Area.Focus();
-        }
-        else
-        {
-            Input.Focus();
-        }
+        FocusMoves.RevealThenFocus(this, IsMultiline ? Area : Input);
     }
 
     private void UpdateCount()

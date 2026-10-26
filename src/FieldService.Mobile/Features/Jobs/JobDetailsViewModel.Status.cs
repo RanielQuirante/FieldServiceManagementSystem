@@ -31,6 +31,7 @@ public sealed partial class JobDetailsViewModel
     public const int ReasonCountFrom = 400;
 
     private CancellationTokenSource? _command;
+    private bool _leftLayout;
 
     public event EventHandler? StatusChanged;
 
@@ -84,6 +85,9 @@ public sealed partial class JobDetailsViewModel
 
     [ObservableProperty]
     public partial int TitleFocusRequest { get; private set; }
+
+    [ObservableProperty]
+    public partial int StartFocusRequest { get; private set; }
 
     public IReadOnlyList<AllowedStatusChange> AllowedChanges => Job?.Affordances.AllowedStatusChanges ?? [];
 
@@ -197,6 +201,50 @@ public sealed partial class JobDetailsViewModel
         }
 
         CloseStatusSheet();
+        return true;
+    }
+
+    public void LeaveLayout()
+    {
+        if (IsUpdatingStatus)
+        {
+            _leftLayout = true;
+            return;
+        }
+
+        IsStatusSheetOpen = false;
+        SheetFailure = null;
+        HoldReason = string.Empty;
+        HoldReasonError = null;
+    }
+
+    private void OnWindowLayoutChanged(object? sender, EventArgs e)
+    {
+        var wasOpen = IsStatusSheetOpen;
+        LeaveLayout();
+        if (wasOpen && !IsStatusSheetOpen)
+        {
+            StartFocusRequest++;
+        }
+    }
+
+    private bool FinishLeftLayout()
+    {
+        if (!_leftLayout)
+        {
+            return false;
+        }
+
+        _leftLayout = false;
+        IsStatusSheetOpen = false;
+        SheetFailure = null;
+        HoldReason = string.Empty;
+        HoldReasonError = null;
+        if (!IsInPane)
+        {
+            StartFocusRequest++;
+        }
+
         return true;
     }
 
@@ -400,7 +448,11 @@ public sealed partial class JobDetailsViewModel
 
             LogStatusChanged(_logger, job.Id, option.Status);
             _screenReader.Announce(option.Announcement(JobNumber));
-            UpdateStatusFocusRequest++;
+            if (!FinishLeftLayout())
+            {
+                UpdateStatusFocusRequest++;
+            }
+
             StatusChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception) when (Dropped(token, requestedFor))
@@ -411,15 +463,25 @@ public sealed partial class JobDetailsViewModel
         {
             LogStatusChangeFailed(_logger, job.Id, option.Status, 404);
             IsStatusSheetOpen = false;
+            FinishLeftLayout();
             await NoLongerAssignedAsync();
         }
         catch (ApiException exception) when (exception.StatusCode == HttpStatusCode.Conflict)
         {
             LogStatusChangeFailed(_logger, job.Id, option.Status, 409);
             IsStatusSheetOpen = false;
-            await ExplainConflictAsync(option, exception.Code);
+            if (FinishLeftLayout())
+            {
+                await LoadJobAsync();
+            }
+            else
+            {
+                await ExplainConflictAsync(option, exception.Code);
+            }
+
+            StatusChanged?.Invoke(this, EventArgs.Empty);
         }
-        catch (ApiException exception) when (fromSheet && option.RequiresNote && exception.StatusCode == HttpStatusCode.BadRequest && exception.Problem?.FirstError("note") is { } message)
+        catch (ApiException exception) when (fromSheet && option.RequiresNote && !_leftLayout && exception.StatusCode == HttpStatusCode.BadRequest && exception.Problem?.FirstError("note") is { } message)
         {
             LogStatusChangeFailed(_logger, job.Id, option.Status, 400);
             HoldReasonError = message;
@@ -428,7 +490,10 @@ public sealed partial class JobDetailsViewModel
         catch (Exception exception) when (IsFailure(exception, token))
         {
             LogStatusChangeFailed(_logger, job.Id, option.Status, exception is ApiException api ? (int)api.StatusCode : 0);
-            ShowStatusFailure(DescribeStatusFailure(exception, option), fromSheet);
+            if (!FinishLeftLayout())
+            {
+                ShowStatusFailure(DescribeStatusFailure(exception, option), fromSheet);
+            }
         }
         finally
         {
@@ -517,6 +582,7 @@ public sealed partial class JobDetailsViewModel
     {
         _command?.Cancel();
         _command = null;
+        _leftLayout = false;
         IsStatusSheetOpen = false;
         IsStarting = false;
         IsUpdatingStatus = false;

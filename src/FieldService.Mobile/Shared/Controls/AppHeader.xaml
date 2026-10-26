@@ -69,10 +69,12 @@
                             <Label Text="{Binding Eyebrow}"
                                    Style="{StaticResource FsTextEyebrowOnDark}"
                                    controls:ListSemantics.IsOwnStop="True" />
-                            <Label Text="{Binding Title}"
+                            <Label x:Name="ListTitleLabel"
+                                   Text="{Binding Title}"
                                    Style="{StaticResource FsTextScreenTitle}"
                                    SemanticProperties.HeadingLevel="Level1"
-                                   controls:ListSemantics.IsOwnStop="True" />
+                                   controls:ListSemantics.IsOwnStop="True"
+                                   controls:FocusRing.IsOnDark="True" />
                         </VerticalStackLayout>
                         <Button x:Name="ListAvatarButton"
                                 Grid.Column="1"
@@ -80,6 +82,7 @@
                                 Text="{Binding AvatarText}"
                                 Command="{Binding AvatarCommand}"
                                 SemanticProperties.Description="{Binding AvatarDescription}"
+                                controls:ScreenFocus.IsStart="True"
                                 VerticalOptions="Center" />
                     </Grid>
                     <Grid ColumnDefinitions="*,Auto"
@@ -130,9 +133,11 @@
                     <Grid ColumnDefinitions="Auto,*"
                           ColumnSpacing="{StaticResource FsSpace12}">
                         <Grid VerticalOptions="Center">
-                            <Button Style="{StaticResource FsIconButtonOnDark}"
+                            <Button x:Name="BackButton"
+                                    Style="{StaticResource FsIconButtonOnDark}"
                                     Command="{Binding BackCommand}"
-                                    SemanticProperties.Description="{Binding BackDescription}" />
+                                    SemanticProperties.Description="{Binding BackDescription}"
+                                    controls:ScreenFocus.IsStart="True" />
                             <controls:Icon PathData="{StaticResource FsIconArrowLeft}"
                                            Size="22"
                                            Color="{StaticResource FsOnDark}"
@@ -142,9 +147,11 @@
                         <VerticalStackLayout Grid.Column="1"
                                              Spacing="{StaticResource FsSpace2}"
                                              VerticalOptions="Center">
-                            <Label Text="{Binding Title}"
+                            <Label x:Name="PushedTitleLabel"
+                                   Text="{Binding Title}"
                                    Style="{StaticResource FsTextPushedTitle}"
-                                   SemanticProperties.HeadingLevel="Level1" />
+                                   SemanticProperties.HeadingLevel="Level1"
+                                   controls:FocusRing.IsOnDark="True" />
                             <Label Text="{Binding Subtitle}"
                                    Style="{StaticResource FsTextMonoOnDark}" />
                         </VerticalStackLayout>
@@ -293,6 +300,7 @@
                             Text="{Binding AvatarText}"
                             Command="{Binding AvatarCommand}"
                             SemanticProperties.Description="{Binding AvatarDescription}"
+                            controls:ScreenFocus.IsStart="True"
                             VerticalOptions="Center" />
                 </Grid>
             </Grid>

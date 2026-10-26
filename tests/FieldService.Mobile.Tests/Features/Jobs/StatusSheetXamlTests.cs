@@ -169,8 +169,43 @@ public sealed class StatusSheetXamlTests
         Assert.Equal("True", sheet.Attribute("IsCentred")?.Value);
         Assert.Equal("{Binding Details.ShowsPaneSheet}", sheet.Attribute("IsOpen")?.Value);
         Assert.Equal("{Binding Details}", sheet.Elements(_jobs + "UpdateStatusSheet").Single().Attribute("BindingContext")?.Value);
-        Assert.Equal(BottomSheet.BasePadding, BottomSheet.PaddingFor(48, 0, centred: true));
+        Assert.Equal(BottomSheet.CentredPadding, BottomSheet.PaddingFor(48, 0, centred: true));
         Assert.Equal(480d, BottomSheet.CentredWidth);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(48, 0)]
+    [InlineData(48, 320)]
+    public void TheCentredPanelStartsItsTitle24BelowItsTopEdgeWithNoHandleWhileThePhoneSheetKeeps10(double navigationBar, double keyboard)
+    {
+        var centred = BottomSheet.PaddingFor(navigationBar, keyboard, centred: true);
+        var phone = BottomSheet.PaddingFor(navigationBar, keyboard, centred: false);
+        var source = File.ReadAllText(Path.Combine(RepositoryPaths.MobileApp, "Shared", "Controls", "BottomSheet.xaml.cs"));
+
+        Assert.Equal(new Thickness(0, 24, 0, 28), centred);
+        Assert.Equal(10, phone.Top);
+        Assert.Equal(BottomSheet.BasePadding.Bottom + (keyboard > 0 ? 0 : navigationBar), phone.Bottom);
+        Assert.Equal(new Thickness(16, 8, 16, 0), BottomSheet.ContentPaddingFor(hasHeader: true));
+        Assert.Contains("_handle.IsVisible = !IsCentred;", source, StringComparison.Ordinal);
+        Assert.Contains("_surface.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(28) };", source, StringComparison.Ordinal);
+        Assert.Contains("? CentredMaxContentHeightFor(window, padding, header)", source, StringComparison.Ordinal);
+        Assert.Contains("_surface.Margin = new Thickness(CentredMargin);", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheCentredPanelReservesItsTwoMarginsAndNoHandleSoThe14MoreAtTheTopCostsNoContentAt768()
+    {
+        var phone = BottomSheet.MaxContentHeightFor(688, 0, 0, BottomSheet.PaddingFor(0, 0, centred: false), 57);
+        var centred = BottomSheet.CentredMaxContentHeightFor(688, BottomSheet.PaddingFor(0, 0, centred: true), 57);
+        var panel = BottomSheet.CentredPadding.Top + 57 + centred + BottomSheet.CentredPadding.Bottom;
+
+        Assert.Equal(16, BottomSheet.CentredMargin);
+        Assert.Equal(688 - 24 - 10 - 28 - 5 - 18 - 57, phone);
+        Assert.Equal(688 - 32 - 24 - 28 - 57, centred);
+        Assert.True(centred > phone);
+        Assert.Equal(688 - (2 * BottomSheet.CentredMargin), panel);
+        Assert.Equal(BottomSheet.MinimumContentHeight, BottomSheet.CentredMaxContentHeightFor(300, BottomSheet.CentredPadding, 57));
     }
 
     [Theory]

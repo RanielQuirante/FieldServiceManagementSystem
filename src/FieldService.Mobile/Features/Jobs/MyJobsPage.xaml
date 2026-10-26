@@ -7,7 +7,8 @@
              x:DataType="jobs:MyJobsViewModel"
              Title="{x:Static jobs:MyJobsViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
-             SafeAreaEdges="None">
+             SafeAreaEdges="None"
+             controls:ScreenFocus.Watches="True">
     <Grid SafeAreaEdges="None">
         <Grid SafeAreaEdges="None"
               AutomationProperties.ExcludedWithChildren="{Binding HasOpenSheet}">
@@ -19,6 +20,7 @@
                 <CollectionView x:Name="JobsList"
                                 ItemsSource="{Binding Groups}"
                                 controls:ListSemantics.Name="{x:Static controls:ListSemantics.JobListName}"
+                                controls:ListFocus.FirstGroupRequest="{Binding GroupFocusRequest}"
                                 IsGrouped="True"
                                 SelectionMode="Single"
                                 SelectedItem="{Binding SelectedJob}"
@@ -33,6 +35,7 @@
                                                 AvatarText="{Binding Initials}"
                                                 AvatarCommand="{Binding OpenAccountSheetCommand}"
                                                 AvatarFocusRequest="{Binding AccountFocusRequest}"
+                                                TitleFocusRequest="{Binding TitleFocusRequest}"
                                                 SyncText="{Binding SyncText}"
                                                 SyncIndicator="{Binding SyncIndicator}"
                                                 RefreshCommand="{Binding RefreshCommand}">
@@ -65,21 +68,24 @@
                                                  Title="{x:Static jobs:MyJobsViewModel.OfflineTitle}"
                                                  Message="{Binding OfflineMessage}"
                                                  ActionText="Try again"
-                                                 ActionCommand="{Binding RetryCommand}" />
+                                                 ActionCommand="{Binding RetryCommand}"
+                                                 LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                                 <controls:Banner Variant="Error"
                                                  IsVisible="{Binding HasRefreshError}"
                                                  Title="{Binding RefreshError.Title}"
                                                  Message="{Binding RefreshError.Message}"
                                                  Reference="{Binding RefreshError.Reference}"
                                                  ActionText="Try again"
-                                                 ActionCommand="{Binding RetryCommand}" />
+                                                 ActionCommand="{Binding RetryCommand}"
+                                                 LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                                 <controls:Banner Variant="Error"
                                                  IsVisible="{Binding IsError}"
                                                  Title="{Binding Error.Title}"
                                                  Message="{Binding Error.Message}"
                                                  Reference="{Binding Error.Reference}"
                                                  ActionText="Try again"
-                                                 ActionCommand="{Binding RetryCommand}" />
+                                                 ActionCommand="{Binding RetryCommand}"
+                                                 LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                                 <VerticalStackLayout IsVisible="{Binding IsLoading}"
                                                      Padding="0,22,0,0"
                                                      Spacing="{StaticResource FsSpace12}">
@@ -94,6 +100,7 @@
                                                      ActionText="Refresh"
                                                      ActionDescription="Refresh jobs"
                                                      ActionCommand="{Binding RefreshCommand}"
+                                                     TitleFocusRequest="{Binding EmptyFocusRequest}"
                                                      Margin="0,22,0,0" />
                             </VerticalStackLayout>
                         </VerticalStackLayout>
@@ -126,7 +133,8 @@
                                         </VisualStateGroup>
                                     </VisualStateGroupList>
                                 </VisualStateManager.VisualStateGroups>
-                                <controls:JobCard JobNumber="{Binding JobNumber}"
+                                <controls:JobCard HasShadow="{OnPlatform WinUI=False, Default=True}"
+                                                  JobNumber="{Binding JobNumber}"
                                                   Title="{Binding Title}"
                                                   Status="{Binding Status}"
                                                   Priority="{Binding Priority}"
@@ -169,7 +177,8 @@
                             <Label Text="{x:Static jobs:MyJobsViewModel.PageTitle}"
                                    Style="{StaticResource FsTextPaneTitle}"
                                    VerticalOptions="Center"
-                                   SemanticProperties.HeadingLevel="Level1" />
+                                   SemanticProperties.HeadingLevel="Level1"
+                                   controls:ScrollRequests.SemanticFocus="{Binding TitleFocusRequest}" />
                             <Grid Grid.Column="1">
                                 <Button Style="{StaticResource FsIconButton}"
                                         Command="{Binding RefreshCommand}"
@@ -195,6 +204,7 @@
                         <CollectionView Grid.Row="2"
                                         ItemsSource="{Binding Groups}"
                                         controls:ListSemantics.Name="{x:Static controls:ListSemantics.JobListName}"
+                                        controls:ListFocus.FirstGroupRequest="{Binding GroupFocusRequest}"
                                         IsGrouped="True"
                                         SelectionMode="Single"
                                         SelectedItem="{Binding SelectedJob}"
@@ -216,21 +226,24 @@
                                                      Title="{x:Static jobs:MyJobsViewModel.OfflineTitle}"
                                                      Message="{Binding OfflineMessage}"
                                                      ActionText="Try again"
-                                                     ActionCommand="{Binding RetryCommand}" />
+                                                     ActionCommand="{Binding RetryCommand}"
+                                                     LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                                     <controls:Banner Variant="Error"
                                                      IsVisible="{Binding HasRefreshError}"
                                                      Title="{Binding RefreshError.Title}"
                                                      Message="{Binding RefreshError.Message}"
                                                      Reference="{Binding RefreshError.Reference}"
                                                      ActionText="Try again"
-                                                     ActionCommand="{Binding RetryCommand}" />
+                                                     ActionCommand="{Binding RetryCommand}"
+                                                     LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                                     <controls:Banner Variant="Error"
                                                      IsVisible="{Binding IsError}"
                                                      Title="{Binding Error.Title}"
                                                      Message="{Binding Error.Message}"
                                                      Reference="{Binding Error.Reference}"
                                                      ActionText="Try again"
-                                                     ActionCommand="{Binding RetryCommand}" />
+                                                     ActionCommand="{Binding RetryCommand}"
+                                                     LeaveFocusCommand="{Binding BannerLeftWithFocusCommand}" />
                                     <controls:JobCard IsLoading="True"
                                                       IsCompact="True"
                                                       IsVisible="{Binding IsLoading}" />
@@ -240,7 +253,8 @@
                                                          Message="{Binding EmptyMessage}"
                                                          ActionText="Refresh"
                                                          ActionDescription="Refresh jobs"
-                                                         ActionCommand="{Binding RefreshCommand}" />
+                                                         ActionCommand="{Binding RefreshCommand}"
+                                                         TitleFocusRequest="{Binding EmptyFocusRequest}" />
                                 </VerticalStackLayout>
                             </CollectionView.Header>
                             <CollectionView.GroupHeaderTemplate>
@@ -274,6 +288,7 @@
                                         </VisualStateManager.VisualStateGroups>
                                         <controls:JobCard x:Name="CompactCard"
                                                           IsCompact="True"
+                                                          HasShadow="{OnPlatform WinUI=False, Default=True}"
                                                           JobNumber="{Binding JobNumber}"
                                                           Title="{Binding Title}"
                                                           Status="{Binding Status}"
@@ -288,7 +303,7 @@
                         </CollectionView>
                     </Grid>
                     <Grid Grid.Column="1">
-                        <Grid IsVisible="{Binding HasSelection}">
+                        <Grid IsVisible="{Binding ShowsPaneJob}">
                             <jobs:JobDetailsView BindingContext="{Binding Details}" />
                         </Grid>
                         <controls:EmptyState IsVisible="{Binding ShowsNoSelection}"

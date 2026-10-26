@@ -39,6 +39,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     private CancellationTokenSource? _load;
     private JobDetailsViewModel? _details;
     private Guid? _loadedFor;
+    private bool _focusAfterSheet;
 
     public MyJobsViewModel(
         JobsApiClient jobs,
@@ -109,8 +110,12 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     public partial bool IsTwoPane { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(ShowsNoSelection))]
+    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(ShowsPaneJob), nameof(ShowsNoSelection))]
     public partial JobListItem? SelectedJob { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsPaneJob), nameof(ShowsNoSelection))]
+    public partial bool KeepsPaneJob { get; private set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOpenSheet))]
@@ -120,7 +125,15 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     public partial int AccountFocusRequest { get; private set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SignOutCommand))]
+    public partial int GroupFocusRequest { get; private set; }
+
+    [ObservableProperty]
+    public partial int EmptyFocusRequest { get; private set; }
+
+    [ObservableProperty]
+    public partial int TitleFocusRequest { get; private set; }
+
+    [ObservableProperty]
     public partial bool IsSigningOut { get; private set; }
 
     public JobDetailsViewModel Details => _details ??= CreatePaneDetails();
@@ -129,7 +142,9 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
 
     public bool HasSelection => SelectedJob is not null;
 
-    public bool ShowsNoSelection => SelectedJob is null;
+    public bool ShowsPaneJob => SelectedJob is not null || KeepsPaneJob;
+
+    public bool ShowsNoSelection => !ShowsPaneJob;
 
     public bool HasNotice => !string.IsNullOrEmpty(Notice);
 
@@ -217,6 +232,22 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     }
 
     protected override Task ReloadAsync(CancellationToken cancellationToken) => LoadCurrentAsync();
+
+    protected override void RequestContentFocus()
+    {
+        if (State == ScreenState.Empty)
+        {
+            EmptyFocusRequest++;
+        }
+        else if (Groups.Count > 0)
+        {
+            GroupFocusRequest++;
+        }
+        else
+        {
+            TitleFocusRequest++;
+        }
+    }
 
     protected override void OnActivated()
     {
@@ -360,7 +391,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         return LoadCurrentAsync();
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private Task SelectViewAsync(AssignedJobsView view)
     {
         if (view == SelectedView && State != ScreenState.Error)
@@ -370,7 +401,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
 
         SelectedView = view;
         Notice = null;
-        SelectedJob = null;
+        ClearSelection();
         RefreshError = null;
         if (_loaded.TryGetValue(view, out var loaded))
         {
@@ -401,7 +432,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
             return;
         }
 
-        SelectedJob = null;
+        ClearSelection();
         try
         {
             await _navigator.GoToAsync(Routes.JobDetails, new Dictionary<string, object> { [Routes.JobIdParameter] = job.Id });
@@ -418,7 +449,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     [RelayCommand]
     private void CloseAccountSheet()
     {
-        if (!IsAccountSheetOpen)
+        if (!IsAccountSheetOpen || IsSigningOut)
         {
             return;
         }
@@ -427,11 +458,14 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         AccountFocusRequest++;
     }
 
-    private bool CanSignOut() => !IsSigningOut;
-
-    [RelayCommand(CanExecute = nameof(CanSignOut))]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SignOutAsync(CancellationToken cancellationToken)
     {
+        if (IsSigningOut)
+        {
+            return;
+        }
+
         IsSigningOut = true;
         try
         {
@@ -444,7 +478,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         }
     }
 
-    private async Task LoadCurrentAsync()
+    private async Task LoadCurrentAsync(Guid? paneJob = null)
     {
         _load?.Cancel();
         var load = new CancellationTokenSource();
@@ -500,7 +534,7 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
             Error = null;
             OfflineMessage = null;
             RefreshError = null;
-            Show(view, loaded);
+            Show(view, loaded, paneJob);
         }
         catch (Exception) when (token.IsCancellationRequested)
         {
@@ -531,12 +565,12 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         }
     }
 
-    private void Show(AssignedJobsView view, LoadedJobs loaded)
+    private void Show(AssignedJobsView view, LoadedJobs loaded, Guid? paneJob = null)
     {
         Groups = JobDayGroup.Build(loaded.Items, view, Zone, Today);
         LastUpdated = loaded.LoadedAt;
         State = loaded.Items.Count == 0 ? ScreenState.Empty : ScreenState.Content;
-        KeepSelection();
+        KeepSelection(paneJob);
     }
 
     private void ShowRefreshFailed(AssignedJobsView view, LoadedJobs loaded, Exception exception)
@@ -568,13 +602,37 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
 
     private string ShowingJobsFrom(DateTimeOffset loadedAt) => "Showing jobs from " + DisplayFormats.Time(loadedAt, Zone) + ".";
 
-    private void KeepSelection()
+    private void KeepSelection(Guid? paneJob)
     {
-        if (SelectedJob is { } selected)
+        if ((SelectedJob?.Id ?? paneJob) is not { } shown)
         {
-            SelectedJob = Groups.SelectMany(group => group).FirstOrDefault(job => job.Id == selected.Id);
+            return;
+        }
+
+        var kept = Groups.SelectMany(group => group).FirstOrDefault(job => job.Id == shown);
+        if (kept is null && paneJob == shown)
+        {
+            KeepsPaneJob = true;
+        }
+
+        SelectedJob = kept;
+    }
+
+    private void ClearSelection()
+    {
+        KeepsPaneJob = false;
+        SelectedJob = null;
+    }
+
+    partial void OnSelectedJobChanged(JobListItem? value)
+    {
+        if (value is not null)
+        {
+            KeepsPaneJob = false;
         }
     }
+
+    private Guid? PaneJob() => IsTwoPane && _details is { JobId: var id } && id != Guid.Empty ? id : null;
 
     private JobDetailsViewModel CreatePaneDetails()
     {
@@ -586,19 +644,23 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
         return details;
     }
 
-    private void OnPaneStatusChanged(object? sender, EventArgs e) => _ = LoadCurrentAsync();
+    private void OnPaneStatusChanged(object? sender, EventArgs e) => _ = LoadCurrentAsync(PaneJob());
 
     private void OnPanePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(JobDetailsViewModel.IsStatusSheetOpen))
         {
             OnPropertyChanged(nameof(HasOpenSheet));
+            if (_focusAfterSheet && !HasOpenSheet)
+            {
+                RequestLayoutFocus();
+            }
         }
     }
 
     private void OnPaneJobUnavailable(object? sender, EventArgs e)
     {
-        SelectedJob = null;
+        ClearSelection();
         Notice = NoLongerAssignedText;
         _ = LoadCurrentAsync();
     }
@@ -616,12 +678,13 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
 
     private void ForgetUser()
     {
+        _focusAfterSheet = false;
         _load?.Cancel();
         _load = null;
         _loaded.Clear();
         _loadedFor = null;
         _details?.Reset();
-        SelectedJob = null;
+        ClearSelection();
         Groups = [];
         ActiveCount = null;
         LastUpdated = null;
@@ -646,14 +709,43 @@ public sealed partial class MyJobsViewModel : ScreenViewModel, IQueryAttributabl
     private void OnLayoutChanged(object? sender, EventArgs e)
     {
         IsTwoPane = _layout.IsTwoPane;
+        if (!IsSigningOut)
+        {
+            IsAccountSheetOpen = false;
+        }
+
+        _details?.LeaveLayout();
         if (IsTwoPane)
         {
             Details.Activate();
+        }
+        else
+        {
+            ClearSelection();
+            _details?.Deactivate();
+        }
+
+        RequestLayoutFocus();
+    }
+
+    private void RequestLayoutFocus()
+    {
+        if (HasOpenSheet)
+        {
+            _focusAfterSheet = true;
             return;
         }
 
-        SelectedJob = null;
-        _details?.Deactivate();
+        _focusAfterSheet = false;
+        AccountFocusRequest++;
+    }
+
+    partial void OnIsAccountSheetOpenChanged(bool value)
+    {
+        if (!value && _focusAfterSheet && !HasOpenSheet)
+        {
+            RequestLayoutFocus();
+        }
     }
 
     [LoggerMessage(EventName = "jobs.load-failed", Level = LogLevel.Warning, Message = "jobs.load-failed {View} {Failure}")]

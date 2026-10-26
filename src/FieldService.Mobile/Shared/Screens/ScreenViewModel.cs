@@ -16,6 +16,8 @@ public abstract partial class ScreenViewModel : ObservableObject
 
     private readonly NetworkStatus _network;
     private bool _active;
+    private bool _retrying;
+    private bool _contentFocusPending;
 
     protected ScreenViewModel(NetworkStatus network)
     {
@@ -122,8 +124,64 @@ public abstract partial class ScreenViewModel : ObservableObject
 
     protected abstract Task ReloadAsync(CancellationToken cancellationToken);
 
+    protected virtual void RequestContentFocus()
+    {
+    }
+
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private async Task RetryAsync(CancellationToken cancellationToken)
+    {
+        if (_retrying)
+        {
+            return;
+        }
+
+        _retrying = true;
+        try
+        {
+            await ReloadAsync(cancellationToken);
+        }
+        finally
+        {
+            _retrying = false;
+        }
+    }
+
     [RelayCommand]
-    private Task RetryAsync(CancellationToken cancellationToken) => ReloadAsync(cancellationToken);
+    private void BannerLeftWithFocus()
+    {
+        if (State is ScreenState.Content or ScreenState.Empty)
+        {
+            FulfilContentFocus();
+        }
+        else
+        {
+            _contentFocusPending = State == ScreenState.Loading;
+        }
+    }
+
+    partial void OnStateChanged(ScreenState value)
+    {
+        if (!_contentFocusPending)
+        {
+            return;
+        }
+
+        if (value is ScreenState.Content or ScreenState.Empty)
+        {
+            FulfilContentFocus();
+        }
+        else if (value is ScreenState.Error or ScreenState.Offline)
+        {
+            _contentFocusPending = false;
+        }
+    }
+
+    private void FulfilContentFocus()
+    {
+        _contentFocusPending = false;
+        RequestContentFocus();
+    }
 
     private void OnNetworkPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
