@@ -255,6 +255,8 @@ Every non-2xx response from the API has an RFC 9457 body with media type `applic
 
 No exception type, message or stack trace is returned outside Development.
 
+In the OpenAPI document, 400 responses use the `HttpValidationProblemDetails` schema, which adds `errors`, and 401, 403, 404, 409 and 429 responses use `ProblemDetails`. Both schemas declare `code`, `correlationId` and `traceId`.
+
 ### Field errors
 
 - `errors` maps a field path to a non-empty array of messages.
@@ -662,7 +664,42 @@ X-Correlation-ID: 8ce2212e-a8b0-4f11-a814-9428162f7bd0
 Set-Cookie: fs_refresh=<rotated refresh token>; max-age=3600; path=/api/auth; samesite=strict; httponly
 ```
 
-The body has the shape of the SignIn response, with a new access token and expiry. The technician app sends `{"refreshToken":"<refresh token>"}` and receives the rotated token in `refreshToken`.
+The body has the shape of the SignIn response, with a new access token and expiry, and `refreshToken` null.
+
+Example, technician app, which sends the token in the body and receives the rotated token in `refreshToken`:
+
+```http
+POST /api/auth/refresh HTTP/1.1
+Host: 10.0.2.2:5080
+Content-Type: application/json
+X-Correlation-ID: 2f6d8a14-3c7e-4b95-a0d1-6e9f2b4c8a73
+```
+
+```json
+{
+  "refreshToken": "<refresh token>"
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: no-store
+X-Correlation-ID: 2f6d8a14-3c7e-4b95-a0d1-6e9f2b4c8a73
+```
+
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs…",
+  "accessTokenExpiresAt": "2026-10-19T15:07:00.000Z",
+  "user": {
+    "id": "01a0f6b1-2a68-77d9-8aa0-8a58bef6a99e",
+    "displayName": "Marco Reyes",
+    "role": "Technician"
+  },
+  "refreshToken": "<rotated refresh token>"
+}
+```
 
 ### SignOut: `POST /api/auth/sign-out`
 

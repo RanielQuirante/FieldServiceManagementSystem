@@ -410,19 +410,19 @@ Every name is 63 characters or fewer, so PostgreSQL truncates none; the longest,
 ```mermaid
 erDiagram
     users ||--o| technicians : "is"
-    users ||--o{ user_sessions : "signs in"
-    user_sessions ||--|{ refresh_tokens : "rotates"
-    refresh_tokens |o--o| refresh_tokens : "replaced by"
-    users ||--o{ jobs : "creates"
-    technicians |o--o{ jobs : "assigned"
-    checklist_templates ||--o{ jobs : "checklist for"
-    checklist_templates ||--|{ checklist_items : "contains"
-    checklist_items ||--o{ checklist_reading_fields : "measures"
-    jobs ||--|{ job_history : "records"
-    users ||--o{ job_history : "acts in"
-    technicians |o--o{ job_history : "assignee in"
-    jobs ||--o| inspections : "has"
-    technicians ||--o{ inspections : "performs"
+    users ||..o{ user_sessions : "signs in"
+    user_sessions ||..|{ refresh_tokens : "rotates"
+    refresh_tokens |o..o{ refresh_tokens : "replaced by"
+    users ||..o{ jobs : "creates"
+    technicians |o..o{ jobs : "assigned"
+    checklist_templates ||..o{ jobs : "checklist for"
+    checklist_templates ||..|{ checklist_items : "contains"
+    checklist_items ||..o{ checklist_reading_fields : "measures"
+    jobs ||..|{ job_history : "records"
+    users ||..o{ job_history : "acts in"
+    technicians |o..o{ job_history : "assignee in"
+    jobs ||..o| inspections : "has"
+    technicians ||..o{ inspections : "performs"
     inspections ||--o{ inspection_answers : "contains"
     checklist_items ||--o{ inspection_answers : "answered by"
     inspection_answers ||--o{ inspection_readings : "records"
@@ -543,6 +543,8 @@ erDiagram
     }
 ```
 
+The diagram shows every column and every foreign key of `InitialSchema`. A solid line marks an identifying relationship, where the foreign key is part of the child's primary key; a dashed line marks the others. On the parent side, two bars mean the foreign key column is required, and a circle with a bar that it is nullable. On the child side, a circle with a bar means zero or one child row, because the foreign key columns are unique; a crow's foot means many, with a bar where the application always writes at least one child and a circle otherwise. `UK` marks a column with a unique index of its own; the alternate key of `checklist_reading_fields` and the composite unique indexes are listed in the table reference below. Types are shortened: `varchar` is `character varying(n)`, `timestamptz` is `timestamp with time zone` and `numeric` is `numeric(10,2)`, with the lengths in the table reference. `xmin` is the PostgreSQL system column that EF Core maps as the row version; the migration does not create it.
+
 ### Relationships and delete behaviour
 
 | Child (columns) | Parent | ON DELETE | Constraint | Cardinality |
@@ -550,7 +552,7 @@ erDiagram
 | `technicians (user_id)` | `users (id)` | RESTRICT | `fk_technicians_users_user_id` | User 1 : 0..1 technician (shared key) |
 | `user_sessions (user_id)` | `users (id)` | RESTRICT | `fk_user_sessions_users_user_id` | User 1 : n sessions |
 | `refresh_tokens (session_id)` | `user_sessions (id)` | CASCADE | `fk_refresh_tokens_user_sessions_session_id` | Session 1 : 1..n tokens |
-| `refresh_tokens (replaced_by_id)` | `refresh_tokens (id)` | SET NULL | `fk_refresh_tokens_refresh_tokens_replaced_by_id` | Token 0..1 : 0..1 successor |
+| `refresh_tokens (replaced_by_id)` | `refresh_tokens (id)` | SET NULL | `fk_refresh_tokens_refresh_tokens_replaced_by_id` | Successor 0..1 : n tokens; rotation points one token at each successor |
 | `checklist_items (template_id)` | `checklist_templates (id)` | RESTRICT | `fk_checklist_items_checklist_templates_template_id` | Template 1 : 1..n items |
 | `checklist_reading_fields (checklist_item_id)` | `checklist_items (id)` | RESTRICT | `fk_checklist_reading_fields_checklist_items_checklist_item_id` | Item 1 : 0..n fields |
 | `jobs (checklist_template_id)` | `checklist_templates (id)` | RESTRICT | `fk_jobs_checklist_templates_checklist_template_id` | Template 1 : n jobs; required |
