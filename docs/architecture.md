@@ -8,10 +8,15 @@ FieldService is a field service management system made of four applications and 
 - **FieldService.Notifications**, a Node.js service that relays job changes to the dashboard over Socket.IO.
 - **PostgreSQL 17**, which only the API and its migrations reach.
 
-This document covers how the applications communicate and the main request flows. The security controls on each connection are in [security.md](security.md), the wire formats in [contracts/README.md](contracts/README.md), and the settings in [configuration.md](configuration.md).
+This document covers the system and its containers, the trust zones, what each application is responsible for, the patterns used and why, and how the applications communicate in the main request flows. The security controls on each connection are in [security.md](security.md), the wire formats in [contracts/README.md](contracts/README.md), and the settings in [configuration.md](configuration.md).
 
 ## Contents
 
+- [System](#system)
+- [Containers](#containers)
+- [Trust zones](#trust-zones)
+- [Responsibilities](#responsibilities)
+- [Patterns and why](#patterns-and-why)
 - [Communication](#communication)
   - [Channels](#channels)
   - [Rules common to every flow](#rules-common-to-every-flow)
@@ -24,6 +29,84 @@ This document covers how the applications communicate and the main request flows
   - [Client error report](#client-error-report)
   - [Real-time broadcast](#real-time-broadcast)
   - [Reconnect and refetch](#reconnect-and-refetch)
+
+## System
+
+```mermaid
+flowchart LR
+    Admin([Administrator]) -->|browser| Web["Dashboard<br/>Vue 3"]
+    Tech([Technician]) -->|Android or Windows| Mobile["Technician app<br/>.NET MAUI"]
+    Web -->|REST, refresh cookie| Api["API<br/>ASP.NET Core"]
+    Mobile -->|REST, bearer token| Api
+    Api -->|SQL| Db[("PostgreSQL 17")]
+    Api -->|signed job events| Notif["Notification service<br/>Node.js"]
+    Web <-->|Socket.IO with a ticket| Notif
+```
+
+The API is the only writer and the only source of truth. The notification service carries change notices, never data: a client that hears of a change fetches it from the API.
+
+## Containers
+
+```mermaid
+flowchart LR
+    Browser([Browser]) -->|":8081"| WebC["web<br/>nginx: dashboard files,<br/>/api/ and /socket.io/ proxy"]
+    WebC -->|/api/| ApiC["api<br/>:8080"]
+    WebC -->|/socket.io/| NotifC["notifications<br/>:5090"]
+    ApiC -->|signed events| NotifC
+    ApiC --> DbC[("db<br/>PostgreSQL :5432")]
+    MigrateC["migrate<br/>runs once"] --> DbC
+    Device([Technician app]) -->|":5080"| ApiC
+```
+
+Docker Compose runs the database alone by default, the back end with the `backend` profile, and everything with `full`. Every published port listens on `127.0.0.1` only: 8081 for the dashboard, 5080 for the API, 5090 for the notification service and 5433 for the database. The containers run as non-root users on read-only file systems with every capability dropped ([deployment.md](deployment.md)).
+
+## Trust zones
+
+```mermaid
+flowchart LR
+    subgraph Clients["Untrusted clients"]
+        Browser2([Dashboard in a browser])
+        Device2([Technician app])
+    end
+    subgraph Edge["Edge"]
+        Proxy["TLS proxy and nginx"]
+    end
+    subgraph Services["Services"]
+        Api2[API]
+        Notif2[Notification service]
+    end
+    subgraph Data["Data"]
+        Db2[(PostgreSQL)]
+    end
+    Browser2 --> Proxy
+    Device2 --> Proxy
+    Proxy --> Api2
+    Proxy --> Notif2
+    Api2 -->|"signed, internal network only"| Notif2
+    Api2 -->|"least-privilege role"| Db2
+```
+
+Each crossing and its controls are listed in [security.md](security.md#trust-boundaries).
+
+## Responsibilities
+
+| Application | Owns | Does not own | Interfaces | Built with |
+|---|---|---|---|---|
+| API | Every business rule; jobs, assignments, status changes, inspections and their history; sign-in, sessions and roles; the database and its migrations; issuing socket tickets; sending job events | Real-time delivery; any user interface | REST, described by `contracts/openapi.v1.json`; signed webhooks to the notification service; SQL | ASP.NET Core Minimal APIs for the endpoints, Entity Framework Core with Npgsql for data, Serilog for logs |
+| Dashboard | The administrators' screens; the session in the browser; live states and refetching after events | Business rules: every change is the API's decision | REST with types generated from the contract; Socket.IO | Vue 3, Pinia for state, Vue Router, Vite, plain CSS custom properties |
+| Technician app | The technicians' screens on Android and Windows; the session in secure storage; reading loaded jobs offline; checklist answers until they are saved | Business rules and real-time updates | REST through typed clients | .NET MAUI with XAML, CommunityToolkit.Mvvm for view models, Serilog for logs |
+| Notification service | Verifying signed job events, dropping duplicates, broadcasting to signed-in administrators, verifying socket tickets | Data: it has no database and sends only ids and statuses | An internal webhook endpoint; Socket.IO | Node.js with `node:http`, Socket.IO, zod for configuration, pino for logs |
+| PostgreSQL | Durable data, constraints and the concurrency token | Business logic | SQL for the API's role and the migrator role | PostgreSQL 17 |
+
+## Patterns and why
+
+- **Vertical slices.** Each use case keeps its endpoint, validation, data access and response together, so a change touches one folder ([ADR 0003](decisions/0003-vertical-slice-architecture.md)). The API maps each slice as a Minimal API endpoint without a mediator, because a direct call is easier to read and test ([ADR 0004](decisions/0004-minimal-api-slices-without-mediator.md)).
+- **MVVM in the technician app.** XAML pages bind to view models built with CommunityToolkit.Mvvm, so screen logic is tested without a device and pages hold no logic in code-behind.
+- **Constructor injection, one composition root per application.** Every dependency arrives through a constructor and is registered in one place per application, so each can be replaced in tests.
+- **Options with validation at start-up.** Settings bind to typed options validated when the application starts, so a missing or weak secret stops the process instead of failing later ([configuration.md](configuration.md)).
+- **Problem Details.** Every API error is an RFC 9457 Problem Details response with a stable error code and a correlation id, so both clients handle errors the same way ([api.md](api.md)).
+- **Optimistic concurrency.** Writes carry PostgreSQL's `xmin` as a concurrency token, so two people changing the same job never silently overwrite each other ([ADR 0006](decisions/0006-optimistic-concurrency-with-xmin.md)).
+- **Refetch on every event and reconnect.** Clients treat an event as a hint and fetch the current state from the API, so a missed or repeated event never leaves wrong data on screen ([ADR 0010](decisions/0010-refetch-on-event-and-reconnect.md)).
 
 ## Communication
 
