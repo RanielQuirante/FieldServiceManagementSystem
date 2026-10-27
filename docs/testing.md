@@ -337,74 +337,28 @@ A test that both passes and fails on the same code is a defect. While its cause 
 
 ## Verification summary
 
-The workstation commands on this page were run on 2026-10-23 and 2026-10-24, on macOS 26.5 (Apple Silicon) with .NET SDK 10.0.402, workload set 10.0.402, Node 26.12.0 and PostgreSQL 17.11, from the folders named above, with the results and coverage folders pointed outside the repository. Every row is from the final run of 2026-10-24, on the code that includes the dashboard, job cancellation and client error work and the last changes to the client error report and to the technician app's layouts.
+The final verification ran on 2026-10-27 on macOS 26.5 (Apple Silicon), with .NET SDK 10.0.402, workload set 10.0.402, Node 26.12.0, PostgreSQL 17.11 and Docker Engine 29.9.2. Every suite ran with the commands on this page, without filters, and with the results and coverage folders outside the repository.
 
-| Suite | Result |
-|---|---|
-| API | 1974 of 1974 passed in Debug, and again limited to two processors; both `dotnet format` checks passed, the Release build of the API, rebuilt from scratch, had no warning, and the model has no pending change |
-| Technician app | 997 of 997 passed in Debug; the Android Debug build, rebuilt from scratch, succeeded with no warning |
-| Notification service | 464 of 464 passed in 50 suites after a clean install of both packages; lint, formatting, both type-checks and the build passed |
-| Web dashboard, unit | 1357 of 1357 passed in 29 files, among them the error handling tests; creating the API client, lint, formatting, the type-check with the end-to-end specs, and the build passed |
-| Web dashboard, end to end | The `host` project against `vite preview`, with the API and the notification service running: 34 of 34 passed in 11 files in each of three runs of about three and a half minutes. Each run had no Content Security Policy violation, no handshake URL with an extra query key, 81 axe audits without a violation, no match in the log search of the API and notification service log files, and all 5 sessions signed out. In each run the live status changes reached the open jobs page and dashboard without a reload, and the client error reference matched its log entry. Against the Vite dev server 32 of 34 passed, the header test failing there as described above and the technicians test after it on the sign-in budget; the technicians test passed on its own there. Both projects list 34 tests in 11 files |
-| Repository checks | Both scripts passed |
+| Suite | Tests | Result |
+|---|---|---|
+| API | 2126, among them 106 contract tests and 458 security tests | All passed in Debug, and again limited to two processors. Both `dotnet format` checks passed, the Release build had no warning, and the model has no pending change |
+| Technician app | 1265 | All passed in Debug. Both `dotnet format` checks passed. The Android Debug build and the Android Release build with an `https` API address, each rebuilt from scratch, succeeded with no warning |
+| Notification service | 464 in 50 suites | All passed after a clean install of both packages. Lint, formatting, both type-checks and the build passed |
+| Web dashboard, unit | 1371 in 29 files | All passed. Creating the API client (with an unchanged result), lint, formatting, the type-check with the end-to-end specs, and the build passed |
+| Web dashboard, end to end, `compose` | 40 in 12 files | All passed in under 4 minutes against the `full` profile. The run had no Content Security Policy violation and no match in the search of the two log folders and the four container consoles, each with its positive control found. All 5 sessions were signed out, and the report output held nothing secret |
+| Web dashboard, end to end, `host` on `vite preview` | 36 in 12 files | All passed in under 4 minutes. The run had no Content Security Policy violation, no axe violation and no match in the search of the two log folders. All 5 sessions were signed out, and the report output held nothing secret |
+| Dependencies | | `npm audit --omit=dev --audit-level=moderate`, `npm audit --audit-level=high` and `npm audit signatures` passed in all three npm packages with no vulnerability. `dotnet list package --vulnerable --include-transitive` found no vulnerable package in the four .NET projects |
+| Repository checks | | Both scripts passed |
 
-Not run on that date: the Release forms with coverage of the other CI jobs and the quarantine steps; the Windows commands, because no Windows host was available; and the `compose` project and the Compose database, because no container runtime was available.
+The CI workflow passed all eight jobs, `e2e` included, on the same code.
 
-On 2026-10-25 the end-to-end suite ran against the Compose `full` profile (Docker Engine 29.9.2, images built from the working tree) and against `vite preview`, on the code with the Compose specs, the design QA captures, the container log search and the report scan. The first runs of that day found a defect: a navigation to the job page's own address reset its document title to the generic page title. The rows below are from the runs after its fix, with the dashboard image rebuilt to include it, using the commands on this page without any filter.
+Manual checks cover what needs a device or an operating system feature. On an Android 16 emulator and in a Windows 11 virtual machine, each signed in against the Compose stack, they confirmed the following:
 
-| Suite | Result |
-|---|---|
-| Web dashboard, end to end, `compose` | 40 of 40 passed in 12 files in each of three consecutive runs of 3.8 minutes. Each run had no Content Security Policy violation, no match in the search of the two log folders and the four container consoles (each with its positive control found), no correlation id outside the allowed form in nginx's log, and nothing secret in the report output. All 5 sessions were signed out, and the busiest minute held 6 sign-ins, 23 or 24 session refreshes, 22 or 23 socket tickets and at most 209 administrator requests. In the earlier runs of that day, live status changes reached the open jobs page in under a second, and with the notification service stopped and started, the dashboard showed "Back online" 5.0 to 5.5 seconds after the service was listening again |
-| Web dashboard, end to end, `host` on `vite preview` | 36 of 36 passed in 12 files in 3.8 minutes, with the same checks clean for the two log folders |
-| Web dashboard, unit | 1368 of 1368 passed in 29 files |
-| Web dashboard, lint, formatting and type-check | All passed |
+- A job runs from Start job to a submitted inspection on both platforms, on Windows both at phone width and in the two-pane layout. The dashboard and the job page show each change live, without a reload.
+- TalkBack on Android and Narrator on Windows read the job cards, the day-group headings and the sheets. An open sheet keeps screen-reader and keyboard focus inside it, and on Android focus returns to the button that opened it.
+- Keyboard focus shows as one ring outside the control. In the two-pane layout it stays on Update status after each status change.
+- The app shows its offline state over the jobs it has loaded: on Android in airplane mode, and on Windows while Windows reports no internet access.
+- The Windows app stays stable at text sizes from 100 % to 225 % in both layouts, in windows down to the narrowest that Windows allows, and when a window is resized across 900 wide.
+- A technician account with no jobs shows the empty state on both lists.
 
-Later on 2026-10-25 the report scan was changed to delete the files that hold a match. Scratch tests run through the same reporter checked it: a planted password entered into a form and sent in an API sign-in, and a planted token in the response and in an attachment nested two archives deep. In one run that kept every trace and in one that kept them only for failed tests, the run failed, and the scan deleted exactly the 7 files that held a planted value: traces, an error context, their copies in the report data and the nested archive. An independent search with `unzip`, made on copies taken just before the scan, found the same 7 files. All 8 screenshots and videos stayed. A control run without a planted value passed and deleted nothing. The `compose` project then passed 40 of 40 in 3.8 minutes, with no Content Security Policy violation, every log source clean with its positive control found, and nothing deleted by the report scan; lint, formatting and the type-check passed.
-
-The global teardown then gained its check of the reporters. Against the Compose stack, a run that replaced the reporters and selected no test printed the warning and failed, and one that named the report scan among its replacement reporters passed. The `compose` project then passed 40 of 40 in 3.8 minutes, with the report scan among the reporters, no Content Security Policy violation, every log source clean with its positive control found, and nothing deleted by the report scan; lint, formatting and the type-check passed.
-
-Later on 2026-10-25, on the code with the technician app's screen-reader and keyboard changes, the technician app passed 1024 of 1024 in Debug, and the Android Debug build, rebuilt from scratch, succeeded with no warning. A manual check on an Android 16 emulator with TalkBack, signed in against the Compose stack, confirmed what these tests describe:
-- the page behind a closed sheet is read again;
-- focus returns to the button that opened the sheet, with the on-screen keyboard open or closed;
-- a touch on an icon inside a control reads that control;
-- the My jobs title and day groups are read as headings.
-
-The log search of that session found no password, token, ticket or personal data.
-
-On 2026-10-26, on the code with the technician app's Windows crash fix and its keyboard, Narrator, layout and focus changes, the technician app passed 1168 of 1168 in Debug. The Android Debug build, rebuilt from scratch, and the Windows Debug build both succeeded with no warning. Manual checks in a Windows 11 virtual machine and on an Android 16 emulator, each signed in against the Compose stack, confirmed:
-- the Windows app no longer crashes when a button's enabled state changes, and every status change is sent;
-- a job runs from Start job to a submitted inspection on both platforms, on Windows at phone width and in the two-pane layout, and the dashboard and the job page show each change live without a reload;
-- on Windows, an open sheet keeps keyboard and Narrator focus inside it and Esc closes it, Narrator reads the job cards and day groups, and keyboard focus shows as one ring outside the control;
-- on Windows, crossing 900 wide closes an open sheet without sending a change and moves keyboard focus to the account button;
-- on Windows, the app shows its offline state while Windows reports no internet access;
-- on Android, both My jobs segments stay usable while a list loads, a clearing banner is not read again, keyboard mode shows one ring on rows and cards, and the account sheet keeps Tab inside it and stays open while a sign-out runs.
-
-The log search of those sessions found no password, token, ticket or personal data.
-
-One defect found in these checks was still open on that date: on Windows, the app crashed in the two-pane layout when the text size was 125 % or larger, and in phone-layout windows about 410 px wide or narrower. Some smaller focus and spacing differences found in the same checks were also still open.
-
-On 2026-10-27, on the code with the fix for that crash and for the remaining list, focus and layout defects of the technician app, every suite on this page ran again with the commands above, without filters:
-
-| Suite | Result |
-|---|---|
-| API | 2126 of 2126 passed in Debug, and again limited to two processors; the contract tests alone passed 106 of 106 and the security tests alone 458 of 458; both `dotnet format` checks passed, the Release build had no warning, and the model has no pending change |
-| Technician app | 1265 of 1265 passed in Debug; both `dotnet format` checks passed; the Android Debug build and the Android Release build with an `https` API address, each rebuilt from scratch, succeeded with no warning |
-| Notification service | 464 of 464 passed in 50 suites after a clean install of both packages; lint, formatting, both type-checks and the build passed |
-| Web dashboard, unit | 1368 of 1368 passed in 29 files; creating the API client (with an unchanged result), lint, formatting, the type-check with the end-to-end specs, and the build passed |
-| Web dashboard, end to end, `host` on `vite preview` | 36 of 36 passed in 12 files in 3.8 minutes, with no Content Security Policy violation, every axe audit without a violation, no match in the search of the two log folders, all 5 sessions signed out, and nothing secret in the report output |
-| Web dashboard, end to end, `compose` | 40 of 40 passed in 12 files in 3.8 minutes against the `full` profile, with no Content Security Policy violation, no match in the search of the two log folders and the four container consoles (each with its positive control found), all 5 sessions signed out, and nothing secret in the report output |
-| Dependencies | `npm audit --omit=dev --audit-level=moderate`, `npm audit --audit-level=high` and `npm audit signatures` passed in all three npm packages, with no vulnerability; `dotnet list package --vulnerable --include-transitive` found no vulnerable package in the four .NET projects |
-| Repository checks | Both scripts passed |
-
-The CI workflow passed all eight jobs, `e2e` included, on the same commit.
-
-Manual checks on an Android 16 emulator and in a Windows 11 virtual machine, each signed in against the Compose stack, confirmed on the code with these fixes:
-- the Windows app no longer crashes at text sizes from 125 % to 225 % in either layout, in windows down to the narrowest that Windows allows, or when crossing 900 wide;
-- on Android, My jobs stays stable after a submission made from a list scrolled to its end, and after a job is cancelled elsewhere;
-- on Windows, keyboard focus stays on Update status after each status change in the two-pane layout, and Narrator reads the day-group heading that takes focus after a banner leaves;
-- widening the window past 900 with a job open at phone width shows that job in the two panes, with its card selected and in view;
-- at large text sizes the two-pane job actions wrap to a second row instead of running past the panel.
-
-The log search of those sessions found no password, token, ticket or personal data. The Windows crash described above is fixed. Some smaller spacing and focus differences found in these checks remain open.
-
-On the same day, a technician account with no jobs was signed in on the Android emulator: both lists showed the empty state, and TalkBack read its title as a heading, then its message, then Refresh.
+The log search of those sessions found no password, token, ticket or personal data. Some smaller spacing and focus differences found in these checks remain open.
