@@ -157,6 +157,13 @@ public sealed partial class ReviewAndSubmitViewModel : ScreenViewModel, IQueryAt
     [ObservableProperty]
     public partial int SubmitFocusRequest { get; private set; }
 
+    [ObservableProperty]
+    public partial int FocusInViewRequest { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsDock), nameof(ShowsBarSpacer))]
+    public partial bool IsKeyboardOpen { get; set; }
+
     public Guid JobId => _jobId;
 
     public string Source => _source;
@@ -173,7 +180,9 @@ public sealed partial class ReviewAndSubmitViewModel : ScreenViewModel, IQueryAt
 
     public bool HasFailedItems => FailedItems.Count > 0;
 
-    public bool ShowsDock => State == ScreenState.Content;
+    public bool ShowsDock => State == ScreenState.Content && !IsKeyboardOpen;
+
+    public bool ShowsBarSpacer => !IsKeyboardOpen;
 
     public bool ShowsOfflineBanner => !IsOnline && State == ScreenState.Content;
 
@@ -265,7 +274,7 @@ public sealed partial class ReviewAndSubmitViewModel : ScreenViewModel, IQueryAt
         _context = SynchronizationContext.Current;
         _session.SessionEnded += OnSessionEnded;
         _layout.Changed += OnLayoutChanged;
-        OnLayoutChanged(this, EventArgs.Empty);
+        NotifyColumn();
         _timer?.Dispose();
         _timer = _clock.CreateTimer(_ => OnMinute(), null, MinuteInterval, MinuteInterval);
         UpdateTimeOnSite();
@@ -613,6 +622,20 @@ public sealed partial class ReviewAndSubmitViewModel : ScreenViewModel, IQueryAt
     }
 
     private void OnLayoutChanged(object? sender, EventArgs e)
+    {
+        NotifyColumn();
+        FocusInViewRequest++;
+    }
+
+    partial void OnIsKeyboardOpenChanged(bool value)
+    {
+        if (value)
+        {
+            FocusInViewRequest++;
+        }
+    }
+
+    private void NotifyColumn()
     {
         OnPropertyChanged(nameof(ColumnMaxWidth));
         OnPropertyChanged(nameof(ColumnOptions));

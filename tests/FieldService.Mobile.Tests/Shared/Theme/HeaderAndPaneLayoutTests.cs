@@ -59,7 +59,7 @@ public sealed class HeaderAndPaneLayoutTests
         Assert.Equal("{StaticResource FsInk}", Setter(primary, "TextColor"));
         Assert.All(heroActions.Descendants().Where(element => element.Name.LocalName == "Icon"), icon => Assert.Equal("18", icon.Attribute("Size")?.Value));
         Assert.All(heroActions.Descendants(_maui + "Label"), text => Assert.Equal("{StaticResource FsTextButtonLabelDesktop}", text.Attribute("Style")?.Value));
-        Assert.All(heroActions.Descendants(_maui + "HorizontalStackLayout"), row => Assert.Equal("{StaticResource FsSpace8}", row.Attribute("Spacing")?.Value));
+        Assert.All(heroActions.Descendants().Where(element => element.Name.LocalName == "IconLabelLayout"), row => Assert.Equal("0,0,8,0", row.Elements(_maui + "Grid").Single().Attribute("Margin")?.Value));
     }
 
     [Fact]

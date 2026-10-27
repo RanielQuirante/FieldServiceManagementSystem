@@ -6,6 +6,25 @@ public sealed class IconLabelLayout : Layout
 {
     public const double WrapRatio = 1.5;
 
+    public static readonly BindableProperty HugsContentProperty = BindableProperty.Create(
+        nameof(HugsContent),
+        typeof(bool),
+        typeof(IconLabelLayout),
+        false,
+        propertyChanged: (bindable, _, _) => ((IView)bindable).InvalidateMeasure());
+
+    public bool HugsContent
+    {
+        get => (bool)GetValue(HugsContentProperty);
+        set => SetValue(HugsContentProperty, value);
+    }
+
+    public static double WidthFor(double widthConstraint, Thickness padding, Size icon, Size label, bool hugs)
+    {
+        var content = icon.Width + label.Width + padding.HorizontalThickness;
+        return double.IsPositiveInfinity(widthConstraint) ? content : hugs ? Math.Min(widthConstraint, content) : widthConstraint;
+    }
+
     public static double LabelWidthFor(double width, Thickness padding, double iconWidth) =>
         double.IsPositiveInfinity(width) ? double.PositiveInfinity : Math.Max(0, width - padding.HorizontalThickness - iconWidth);
 
@@ -28,12 +47,15 @@ public sealed class IconLabelLayout : Layout
 
     private sealed class Manager(IconLabelLayout layout) : LayoutManager(layout)
     {
+        private double _measuredWidth = double.NaN;
+
         public override Size Measure(double widthConstraint, double heightConstraint)
         {
             var (icon, label) = Parts();
             var iconSize = icon?.Measure(double.PositiveInfinity, double.PositiveInfinity) ?? Size.Zero;
             var labelSize = label?.Measure(LabelWidthFor(widthConstraint, layout.Padding, iconSize.Width), double.PositiveInfinity) ?? Size.Zero;
-            var width = double.IsPositiveInfinity(widthConstraint) ? iconSize.Width + labelSize.Width + layout.Padding.HorizontalThickness : widthConstraint;
+            var width = WidthFor(widthConstraint, layout.Padding, iconSize, labelSize, layout.HugsContent);
+            _measuredWidth = width;
             return new Size(width, Math.Max(iconSize.Height, labelSize.Height) + layout.Padding.VerticalThickness);
         }
 
@@ -41,7 +63,9 @@ public sealed class IconLabelLayout : Layout
         {
             var (icon, label) = Parts();
             var iconSize = icon?.DesiredSize ?? Size.Zero;
-            var labelSize = label?.Measure(LabelWidthFor(bounds.Width, layout.Padding, iconSize.Width), double.PositiveInfinity) ?? Size.Zero;
+            var labelSize = layout.HugsContent && label is not null && RemeasureRequest.IsMeasuredWidth(_measuredWidth, bounds.Width)
+                ? label.DesiredSize
+                : label?.Measure(LabelWidthFor(bounds.Width, layout.Padding, iconSize.Width), double.PositiveInfinity) ?? Size.Zero;
             var wrapped = Wraps(labelSize.Height, iconSize.Height);
             if (label is Label text)
             {

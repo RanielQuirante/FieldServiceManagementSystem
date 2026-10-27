@@ -8,20 +8,23 @@
              Title="{x:Static inspection:ReviewAndSubmitViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
              SafeAreaEdges="None"
-             controls:ScreenFocus.Watches="True">
+             controls:ScreenFocus.Watches="True"
+             controls:KeyboardState.ResizesPage="True"
+             controls:KeyboardState.IsOpen="{Binding IsKeyboardOpen}">
     <Shell.BackButtonBehavior>
         <BackButtonBehavior IsVisible="{OnPlatform WinUI=False, Default=True}" />
     </Shell.BackButtonBehavior>
     <Grid SafeAreaEdges="None">
         <Grid x:Name="Column"
               RowDefinitions="*,Auto"
-              SafeAreaEdges="None"
+              SafeAreaEdges="None,None,None,SoftInput"
               MaximumWidthRequest="{Binding ColumnMaxWidth}"
               HorizontalOptions="{Binding ColumnOptions}">
             <ScrollView x:Name="ReviewScroll"
                         Grid.Row="0"
                         SafeAreaEdges="None"
-                        controls:ScrollRequests.ToTop="{Binding ScrollToTopRequest}">
+                        controls:ScrollRequests.ToTop="{Binding ScrollToTopRequest}"
+                        controls:ScrollRequests.FocusedIntoView="{Binding FocusInViewRequest}">
                 <VerticalStackLayout SafeAreaEdges="None">
                     <controls:AppHeader x:Name="ReviewHeader"
                                         Variant="Pushed"
@@ -131,7 +134,8 @@
                                                        Style="{StaticResource FsTextOptionTitle}" />
                                                 <Label Text="{Binding Note}"
                                                        IsVisible="{Binding HasNote}"
-                                                       Style="{StaticResource FsTextMeta}" />
+                                                       Style="{StaticResource FsTextMeta}"
+                                                       controls:LineHeights.Spec="1.5" />
                                                 <VerticalStackLayout Spacing="{StaticResource FsSpace2}"
                                                                      BindableLayout.ItemsSource="{Binding Readings}">
                                                     <BindableLayout.ItemTemplate>
@@ -173,7 +177,8 @@
             <controls:StatusBarProtection Grid.Row="0"
                                           IsActive="True"
                                           ScrollSource="{x:Reference ReviewScroll}" />
-            <controls:SystemBarSpacer Grid.Row="1" />
+            <controls:SystemBarSpacer Grid.Row="1"
+                                      IsVisible="{Binding ShowsBarSpacer}" />
             <controls:ActionDock Grid.Row="1"
                                  IsVisible="{Binding ShowsDock}"
                                  HelperText="{Binding HelperText}">

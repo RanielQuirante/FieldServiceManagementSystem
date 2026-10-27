@@ -213,6 +213,12 @@ public sealed class ShellNavigationTests : IDisposable
             LastParameters = parameters;
             return shell.GoToAsync(route, new ShellNavigationQueryParameters(parameters));
         }
+
+        public Task GoToAsync(string route, IDictionary<string, object> parameters, bool animate)
+        {
+            LastParameters = parameters;
+            return shell.GoToAsync(route, animate, new ShellNavigationQueryParameters(parameters));
+        }
     }
 
     private sealed class ProbePage : ContentPage, IQueryAttributable

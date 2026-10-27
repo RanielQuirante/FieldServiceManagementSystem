@@ -90,23 +90,28 @@ public sealed class TimeWellLayout : Layout
     private sealed class Manager(TimeWellLayout well) : LayoutManager(well)
     {
         private readonly RemeasureRequest _remeasure = new();
+        private Size _naturalTime;
+        private Size _naturalPriority;
+        private double _measuredWidth = double.NaN;
 
         public override Size Measure(double widthConstraint, double heightConstraint)
         {
+            _naturalTime = Natural(TimeIndex);
+            _naturalPriority = Natural(PriorityIndex);
             if (double.IsPositiveInfinity(widthConstraint))
             {
                 well.IsTwoRows = false;
+                _measuredWidth = double.NaN;
                 var padding = well.OneRowPadding;
-                var time = Natural(TimeIndex);
-                var priority = Natural(PriorityIndex);
                 var chevron = Natural(ChevronIndex);
                 return new Size(
-                    padding.HorizontalThickness + time.Width + priority.Width + chevron.Width + (2 * JobCard.WellGap),
-                    padding.VerticalThickness + Math.Max(time.Height, Math.Max(priority.Height, chevron.Height)));
+                    padding.HorizontalThickness + _naturalTime.Width + _naturalPriority.Width + chevron.Width + (2 * JobCard.WellGap),
+                    padding.VerticalThickness + Math.Max(_naturalTime.Height, Math.Max(_naturalPriority.Height, chevron.Height)));
             }
 
             well.IsTwoRows = Decide(widthConstraint);
-            var frames = MeasureAndPlace(new Rect(0, 0, widthConstraint, double.PositiveInfinity), well.IsTwoRows);
+            var frames = MeasureAndPlace(new Rect(0, 0, widthConstraint, double.PositiveInfinity), well.IsTwoRows, measure: true);
+            _measuredWidth = widthConstraint;
             return new Size(widthConstraint, frames.Height + well.PaddingFor(well.IsTwoRows).VerticalThickness);
         }
 
@@ -118,7 +123,7 @@ public sealed class TimeWellLayout : Layout
                 ((IView)well).InvalidateMeasure();
             }
 
-            var frames = MeasureAndPlace(bounds, twoRows);
+            var frames = MeasureAndPlace(bounds, twoRows, measure: !RemeasureRequest.IsMeasuredWidth(_measuredWidth, bounds.Width));
             Arrange(TimeIndex, frames.Time);
             Arrange(PriorityIndex, frames.Priority);
             Arrange(ChevronIndex, frames.Chevron);
@@ -126,22 +131,22 @@ public sealed class TimeWellLayout : Layout
         }
 
         private bool Decide(double width) =>
-            JobCard.WellNeedsTwoRows(Natural(TimeIndex).Width, Natural(PriorityIndex).Width, width - well.OneRowPadding.HorizontalThickness);
+            JobCard.WellNeedsTwoRows(_naturalTime.Width, _naturalPriority.Width, width - well.OneRowPadding.HorizontalThickness);
 
-        private WellFrames MeasureAndPlace(Rect bounds, bool twoRows)
+        private WellFrames MeasureAndPlace(Rect bounds, bool twoRows, bool measure)
         {
             var padding = well.PaddingFor(twoRows);
             var content = new Rect(bounds.X + padding.Left, bounds.Y + padding.Top, Math.Max(0, bounds.Width - padding.HorizontalThickness), Math.Max(0, bounds.Height - padding.VerticalThickness));
-            var chevron = Fit(ChevronIndex, content.Width);
-            var priority = Fit(PriorityIndex, PriorityRoom(content.Width, chevron.Width, twoRows));
-            var time = Fit(TimeIndex, TimeRoom(content.Width, priority.Width, chevron.Width, Natural(TimeIndex).Width, twoRows));
+            var chevron = Fit(ChevronIndex, content.Width, measure);
+            var priority = Fit(PriorityIndex, PriorityRoom(content.Width, chevron.Width, twoRows), measure);
+            var time = Fit(TimeIndex, TimeRoom(content.Width, priority.Width, chevron.Width, _naturalTime.Width, twoRows), measure);
             return Place(content, time, priority, chevron, twoRows);
         }
 
-        private Size Natural(int index) => Fit(index, double.PositiveInfinity);
+        private Size Natural(int index) => Fit(index, double.PositiveInfinity, measure: true);
 
-        private Size Fit(int index, double width) =>
-            Shown(index) is { } child ? child.Measure(width, double.PositiveInfinity) : Size.Zero;
+        private Size Fit(int index, double width, bool measure) =>
+            Shown(index) is { } child ? (measure ? child.Measure(width, double.PositiveInfinity) : child.DesiredSize) : Size.Zero;
 
         private void Arrange(int index, Rect frame)
         {

@@ -55,6 +55,36 @@ public sealed class SegmentLoadTests
         completed.SetResult(JobDtoBuilder.Json(JobDtoBuilder.MarcoCompleted()));
     }
 
+    [Fact]
+    public async Task RefreshStaysAvailableWhileItsReloadRunsAndASecondPressSendsNothing()
+    {
+        var pending = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var harness = new JobsHarness(new StubHttpMessageHandler((_, _) =>
+            Interlocked.Increment(ref calls) == 1 ? Task.FromResult(JobDtoBuilder.Json(JobDtoBuilder.MarcoActive())) : pending.Task));
+        var viewModel = harness.CreateMyJobs();
+        await viewModel.AppearingCommand.ExecuteAsync(null);
+
+        var refreshing = viewModel.RefreshCommand.ExecuteAsync(null);
+        for (var attempt = 0; attempt < 200 && Volatile.Read(ref calls) < 2; attempt++)
+        {
+            await Task.Delay(5, TestContext.Current.CancellationToken);
+        }
+
+        var available = viewModel.RefreshCommand.CanExecute(null);
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+        var requests = harness.Stub.Requests.Count;
+        pending.SetResult(JobDtoBuilder.Json(JobDtoBuilder.MarcoActive()));
+        await refreshing;
+
+        Assert.True(available);
+        Assert.Equal(2, requests);
+        Assert.Equal(2, Volatile.Read(ref calls));
+        Assert.Equal(ScreenState.Content, viewModel.State);
+        Assert.False(viewModel.IsRefreshing);
+        Assert.True(viewModel.RefreshCommand.CanExecute(null));
+    }
+
     private static async Task<(MyJobsViewModel ViewModel, JobsHarness Harness, TaskCompletionSource<HttpResponseMessage> Completed, ConcurrentDictionary<string, CancellationToken> Tokens)> ActiveThenPendingCompletedAsync()
     {
         var completed = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);

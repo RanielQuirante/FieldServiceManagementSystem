@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 
 namespace FieldService.Mobile.Features.Jobs;
 
-public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttributable
+public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttributable, IPaneHandoffSource
 {
     public const string PageTitle = "Job details";
     public const string LoadFailedTitle = "The job could not be loaded.";
@@ -371,7 +371,11 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         }
     }
 
-    public Task ShowJobAsync(Guid jobId)
+    public object? PaneHandoff => !IsInPane && _jobId != Guid.Empty ? new PaneJobHandoff(_jobId, Job, _loadedAt) : null;
+
+    public Task ShowJobAsync(Guid jobId) => ShowJobAsync(jobId, handoff: null);
+
+    public Task ShowJobAsync(Guid jobId, PaneJobHandoff? handoff)
     {
         if (jobId != _jobId)
         {
@@ -381,6 +385,11 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
             Timeline = [];
             RefreshError = null;
             _loadedAt = null;
+        }
+
+        if (handoff is { Job: { } job, LoadedAt: { } loadedAt } && job.Id == jobId && (_loadedAt is null || loadedAt > _loadedAt))
+        {
+            ShowLoadedJob(job, loadedAt);
         }
 
         return LoadJobAsync();
@@ -618,16 +627,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
                 return false;
             }
 
-            _loadedAt = _clock.GetUtcNow();
-            Job = job;
-            Timeline = BuildTimeline(job, Zone, Today);
-            Error = null;
-            OfflineMessage = null;
-            RefreshError = null;
-            ActionBanner = null;
-            State = ScreenState.Content;
-            UpdateStartsLine();
-            NotifyChecklist();
+            ShowLoadedJob(job, _clock.GetUtcNow());
             return true;
         }
         catch (Exception) when (token.IsCancellationRequested)
@@ -658,6 +658,20 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
         }
     }
 
+    private void ShowLoadedJob(JobDetailsResponse job, DateTimeOffset loadedAt)
+    {
+        _loadedAt = loadedAt;
+        Job = job;
+        Timeline = BuildTimeline(job, Zone, Today);
+        Error = null;
+        OfflineMessage = null;
+        RefreshError = null;
+        ActionBanner = null;
+        State = ScreenState.Content;
+        UpdateStartsLine();
+        NotifyChecklist();
+    }
+
     private void ShowOffline()
     {
         RefreshError = null;
@@ -679,6 +693,7 @@ public sealed partial class JobDetailsViewModel : ScreenViewModel, IQueryAttribu
     private async Task NoLongerAssignedAsync()
     {
         LogNoLongerAssigned(_logger, _jobId);
+        _paneMovePending = false;
         if (IsInPane)
         {
             JobUnavailable?.Invoke(this, EventArgs.Empty);

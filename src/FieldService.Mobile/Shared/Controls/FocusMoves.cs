@@ -8,6 +8,33 @@ public static class FocusMoves
 
     public static readonly TimeSpan ReadyRetryDelay = TimeSpan.FromMilliseconds(100);
 
+    public static readonly TimeSpan HiddenFocusGrace = TimeSpan.FromMilliseconds(400);
+
+    public static readonly BindableProperty HoldsHiddenFocusProperty = BindableProperty.CreateAttached(
+        "HoldsHiddenFocus",
+        typeof(bool),
+        typeof(FocusMoves),
+        false);
+
+    private static int _moving;
+
+    public static bool IsMoving => _moving > 0;
+
+    public static bool GetHoldsHiddenFocus(BindableObject view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        return (bool)view.GetValue(HoldsHiddenFocusProperty);
+    }
+
+    public static void SetHoldsHiddenFocus(BindableObject view, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        view.SetValue(HoldsHiddenFocusProperty, value);
+    }
+
+    public static bool HoldsRecovery(bool undirected, bool appMove, bool oldShown, bool oldHeld, bool newHeld) =>
+        undirected && !appMove && !oldShown && oldHeld && !newHeld;
+
     public static bool? HasFocusWithin(VisualElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
@@ -67,8 +94,11 @@ public static class FocusMoves
         }
 
         handler.Invoke(RevealCommand);
-        target.SetSemanticFocus();
-        target.Focus();
+        ByApp(() =>
+        {
+            target.SetSemanticFocus();
+            return target.Focus();
+        });
     }
 
     public static bool MoveKeyboardFocus(VisualElement? target)
@@ -79,7 +109,7 @@ public static class FocusMoves
         }
 
         handler.Invoke(RevealCommand);
-        return target.Focus();
+        return ByApp(target.Focus);
     }
 
     public static bool RevealThenFocus(VisualElement container, VisualElement input)
@@ -88,7 +118,22 @@ public static class FocusMoves
         ArgumentNullException.ThrowIfNull(input);
 
         container.Handler?.Invoke(RevealCommand);
-        return input.Focus();
+        return ByApp(input.Focus);
+    }
+
+    public static bool ByApp(Func<bool> move)
+    {
+        ArgumentNullException.ThrowIfNull(move);
+
+        _moving++;
+        try
+        {
+            return move();
+        }
+        finally
+        {
+            _moving--;
+        }
     }
 
     public static void MoveSoon(VisualElement? target, Func<bool> stillWanted)

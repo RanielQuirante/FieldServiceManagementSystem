@@ -199,8 +199,8 @@ public sealed class DockRowAndChipRowTests
     {
         var navigateGroup = new FixedView(118.0, 24);
         var callGroup = new FixedView(69.3, 24);
-        var navigate = new Grid { new FixedView(300, 52), navigateGroup };
-        var call = new Grid { new FixedView(300, 52), callGroup };
+        var navigate = new LaidOutGrid { new FixedView(300, 52), navigateGroup };
+        var call = new LaidOutGrid { new FixedView(300, 52), callGroup };
         var row = new DockButtonRow();
         row.Add(navigate);
         row.Add(call);
@@ -209,6 +209,8 @@ public sealed class DockRowAndChipRowTests
         var size = cross.CrossPlatformMeasure(DockRowAt320, double.PositiveInfinity);
         cross.CrossPlatformArrange(new Rect(0, 0, DockRowAt320, size.Height));
 
+        Assert.Same(navigateGroup, DockButtonRow.GroupOf(navigate));
+        Assert.Same(callGroup, DockButtonRow.GroupOf(call));
         Assert.False(row.IsStacked);
         Assert.Contains(double.PositiveInfinity, navigateGroup.Constraints);
         Assert.Contains(double.PositiveInfinity, callGroup.Constraints);
@@ -261,7 +263,7 @@ public sealed class DockRowAndChipRowTests
     public void TheWindowsHeroActionRowIsNotADockRow()
     {
         var view = Load("Features/Jobs/JobDetailsView.xaml");
-        var heroActions = view.Descendants(_maui + "HorizontalStackLayout").Single(element => element.Attribute("IsVisible")?.Value == "{Binding ShowsHeroActions}");
+        var heroActions = view.Descendants(_controls + "WrapRowLayout").Single(element => element.Attribute("IsVisible")?.Value == "{Binding ShowsHeroActions}");
 
         Assert.Empty(heroActions.Descendants(_controls + "DockButtonRow"));
         Assert.Empty(heroActions.Ancestors(_controls + "DockButtonRow"));

@@ -8,20 +8,23 @@
              Title="{x:Static inspection:InspectionViewModel.PageTitle}"
              Shell.NavBarIsVisible="False"
              SafeAreaEdges="None"
-             controls:ScreenFocus.Watches="True">
+             controls:ScreenFocus.Watches="True"
+             controls:KeyboardState.ResizesPage="True"
+             controls:KeyboardState.IsOpen="{Binding IsKeyboardOpen}">
     <Shell.BackButtonBehavior>
         <BackButtonBehavior IsVisible="{OnPlatform WinUI=False, Default=True}" />
     </Shell.BackButtonBehavior>
     <Grid SafeAreaEdges="None">
         <Grid x:Name="Column"
               RowDefinitions="*,Auto"
-              SafeAreaEdges="None"
+              SafeAreaEdges="None,None,None,SoftInput"
               MaximumWidthRequest="{Binding ColumnMaxWidth}"
               HorizontalOptions="{Binding ColumnOptions}">
             <ScrollView x:Name="ChecklistScroll"
                         Grid.Row="0"
                         SafeAreaEdges="None"
-                        controls:ScrollRequests.ToTop="{Binding ScrollToTopRequest}">
+                        controls:ScrollRequests.ToTop="{Binding ScrollToTopRequest}"
+                        controls:ScrollRequests.FocusedIntoView="{Binding FocusInViewRequest}">
                 <VerticalStackLayout SafeAreaEdges="None">
                     <controls:AppHeader x:Name="InspectionHeader"
                                         Variant="Pushed"
@@ -317,7 +320,8 @@
             <controls:StatusBarProtection Grid.Row="0"
                                           IsActive="True"
                                           ScrollSource="{x:Reference ChecklistScroll}" />
-            <controls:SystemBarSpacer Grid.Row="1" />
+            <controls:SystemBarSpacer Grid.Row="1"
+                                      IsVisible="{Binding ShowsBarSpacer}" />
             <controls:ActionDock Grid.Row="1"
                                  IsVisible="{Binding ShowsDock}"
                                  HelperText="{Binding HelperText}">

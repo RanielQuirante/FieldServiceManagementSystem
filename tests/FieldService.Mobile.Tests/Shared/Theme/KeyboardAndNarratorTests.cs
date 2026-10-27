@@ -171,7 +171,7 @@ public sealed class KeyboardAndNarratorTests
         {
             var body = moves[moves.IndexOf(method, StringComparison.Ordinal)..];
             var reveal = body.IndexOf("handler.Invoke(RevealCommand)", StringComparison.Ordinal);
-            var focus = body.IndexOf(".Focus()", StringComparison.Ordinal);
+            var focus = body.IndexOf("target.Focus", StringComparison.Ordinal);
             Assert.True(reveal > 0 && reveal < focus, method);
         }
 

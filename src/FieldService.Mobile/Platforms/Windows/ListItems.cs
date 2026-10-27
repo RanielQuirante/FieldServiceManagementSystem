@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using AutomationProperties = Microsoft.UI.Xaml.Automation.AutomationProperties;
+using LosingFocusEventArgs = Microsoft.UI.Xaml.Input.LosingFocusEventArgs;
 using MauiThickness = Microsoft.Maui.Thickness;
 using PlatformPoint = Windows.Foundation.Point;
 
@@ -32,6 +33,8 @@ public static class ListItems
 
     private static readonly ConditionalWeakTable<FrameworkElement, JobCard> _cards = new();
     private static readonly ConditionalWeakTable<TextBlock, Label> _headers = new();
+    private static readonly ConditionalWeakTable<ListViewBase, object> _held = new();
+    private static bool _watchingFocus;
 
     public static void AttachList(ListViewBase list, BindableObject view)
     {
@@ -179,6 +182,140 @@ public static class ListItems
         AutomationProperties.SetName(header, text.Text ?? string.Empty);
         AutomationProperties.SetHeadingLevel(header, HeadingFor(SemanticProperties.GetHeadingLevel(label)));
         AutomationProperties.SetAccessibilityView(text, AccessibilityView.Raw);
+        header.IsTabStop = false;
+    }
+
+    public static void HoldFocus(ListViewBase list, bool hold)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+
+        if (!hold)
+        {
+            _held.Remove(list);
+            return;
+        }
+
+        _held.AddOrUpdate(list, new object());
+        if (!_watchingFocus)
+        {
+            _watchingFocus = true;
+            Microsoft.UI.Xaml.Input.FocusManager.GettingFocus += OnAnyGettingFocus;
+        }
+    }
+
+    private static void OnAnyGettingFocus(object? sender, Microsoft.UI.Xaml.Input.GettingFocusEventArgs args)
+    {
+        if (args.Direction == Microsoft.UI.Xaml.Input.FocusNavigationDirection.None
+            && args.NewFocusedElement is not ListViewHeaderItem
+            && args.OldFocusedElement is UIElement old
+            && !IsShown(old)
+            && Ancestor<ListViewBase>(old) is { } list
+            && _held.TryGetValue(list, out _))
+        {
+            args.TryCancel();
+        }
+    }
+
+    private static bool IsShown(DependencyObject element)
+    {
+        for (DependencyObject? node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is UIElement { Visibility: Microsoft.UI.Xaml.Visibility.Collapsed })
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static bool FocusGroupHeader(TextBlock text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        if (Ancestor<ListViewHeaderItem>(text) is not { } header || Ancestor<ListViewBase>(header) is null)
+        {
+            return false;
+        }
+
+        FocusVisuals.Apply(header, FocusRing.LightColorKey, FocusVisuals.ControlMargin);
+        header.IsTabStop = true;
+        header.PreviewKeyDown -= OnHeaderKeyDown;
+        header.PreviewKeyDown += OnHeaderKeyDown;
+        header.LosingFocus -= OnHeaderLosingFocus;
+        header.LosingFocus += OnHeaderLosingFocus;
+        header.LostFocus -= OnHeaderLostFocus;
+        header.LostFocus += OnHeaderLostFocus;
+        header.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+        if (header.Focus(FocusState.Keyboard))
+        {
+            return true;
+        }
+
+        LeaveHeader(header);
+        return false;
+    }
+
+    public static ListViewItem? NextStopFromHeader(ListViewBase list) =>
+        list.ContainerFromIndex(0) as ListViewItem ?? FirstDescendant<ListViewItem>(list);
+
+    private static T? FirstDescendant<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if ((child as T ?? FirstDescendant<T>(child)) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private static void OnHeaderKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (e.Key != Windows.System.VirtualKey.Tab
+            || shift
+            || sender is not DependencyObject header
+            || Ancestor<ListViewBase>(header) is not { } list
+            || NextStopFromHeader(list) is not { } item)
+        {
+            return;
+        }
+
+        e.Handled = item.Focus(FocusState.Keyboard);
+    }
+
+    private static void OnHeaderLosingFocus(UIElement sender, LosingFocusEventArgs args)
+    {
+        if (args.Direction != Microsoft.UI.Xaml.Input.FocusNavigationDirection.Next
+            || Ancestor<ListViewBase>(sender) is not { } list
+            || NextStopFromHeader(list) is not { } item
+            || ReferenceEquals(args.NewFocusedElement, item))
+        {
+            return;
+        }
+
+        args.TrySetNewFocusedElement(item);
+    }
+
+    private static void OnHeaderLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is ListViewHeaderItem header)
+        {
+            LeaveHeader(header);
+        }
+    }
+
+    private static void LeaveHeader(ListViewHeaderItem header)
+    {
+        header.PreviewKeyDown -= OnHeaderKeyDown;
+        header.LosingFocus -= OnHeaderLosingFocus;
+        header.LostFocus -= OnHeaderLostFocus;
         header.IsTabStop = false;
     }
 

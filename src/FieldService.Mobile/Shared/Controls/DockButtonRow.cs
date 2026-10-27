@@ -51,34 +51,37 @@ public sealed class DockButtonRow : Layout
 
     protected override ILayoutManager CreateLayoutManager() => new Manager(this);
 
-    private static double GroupWidth(IView button)
-    {
-        var group = button is Microsoft.Maui.ILayout layout && layout.Count > 0 ? layout[^1] : button;
-        return group.Measure(double.PositiveInfinity, double.PositiveInfinity).Width;
-    }
+    public static IView GroupOf(IView button) =>
+        button is Microsoft.Maui.ILayout layout && layout.Count > 0 ? layout[^1] : button;
 
     private sealed class Manager(DockButtonRow row) : LayoutManager(row)
     {
         private readonly RemeasureRequest _remeasure = new();
+        private List<double> _groupWidths = [];
+        private double _measuredWidth = double.NaN;
 
         public override Size Measure(double widthConstraint, double heightConstraint)
         {
             var buttons = Visible();
+            _measuredWidth = double.NaN;
             if (buttons.Count == 0)
             {
+                _groupWidths = [];
                 return Size.Zero;
             }
 
+            var sizes = buttons.Select(button => button.Measure(double.PositiveInfinity, double.PositiveInfinity)).ToList();
+            _groupWidths = [.. buttons.Select(button => GroupOf(button).DesiredSize.Width)];
             if (double.IsPositiveInfinity(widthConstraint))
             {
                 row.IsStacked = false;
-                var sizes = buttons.Select(button => button.Measure(double.PositiveInfinity, double.PositiveInfinity)).ToList();
                 return new Size(sizes.Sum(size => size.Width) + (ButtonGap * (sizes.Count - 1)), sizes.Max(size => size.Height));
             }
 
-            row.IsStacked = Decide(widthConstraint, buttons);
-            var heights = MeasureButtons(widthConstraint, buttons, row.IsStacked);
+            row.IsStacked = StacksRow(widthConstraint, _groupWidths);
+            var heights = MeasureButtons(widthConstraint, buttons, row.IsStacked, measure: true);
             var frames = Place(new Rect(0, 0, widthConstraint, double.PositiveInfinity), heights, row.IsStacked);
+            _measuredWidth = widthConstraint;
             return new Size(widthConstraint, frames.Max(frame => frame.Bottom));
         }
 
@@ -91,12 +94,12 @@ public sealed class DockButtonRow : Layout
             }
 
             var stacked = row.IsStacked;
-            if (_remeasure.AsksAt(bounds.Width, stacked, Decide(bounds.Width, buttons)))
+            if (_groupWidths.Count == buttons.Count && _remeasure.AsksAt(bounds.Width, stacked, StacksRow(bounds.Width, _groupWidths)))
             {
                 ((IView)row).InvalidateMeasure();
             }
 
-            var heights = MeasureButtons(bounds.Width, buttons, stacked);
+            var heights = MeasureButtons(bounds.Width, buttons, stacked, measure: !RemeasureRequest.IsMeasuredWidth(_measuredWidth, bounds.Width));
             var frames = Place(bounds, heights, stacked);
             for (var index = 0; index < buttons.Count; index++)
             {
@@ -106,13 +109,10 @@ public sealed class DockButtonRow : Layout
             return bounds.Size;
         }
 
-        private static bool Decide(double width, IReadOnlyList<IView> buttons) =>
-            StacksRow(width, [.. buttons.Select(GroupWidth)]);
-
-        private static List<double> MeasureButtons(double width, IReadOnlyList<IView> buttons, bool stacked)
+        private static List<double> MeasureButtons(double width, IReadOnlyList<IView> buttons, bool stacked, bool measure)
         {
             var buttonWidth = stacked || buttons.Count == 1 ? width : ButtonWidth(width);
-            return [.. buttons.Select(button => button.Measure(buttonWidth, double.PositiveInfinity).Height)];
+            return [.. buttons.Select(button => measure ? button.Measure(buttonWidth, double.PositiveInfinity).Height : button.DesiredSize.Height)];
         }
 
         private List<IView> Visible() => [.. row.Where(child => child.Visibility != Visibility.Collapsed)];

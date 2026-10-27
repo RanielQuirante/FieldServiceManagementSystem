@@ -442,11 +442,11 @@ public sealed class StatusSheetXamlTests
         Assert.Contains("public bool HoldsInput => (Input?.IsFocused ?? false) || (Area?.IsFocused ?? false);", field, StringComparison.Ordinal);
         Assert.Contains("_ = field.HideSoftInputAsync(CancellationToken.None);", field, StringComparison.Ordinal);
         Assert.Contains("field.Unfocus();", field, StringComparison.Ordinal);
-        Assert.Contains("ApplySoftInputMode(handler.PlatformView, sheet.IsOpen);", setup, StringComparison.Ordinal);
+        Assert.Contains("ApplySoftInputMode(handler.PlatformView, sheet.IsOpen, hideKeyboard: !sheet.IsOpen);", setup, StringComparison.Ordinal);
         var mode = softInput.IndexOf("window.SetSoftInputMode(", StringComparison.Ordinal);
         var hide = softInput.IndexOf("WindowCompat.GetInsetsController(window, decor)?.Hide(WindowInsetsCompat.Type.Ime());", StringComparison.Ordinal);
         Assert.InRange(mode, 1, hide);
-        Assert.Contains("if (!sheetOpen && window.DecorView is { } decor)", softInput, StringComparison.Ordinal);
+        Assert.Contains("if (hideKeyboard && window.DecorView is { } decor)", softInput, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -19,6 +19,7 @@ public static class Routes
     public const string NoticeParameter = "notice";
     public const string SourceParameter = "source";
     public const string JobNumberParameter = "jobNumber";
+    public const string PaneJobParameter = "paneJob";
     public const string JobUnassignedNotice = "job-unassigned";
     public const string JobSubmittedNotice = "job-submitted";
     public const string SubmissionIncompleteNotice = "submission-incomplete";

@@ -205,6 +205,7 @@
                                         ItemsSource="{Binding Groups}"
                                         controls:ListSemantics.Name="{x:Static controls:ListSemantics.JobListName}"
                                         controls:ListFocus.FirstGroupRequest="{Binding GroupFocusRequest}"
+                                        controls:ListFocus.SelectedIntoViewRequest="{Binding SelectedIntoViewRequest}"
                                         IsGrouped="True"
                                         SelectionMode="Single"
                                         SelectedItem="{Binding SelectedJob}"

@@ -65,25 +65,31 @@ public sealed class SegmentRowLayout : Layout
     private sealed class Manager(SegmentRowLayout row) : LayoutManager(row)
     {
         private readonly RemeasureRequest _remeasure = new();
+        private List<double> _groupWidths = [];
+        private double _measuredWidth = double.NaN;
 
         public override Size Measure(double widthConstraint, double heightConstraint)
         {
             var segments = Visible();
+            _measuredWidth = double.NaN;
             if (segments.Count == 0)
             {
+                _groupWidths = [];
                 return Size.Zero;
             }
 
+            var sizes = segments.Select(segment => segment.Measure(double.PositiveInfinity, double.PositiveInfinity)).ToList();
+            _groupWidths = [.. segments.Select(segment => GroupOf(segment).DesiredSize.Width)];
             if (double.IsPositiveInfinity(widthConstraint))
             {
                 row.IsStacked = false;
-                var sizes = segments.Select(segment => segment.Measure(double.PositiveInfinity, double.PositiveInfinity)).ToList();
                 return new Size((sizes.Max(size => size.Width) * sizes.Count) + (SegmentGap * (sizes.Count - 1)), sizes.Max(size => size.Height));
             }
 
-            row.IsStacked = Decide(widthConstraint, segments);
-            var heights = MeasureSegments(widthConstraint, segments, row.IsStacked);
+            row.IsStacked = StacksRow(widthConstraint, _groupWidths);
+            var heights = MeasureSegments(widthConstraint, segments, row.IsStacked, measure: true);
             var frames = Place(new Rect(0, 0, widthConstraint, double.PositiveInfinity), heights, row.IsStacked);
+            _measuredWidth = widthConstraint;
             return new Size(widthConstraint, frames.Max(frame => frame.Bottom));
         }
 
@@ -96,12 +102,12 @@ public sealed class SegmentRowLayout : Layout
             }
 
             var stacked = row.IsStacked;
-            if (_remeasure.AsksAt(bounds.Width, stacked, Decide(bounds.Width, segments)))
+            if (_groupWidths.Count == segments.Count && _remeasure.AsksAt(bounds.Width, stacked, StacksRow(bounds.Width, _groupWidths)))
             {
                 ((IView)row).InvalidateMeasure();
             }
 
-            var heights = MeasureSegments(bounds.Width, segments, stacked);
+            var heights = MeasureSegments(bounds.Width, segments, stacked, measure: !RemeasureRequest.IsMeasuredWidth(_measuredWidth, bounds.Width));
             var frames = Place(bounds, heights, stacked);
             for (var index = 0; index < segments.Count; index++)
             {
@@ -111,13 +117,10 @@ public sealed class SegmentRowLayout : Layout
             return bounds.Size;
         }
 
-        private static bool Decide(double width, IReadOnlyList<IView> segments) =>
-            StacksRow(width, [.. segments.Select(segment => GroupOf(segment).Measure(double.PositiveInfinity, double.PositiveInfinity).Width)]);
-
-        private static List<double> MeasureSegments(double width, IReadOnlyList<IView> segments, bool stacked)
+        private static List<double> MeasureSegments(double width, IReadOnlyList<IView> segments, bool stacked, bool measure)
         {
             var segmentWidth = stacked || segments.Count == 1 ? width : SegmentWidth(width);
-            return [.. segments.Select(segment => segment.Measure(segmentWidth, double.PositiveInfinity).Height)];
+            return [.. segments.Select(segment => measure ? segment.Measure(segmentWidth, double.PositiveInfinity).Height : segment.DesiredSize.Height)];
         }
 
         private List<IView> Visible() => [.. row.Where(child => child.Visibility != Visibility.Collapsed)];

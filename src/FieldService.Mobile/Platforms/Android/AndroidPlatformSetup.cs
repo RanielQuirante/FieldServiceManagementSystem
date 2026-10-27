@@ -16,6 +16,8 @@ public static class AndroidPlatformSetup
     public const string ContainerMappingKey = "FsContainerNotAStop";
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Android.Views.ViewGroup, FocusabilityBox> _focusability = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ContentPage, KeyboardWatch> _keyboardWatches = new();
+    private static int _resizingPages;
 
     public static void Configure(MauiAppBuilder builder)
     {
@@ -69,7 +71,14 @@ public static class AndroidPlatformSetup
         {
             if (view is BottomSheet sheet)
             {
-                ApplySoftInputMode(handler.PlatformView, sheet.IsOpen);
+                ApplySoftInputMode(handler.PlatformView, sheet.IsOpen, hideKeyboard: !sheet.IsOpen);
+            }
+        });
+        PageHandler.Mapper.AppendToMapping(KeyboardState.ResizesPageProperty.PropertyName, (handler, view) =>
+        {
+            if (view is ContentPage page && KeyboardState.GetResizesPage(page))
+            {
+                WatchKeyboard(handler.PlatformView, page);
             }
         });
         ViewHandler.ViewMapper.AppendToMapping(AutomationProperties.ExcludedWithChildrenProperty.PropertyName, (handler, view) =>
@@ -213,17 +222,47 @@ public static class AndroidPlatformSetup
         observer.AddOnPreDrawListener(new SplashHold(content, startup));
     }
 
-    private static void ApplySoftInputMode(Android.Views.View platformView, bool sheetOpen)
+    private static void ApplySoftInputMode(Android.Views.View platformView, bool sheetOpen, bool hideKeyboard)
     {
         if (platformView.Context?.GetActivity()?.Window is not { } window)
         {
             return;
         }
 
-        window.SetSoftInputMode(sheetOpen ? Android.Views.SoftInput.AdjustResize : Android.Views.SoftInput.AdjustPan);
-        if (!sheetOpen && window.DecorView is { } decor)
+        window.SetSoftInputMode(KeyboardState.UsesResize(sheetOpen, _resizingPages > 0) ? Android.Views.SoftInput.AdjustResize : Android.Views.SoftInput.AdjustPan);
+        if (hideKeyboard && window.DecorView is { } decor)
         {
             WindowCompat.GetInsetsController(window, decor)?.Hide(WindowInsetsCompat.Type.Ime());
+        }
+    }
+
+    private static void WatchKeyboard(Android.Views.View platformView, ContentPage page)
+    {
+        if (_keyboardWatches.TryGetValue(page, out _))
+        {
+            return;
+        }
+
+        var watch = new KeyboardWatch(platformView, new WeakReference<ContentPage>(page));
+        _keyboardWatches.Add(page, watch);
+        page.Appearing += (_, _) =>
+        {
+            _resizingPages++;
+            ApplySoftInputMode(platformView, sheetOpen: false, hideKeyboard: false);
+            platformView.ViewTreeObserver?.AddOnGlobalLayoutListener(watch);
+        };
+        page.Disappearing += (_, _) =>
+        {
+            platformView.ViewTreeObserver?.RemoveOnGlobalLayoutListener(watch);
+            watch.Reset();
+            _resizingPages = Math.Max(0, _resizingPages - 1);
+            ApplySoftInputMode(platformView, sheetOpen: false, hideKeyboard: false);
+        };
+        if (ReferenceEquals(Shell.Current?.CurrentPage, page))
+        {
+            _resizingPages++;
+            ApplySoftInputMode(platformView, sheetOpen: false, hideKeyboard: false);
+            platformView.ViewTreeObserver?.AddOnGlobalLayoutListener(watch);
         }
     }
 
@@ -311,6 +350,32 @@ public static class AndroidPlatformSetup
         public Android.Views.DescendantFocusability Value { get; } = value;
 
         public bool Focusable { get; } = focusable;
+    }
+
+    private sealed class KeyboardWatch(Android.Views.View view, WeakReference<ContentPage> page) : Java.Lang.Object, Android.Views.ViewTreeObserver.IOnGlobalLayoutListener
+    {
+        private bool _open;
+
+        public void OnGlobalLayout()
+        {
+            var open = ViewCompat.GetRootWindowInsets(view)?.IsVisible(WindowInsetsCompat.Type.Ime()) == true;
+            if (open == _open || !page.TryGetTarget(out var target))
+            {
+                return;
+            }
+
+            _open = open;
+            KeyboardState.SetIsOpen(target, open);
+        }
+
+        public void Reset()
+        {
+            _open = false;
+            if (page.TryGetTarget(out var target))
+            {
+                KeyboardState.SetIsOpen(target, false);
+            }
+        }
     }
 
     private sealed class SplashHold(Android.Views.View content, AppStartup startup) : Java.Lang.Object, Android.Views.ViewTreeObserver.IOnPreDrawListener

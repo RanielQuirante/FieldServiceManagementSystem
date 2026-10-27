@@ -80,7 +80,7 @@ public sealed class CancelledJobXamlTests
     {
         var view = Load("Features/Jobs/JobDetailsView.xaml");
         var dock = view.Descendants(_controls + "ActionDock").Single();
-        var actions = view.Descendants(_maui + "HorizontalStackLayout").Single(element => element.Attribute("IsVisible")?.Value == "{Binding ShowsHeroActions}");
+        var actions = view.Descendants(_controls + "WrapRowLayout").Single(element => element.Attribute("IsVisible")?.Value == "{Binding ShowsHeroActions}");
         var row = view.Descendants(_controls + "InfoRow").Single(element => element.Attribute("Label")?.Value == "Checklist");
         var link = view.Descendants(_controls + "LinkCard").Single();
 

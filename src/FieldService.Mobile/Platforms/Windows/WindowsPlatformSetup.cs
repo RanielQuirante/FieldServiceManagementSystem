@@ -75,6 +75,17 @@ public static class WindowsPlatformSetup
                 handler.PlatformView.IsTextSelectionEnabled = TextSelection.GetIsEnabled(label);
             }
         });
+        foreach (var key in new[] { nameof(ILabel.LineHeight), nameof(ITextStyle.Font), LineHeights.SpecProperty.PropertyName })
+        {
+            LabelHandler.Mapper.AppendToMapping(key, (handler, view) =>
+            {
+                if (view is Label label)
+                {
+                    WindowsLineHeights.Apply(handler.PlatformView, label.LineHeight, LineHeights.GetSpec(label));
+                }
+            });
+        }
+
         foreach (var key in new[] { ListSemantics.IsOwnStopProperty.PropertyName, nameof(ILabel.Text) })
         {
             LabelHandler.Mapper.AppendToMapping(key, (handler, view) =>
@@ -87,6 +98,13 @@ public static class WindowsPlatformSetup
         }
 
         LabelHandler.CommandMapper.PrependToMapping(nameof(IView.Focus), (handler, view, _) => TextTargets.PrepareForFocus(handler.PlatformView, view as BindableObject));
+        LabelHandler.CommandMapper.AppendToMapping(ListFocus.HeadingFocusCommand, (handler, _, args) =>
+        {
+            if (args is FocusQuery query)
+            {
+                query.HasFocusWithin = ListItems.FocusGroupHeader(handler.PlatformView);
+            }
+        });
         foreach (var key in new[] { FocusRingMappingKey, nameof(VisualElement.Style), FocusRing.IsOnDarkProperty.PropertyName })
         {
             ButtonHandler.Mapper.AppendToMapping(key, (handler, view) =>
@@ -103,6 +121,13 @@ public static class WindowsPlatformSetup
             if (view is BindableObject element && handler.PlatformView is FrameworkElement platformView)
             {
                 CoveredSubtrees.Apply(platformView, AutomationProperties.GetExcludedWithChildren(element) == true);
+            }
+        });
+        ViewHandler.ViewMapper.AppendToMapping(FocusMoves.HoldsHiddenFocusProperty.PropertyName, (handler, view) =>
+        {
+            if (view is BindableObject element && handler.PlatformView is FrameworkElement platformView)
+            {
+                KeyboardFocus.HoldHiddenFocus(platformView, FocusMoves.GetHoldsHiddenFocus(element));
             }
         });
         ViewHandler.ViewMapper.AppendToMapping(TabStop.IsStopProperty.PropertyName, (handler, view) =>
@@ -123,6 +148,7 @@ public static class WindowsPlatformSetup
             });
         }
 
+        ScrollViewHandler.CommandMapper.AppendToMapping(ScrollRequests.RevealFocusedCommand, (handler, _, _) => KeyboardFocus.RevealFocusedWithin(handler.PlatformView));
         ViewHandler.ViewCommandMapper.AppendToMapping(FocusMoves.RevealCommand, (handler, _, _) =>
         {
             if (handler.PlatformView is not FrameworkElement platformView)
@@ -156,6 +182,13 @@ public static class WindowsPlatformSetup
             });
         }
 
+        ViewHandler.ViewCommandMapper.AppendToMapping(ListFocus.HoldFocusCommand, (handler, _, args) =>
+        {
+            if (handler.PlatformView is Microsoft.UI.Xaml.Controls.ListViewBase list)
+            {
+                ListItems.HoldFocus(list, args is true);
+            }
+        });
         foreach (var key in new[] { ListSemanticsMappingKey, ListSemantics.NameProperty.PropertyName })
         {
             CollectionViewHandler.Mapper.AppendToMapping(key, (handler, view) =>

@@ -32,6 +32,7 @@ public sealed partial class JobDetailsViewModel
 
     private CancellationTokenSource? _command;
     private bool _leftLayout;
+    private bool _paneMovePending;
 
     public event EventHandler? StatusChanged;
 
@@ -222,6 +223,18 @@ public sealed partial class JobDetailsViewModel
     {
         var wasOpen = IsStatusSheetOpen;
         LeaveLayout();
+        if (_layout.IsTwoPane && !IsInPane)
+        {
+            _paneMovePending = true;
+            if (!IsUpdatingStatus && !IsStarting)
+            {
+                _ = MoveToPaneAsync();
+            }
+
+            return;
+        }
+
+        _paneMovePending = false;
         if (wasOpen && !IsStatusSheetOpen)
         {
             StartFocusRequest++;
@@ -240,12 +253,31 @@ public sealed partial class JobDetailsViewModel
         SheetFailure = null;
         HoldReason = string.Empty;
         HoldReasonError = null;
-        if (!IsInPane)
+        if (!IsInPane && !_paneMovePending)
         {
             StartFocusRequest++;
         }
 
         return true;
+    }
+
+    private async Task MoveToPaneAsync()
+    {
+        if (!_paneMovePending || IsInPane || !_layout.IsTwoPane || PaneHandoff is not { } handoff)
+        {
+            _paneMovePending = false;
+            return;
+        }
+
+        _paneMovePending = false;
+        try
+        {
+            await _navigator.GoToAsync(Routes.Back, new Dictionary<string, object> { [Routes.PaneJobParameter] = handoff }, animate: false);
+        }
+        catch (Exception exception)
+        {
+            LogNavigateFailed(_logger, _jobId, exception.GetType().Name);
+        }
     }
 
     private bool CanStartJob() => ShowsStartJob && !IsStatusOffline;
@@ -502,6 +534,11 @@ public sealed partial class JobDetailsViewModel
                 _command = null;
             }
         }
+
+        if (_paneMovePending)
+        {
+            await MoveToPaneAsync();
+        }
     }
 
     private static string Spoken(string line, string? note) => note is null ? line : line + ". " + note;
@@ -583,6 +620,7 @@ public sealed partial class JobDetailsViewModel
         _command?.Cancel();
         _command = null;
         _leftLayout = false;
+        _paneMovePending = false;
         IsStatusSheetOpen = false;
         IsStarting = false;
         IsUpdatingStatus = false;

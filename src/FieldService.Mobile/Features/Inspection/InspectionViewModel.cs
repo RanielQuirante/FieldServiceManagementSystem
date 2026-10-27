@@ -138,6 +138,13 @@ public sealed partial class InspectionViewModel : ScreenViewModel, IQueryAttribu
     [ObservableProperty]
     public partial int ScrollToTopRequest { get; private set; }
 
+    [ObservableProperty]
+    public partial int FocusInViewRequest { get; private set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsDock), nameof(ShowsBarSpacer))]
+    public partial bool IsKeyboardOpen { get; set; }
+
     public Guid JobId => _jobId;
 
     public InspectionResponse? Inspection => _inspection;
@@ -154,7 +161,9 @@ public sealed partial class InspectionViewModel : ScreenViewModel, IQueryAttribu
 
     public bool ShowsLoadingLine => State == ScreenState.Loading;
 
-    public bool ShowsDock => State == ScreenState.Content && IsEditable;
+    public bool ShowsDock => State == ScreenState.Content && IsEditable && !IsKeyboardOpen;
+
+    public bool ShowsBarSpacer => !IsKeyboardOpen;
 
     public bool ShowsOfflineBanner => !IsOnline && State == ScreenState.Content;
 
@@ -310,7 +319,7 @@ public sealed partial class InspectionViewModel : ScreenViewModel, IQueryAttribu
         _context = SynchronizationContext.Current;
         _session.SessionEnded += OnSessionEnded;
         _layout.Changed += OnLayoutChanged;
-        OnLayoutChanged(this, EventArgs.Empty);
+        NotifyColumn();
     }
 
     protected override void OnDeactivated()
@@ -320,6 +329,20 @@ public sealed partial class InspectionViewModel : ScreenViewModel, IQueryAttribu
     }
 
     private void OnLayoutChanged(object? sender, EventArgs e)
+    {
+        NotifyColumn();
+        FocusInViewRequest++;
+    }
+
+    partial void OnIsKeyboardOpenChanged(bool value)
+    {
+        if (value)
+        {
+            FocusInViewRequest++;
+        }
+    }
+
+    private void NotifyColumn()
     {
         OnPropertyChanged(nameof(ColumnMaxWidth));
         OnPropertyChanged(nameof(ColumnOptions));

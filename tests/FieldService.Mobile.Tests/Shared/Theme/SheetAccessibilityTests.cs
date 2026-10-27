@@ -105,7 +105,7 @@ public sealed class SheetAccessibilityTests
     public void TheTwoPaneHerosUpdateStatusButtonsTakeFocusBackWhenTheSheetCloses()
     {
         var view = Load("Features/Jobs/JobDetailsView.xaml");
-        var hero = view.Descendants(_maui + "HorizontalStackLayout").Single(element => element.Attribute("IsVisible")?.Value == "{Binding ShowsHeroActions}");
+        var hero = view.Descendants(_controls + "WrapRowLayout").Single(element => element.Attribute("IsVisible")?.Value == "{Binding ShowsHeroActions}");
 
         foreach (var shown in new[] { "{Binding ShowsUpdateStatusSecondary}", "{Binding ShowsUpdateStatusPrimary}" })
         {

@@ -44,7 +44,7 @@ public sealed class FaultFieldRevealTests
         Assert.Contains("FocusMoves.RevealThenFocus(this, IsMultiline ? Area : Input);", request, StringComparison.Ordinal);
         Assert.DoesNotContain("Area.Focus()", request, StringComparison.Ordinal);
         Assert.DoesNotContain("Input.Focus()", request, StringComparison.Ordinal);
-        Assert.True(reveal.IndexOf("container.Handler?.Invoke(RevealCommand);", StringComparison.Ordinal) < reveal.IndexOf("return input.Focus();", StringComparison.Ordinal));
+        Assert.True(reveal.IndexOf("container.Handler?.Invoke(RevealCommand);", StringComparison.Ordinal) < reveal.IndexOf("return ByApp(input.Focus);", StringComparison.Ordinal));
         Assert.Equal("{Binding ShowsFaultField}", fault.Attribute("IsVisible")?.Value);
         Assert.Equal("True", fault.Attribute("IsMultiline")?.Value);
     }

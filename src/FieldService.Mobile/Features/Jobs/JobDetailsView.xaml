@@ -94,119 +94,187 @@
                                        LineBreakMode="TailTruncation"
                                        AutomationProperties.ExcludedWithChildren="{Binding HasStatusDescription}" />
                             </VerticalStackLayout>
-                            <HorizontalStackLayout IsVisible="{Binding ShowsHeroActions}"
-                                                   Spacing="{StaticResource FsSpace10}">
+                            <controls:WrapRowLayout IsVisible="{Binding ShowsHeroActions}"
+                                                    controls:FocusMoves.HoldsHiddenFocus="True"
+                                                    ColumnSpacing="{StaticResource FsSpace10}"
+                                                    RowSpacing="{StaticResource FsSpace10}">
                                 <Grid IsVisible="{Binding ShowsStartJob}">
                                     <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
                                             Command="{Binding StartJobCommand}"
                                             SemanticProperties.Description="{Binding StartJobLabel}" />
-                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
-                                                           Padding="{StaticResource FsPaddingDesktopButton}"
-                                                           HorizontalOptions="Center"
-                                                           InputTransparent="True"
-                                                           AutomationProperties.ExcludedWithChildren="True">
-                                        <controls:Icon PathData="{StaticResource FsIconPlayCircle}"
-                                                       Size="18"
-                                                       Color="{StaticResource FsInk}"
-                                                       VerticalOptions="Center" />
+                                    <controls:IconLabelLayout HugsContent="True"
+                                                              Padding="{StaticResource FsPaddingDesktopButton}"
+                                                              HorizontalOptions="Center"
+                                                              InputTransparent="True"
+                                                              AutomationProperties.ExcludedWithChildren="True">
+                                        <Grid WidthRequest="18"
+                                              Margin="0,0,8,0">
+                                            <Label Style="{StaticResource FsTextButtonLabelDesktop}"
+                                                   Text="A"
+                                                   MaxLines="1"
+                                                   LineBreakMode="NoWrap"
+                                                   Opacity="0"
+                                                   InputTransparent="True"
+                                                   AutomationProperties.IsInAccessibleTree="False" />
+                                            <controls:Icon PathData="{StaticResource FsIconPlayCircle}"
+                                                           Size="18"
+                                                           Color="{StaticResource FsInk}"
+                                                           VerticalOptions="Center" />
+                                        </Grid>
                                         <Label Text="{Binding StartJobLabel}"
                                                Style="{StaticResource FsTextButtonLabelDesktop}"
-                                               TextColor="{StaticResource FsInk}" />
-                                    </HorizontalStackLayout>
+                                               TextColor="{StaticResource FsInk}"
+                                               LineBreakMode="WordWrap" />
+                                    </controls:IconLabelLayout>
                                 </Grid>
                                 <Grid IsVisible="{Binding ShowsInspectionAction}">
                                     <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
                                             Command="{Binding OpenChecklistCommand}"
                                             SemanticProperties.Description="{Binding InspectionActionText}" />
-                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
-                                                           Padding="{StaticResource FsPaddingDesktopButton}"
-                                                           HorizontalOptions="Center"
-                                                           InputTransparent="True"
-                                                           AutomationProperties.ExcludedWithChildren="True">
-                                        <controls:Icon PathData="{StaticResource FsIconClipboardCheck}"
-                                                       Size="18"
-                                                       Color="{StaticResource FsInk}"
-                                                       VerticalOptions="Center" />
+                                    <controls:IconLabelLayout HugsContent="True"
+                                                              Padding="{StaticResource FsPaddingDesktopButton}"
+                                                              HorizontalOptions="Center"
+                                                              InputTransparent="True"
+                                                              AutomationProperties.ExcludedWithChildren="True">
+                                        <Grid WidthRequest="18"
+                                              Margin="0,0,8,0">
+                                            <Label Style="{StaticResource FsTextButtonLabelDesktop}"
+                                                   Text="A"
+                                                   MaxLines="1"
+                                                   LineBreakMode="NoWrap"
+                                                   Opacity="0"
+                                                   InputTransparent="True"
+                                                   AutomationProperties.IsInAccessibleTree="False" />
+                                            <controls:Icon PathData="{StaticResource FsIconClipboardCheck}"
+                                                           Size="18"
+                                                           Color="{StaticResource FsInk}"
+                                                           VerticalOptions="Center" />
+                                        </Grid>
                                         <Label Text="{Binding InspectionActionText}"
                                                Style="{StaticResource FsTextButtonLabelDesktop}"
-                                               TextColor="{StaticResource FsInk}" />
-                                    </HorizontalStackLayout>
+                                               TextColor="{StaticResource FsInk}"
+                                               LineBreakMode="WordWrap" />
+                                    </controls:IconLabelLayout>
                                 </Grid>
                                 <Grid IsVisible="{Binding ShowsUpdateStatusSecondary}">
                                     <Button Style="{StaticResource FsSecondaryOnDarkDesktopButton}"
                                             Command="{Binding OpenStatusSheetCommand}"
                                             SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
                                             controls:ScrollRequests.SemanticFocus="{Binding UpdateStatusFocusRequest}" />
-                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
-                                                           Padding="{StaticResource FsPaddingDesktopButton}"
-                                                           HorizontalOptions="Center"
-                                                           InputTransparent="True"
-                                                           AutomationProperties.ExcludedWithChildren="True">
-                                        <controls:Icon PathData="{StaticResource FsIconActivity}"
-                                                       Size="18"
-                                                       Color="{StaticResource FsOnDark}"
-                                                       VerticalOptions="Center" />
+                                    <controls:IconLabelLayout HugsContent="True"
+                                                              Padding="{StaticResource FsPaddingDesktopButton}"
+                                                              HorizontalOptions="Center"
+                                                              InputTransparent="True"
+                                                              AutomationProperties.ExcludedWithChildren="True">
+                                        <Grid WidthRequest="18"
+                                              Margin="0,0,8,0">
+                                            <Label Style="{StaticResource FsTextButtonLabelDesktop}"
+                                                   Text="A"
+                                                   MaxLines="1"
+                                                   LineBreakMode="NoWrap"
+                                                   Opacity="0"
+                                                   InputTransparent="True"
+                                                   AutomationProperties.IsInAccessibleTree="False" />
+                                            <controls:Icon PathData="{StaticResource FsIconActivity}"
+                                                           Size="18"
+                                                           Color="{StaticResource FsOnDark}"
+                                                           VerticalOptions="Center" />
+                                        </Grid>
                                         <Label Text="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
                                                Style="{StaticResource FsTextButtonLabelDesktop}"
-                                               TextColor="{StaticResource FsOnDark}" />
-                                    </HorizontalStackLayout>
+                                               TextColor="{StaticResource FsOnDark}"
+                                               LineBreakMode="WordWrap" />
+                                    </controls:IconLabelLayout>
                                 </Grid>
                                 <Grid IsVisible="{Binding ShowsUpdateStatusPrimary}">
                                     <Button Style="{StaticResource FsPrimaryOnDarkDesktopButton}"
                                             Command="{Binding OpenStatusSheetCommand}"
                                             SemanticProperties.Description="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
                                             controls:ScrollRequests.SemanticFocus="{Binding UpdateStatusFocusRequest}" />
-                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
-                                                           Padding="{StaticResource FsPaddingDesktopButton}"
-                                                           HorizontalOptions="Center"
-                                                           InputTransparent="True"
-                                                           AutomationProperties.ExcludedWithChildren="True">
-                                        <controls:Icon PathData="{StaticResource FsIconActivity}"
-                                                       Size="18"
-                                                       Color="{StaticResource FsInk}"
-                                                       VerticalOptions="Center" />
+                                    <controls:IconLabelLayout HugsContent="True"
+                                                              Padding="{StaticResource FsPaddingDesktopButton}"
+                                                              HorizontalOptions="Center"
+                                                              InputTransparent="True"
+                                                              AutomationProperties.ExcludedWithChildren="True">
+                                        <Grid WidthRequest="18"
+                                              Margin="0,0,8,0">
+                                            <Label Style="{StaticResource FsTextButtonLabelDesktop}"
+                                                   Text="A"
+                                                   MaxLines="1"
+                                                   LineBreakMode="NoWrap"
+                                                   Opacity="0"
+                                                   InputTransparent="True"
+                                                   AutomationProperties.IsInAccessibleTree="False" />
+                                            <controls:Icon PathData="{StaticResource FsIconActivity}"
+                                                           Size="18"
+                                                           Color="{StaticResource FsInk}"
+                                                           VerticalOptions="Center" />
+                                        </Grid>
                                         <Label Text="{x:Static jobs:JobDetailsViewModel.UpdateStatusText}"
                                                Style="{StaticResource FsTextButtonLabelDesktop}"
-                                               TextColor="{StaticResource FsInk}" />
-                                    </HorizontalStackLayout>
+                                               TextColor="{StaticResource FsInk}"
+                                               LineBreakMode="WordWrap" />
+                                    </controls:IconLabelLayout>
                                 </Grid>
                                 <Grid IsVisible="{Binding ShowsNavigationRow}">
                                     <Button Style="{StaticResource FsSecondaryOnDarkDesktopButton}"
                                             Command="{Binding NavigateCommand}"
                                             SemanticProperties.Description="{Binding NavigateLabel}" />
-                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
-                                                           Padding="{StaticResource FsPaddingDesktopButton}"
-                                                           HorizontalOptions="Center"
-                                                           InputTransparent="True"
-                                                           AutomationProperties.ExcludedWithChildren="True">
-                                        <controls:Icon PathData="{StaticResource FsIconNavigation}"
-                                                       Size="18"
-                                                       Color="{StaticResource FsOnDark}"
-                                                       VerticalOptions="Center" />
+                                    <controls:IconLabelLayout HugsContent="True"
+                                                              Padding="{StaticResource FsPaddingDesktopButton}"
+                                                              HorizontalOptions="Center"
+                                                              InputTransparent="True"
+                                                              AutomationProperties.ExcludedWithChildren="True">
+                                        <Grid WidthRequest="18"
+                                              Margin="0,0,8,0">
+                                            <Label Style="{StaticResource FsTextButtonLabelDesktop}"
+                                                   Text="A"
+                                                   MaxLines="1"
+                                                   LineBreakMode="NoWrap"
+                                                   Opacity="0"
+                                                   InputTransparent="True"
+                                                   AutomationProperties.IsInAccessibleTree="False" />
+                                            <controls:Icon PathData="{StaticResource FsIconNavigation}"
+                                                           Size="18"
+                                                           Color="{StaticResource FsOnDark}"
+                                                           VerticalOptions="Center" />
+                                        </Grid>
                                         <Label Text="Navigate"
                                                Style="{StaticResource FsTextButtonLabelDesktop}"
-                                               TextColor="{StaticResource FsOnDark}" />
-                                    </HorizontalStackLayout>
+                                               TextColor="{StaticResource FsOnDark}"
+                                               LineBreakMode="WordWrap" />
+                                    </controls:IconLabelLayout>
                                 </Grid>
                                 <Grid IsVisible="{Binding ShowsCallAction}">
                                     <Button Style="{StaticResource FsSecondaryOnDarkDesktopButton}"
                                             Command="{Binding CallCommand}"
                                             SemanticProperties.Description="{Binding CallLabel}" />
-                                    <HorizontalStackLayout Spacing="{StaticResource FsSpace8}"
-                                                           Padding="{StaticResource FsPaddingDesktopButton}"
-                                                           HorizontalOptions="Center"
-                                                           InputTransparent="True"
-                                                           AutomationProperties.ExcludedWithChildren="True">
-                                        <controls:Icon PathData="{StaticResource FsIconPhone}"
-                                                       Size="18"
-                                                       Color="{StaticResource FsOnDark}"
-                                                       VerticalOptions="Center" />
+                                    <controls:IconLabelLayout HugsContent="True"
+                                                              Padding="{StaticResource FsPaddingDesktopButton}"
+                                                              HorizontalOptions="Center"
+                                                              InputTransparent="True"
+                                                              AutomationProperties.ExcludedWithChildren="True">
+                                        <Grid WidthRequest="18"
+                                              Margin="0,0,8,0">
+                                            <Label Style="{StaticResource FsTextButtonLabelDesktop}"
+                                                   Text="A"
+                                                   MaxLines="1"
+                                                   LineBreakMode="NoWrap"
+                                                   Opacity="0"
+                                                   InputTransparent="True"
+                                                   AutomationProperties.IsInAccessibleTree="False" />
+                                            <controls:Icon PathData="{StaticResource FsIconPhone}"
+                                                           Size="18"
+                                                           Color="{StaticResource FsOnDark}"
+                                                           VerticalOptions="Center" />
+                                        </Grid>
                                         <Label Text="Call"
                                                Style="{StaticResource FsTextButtonLabelDesktop}"
-                                               TextColor="{StaticResource FsOnDark}" />
-                                    </HorizontalStackLayout>
+                                               TextColor="{StaticResource FsOnDark}"
+                                               LineBreakMode="WordWrap" />
+                                    </controls:IconLabelLayout>
                                 </Grid>
-                            </HorizontalStackLayout>
+                            </controls:WrapRowLayout>
                         </VerticalStackLayout>
                     </Border>
                     <controls:Banner Variant="{Binding ActionBanner.Variant}"

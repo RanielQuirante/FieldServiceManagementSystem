@@ -404,7 +404,7 @@ public sealed class InspectionXamlTests
         var confirmation = page.Descendants(_controls + "CheckboxRow").Single();
         var notes = page.Descendants(_controls + "FormField").Single();
         var notesCard = notes.Parent!;
-        var scrollRequests = Method(Source("Shared/Controls/ScrollRequests.cs"), "private static void OnIntoViewChanged(");
+        var scrollRequests = Method(Source("Shared/Controls/ScrollRequests.cs"), "private static void OnIntoViewChanged(") + Method(Source("Shared/Controls/ScrollRequests.cs"), "private static void RevealInScroll(");
 
         Assert.Equal("{Binding ConfirmationFocusRequest}", confirmation.Attribute(_controls + "ScrollRequests.IntoView")?.Value);
         Assert.Equal(confirmation.Attribute("FocusRequest")?.Value, confirmation.Attribute(_controls + "ScrollRequests.IntoView")?.Value);

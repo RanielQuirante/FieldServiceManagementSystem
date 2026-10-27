@@ -42,20 +42,25 @@ public sealed class CardHeadLayout : Layout
     private sealed class Manager(CardHeadLayout head) : LayoutManager(head)
     {
         private readonly RemeasureRequest _remeasure = new();
+        private Size _naturalNumber;
+        private Size _naturalChip;
+        private double _measuredWidth = double.NaN;
 
         public override Size Measure(double widthConstraint, double heightConstraint)
         {
+            _naturalNumber = Natural(NumberIndex);
+            _naturalChip = Natural(ChipIndex);
             if (double.IsPositiveInfinity(widthConstraint))
             {
                 head.IsTwoRows = false;
-                var number = Natural(NumberIndex);
-                var chip = Natural(ChipIndex);
+                _measuredWidth = double.NaN;
                 var gap = Shown(ChipIndex) is null ? 0 : ChipGap;
-                return new Size(number.Width + gap + chip.Width, Math.Max(number.Height, chip.Height));
+                return new Size(_naturalNumber.Width + gap + _naturalChip.Width, Math.Max(_naturalNumber.Height, _naturalChip.Height));
             }
 
             head.IsTwoRows = Decide(widthConstraint);
-            var frames = MeasureAndPlace(new Rect(0, 0, widthConstraint, double.PositiveInfinity), head.IsTwoRows);
+            var frames = MeasureAndPlace(new Rect(0, 0, widthConstraint, double.PositiveInfinity), head.IsTwoRows, measure: true);
+            _measuredWidth = widthConstraint;
             return new Size(widthConstraint, frames.Height);
         }
 
@@ -67,27 +72,26 @@ public sealed class CardHeadLayout : Layout
                 ((IView)head).InvalidateMeasure();
             }
 
-            var frames = MeasureAndPlace(bounds, twoRows);
+            var frames = MeasureAndPlace(bounds, twoRows, measure: !RemeasureRequest.IsMeasuredWidth(_measuredWidth, bounds.Width));
             Arrange(NumberIndex, frames.Number);
             Arrange(ChipIndex, frames.Chip);
             return bounds.Size;
         }
 
         private bool Decide(double width) =>
-            Shown(ChipIndex) is not null && HeadNeedsTwoRows(Natural(NumberIndex).Width, Natural(ChipIndex).Width, width);
+            Shown(ChipIndex) is not null && HeadNeedsTwoRows(_naturalNumber.Width, _naturalChip.Width, width);
 
-        private HeadFrames MeasureAndPlace(Rect bounds, bool twoRows)
+        private HeadFrames MeasureAndPlace(Rect bounds, bool twoRows, bool measure)
         {
-            var natural = Natural(NumberIndex);
-            var chip = Fit(ChipIndex, ChipRoom(bounds.Width, natural.Width, Natural(ChipIndex).Width, twoRows));
-            var number = Fit(NumberIndex, NumberRoom(bounds.Width, natural.Width, chip.Width, twoRows));
-            return Place(bounds, new Size(Math.Max(natural.Width, number.Width), number.Height), chip, twoRows);
+            var chip = Fit(ChipIndex, ChipRoom(bounds.Width, _naturalNumber.Width, _naturalChip.Width, twoRows), measure);
+            var number = Fit(NumberIndex, NumberRoom(bounds.Width, _naturalNumber.Width, chip.Width, twoRows), measure);
+            return Place(bounds, new Size(Math.Max(_naturalNumber.Width, number.Width), number.Height), chip, twoRows);
         }
 
-        private Size Natural(int index) => Fit(index, double.PositiveInfinity);
+        private Size Natural(int index) => Fit(index, double.PositiveInfinity, measure: true);
 
-        private Size Fit(int index, double width) =>
-            Shown(index) is { } child ? child.Measure(width, double.PositiveInfinity) : Size.Zero;
+        private Size Fit(int index, double width, bool measure) =>
+            Shown(index) is { } child ? (measure ? child.Measure(width, double.PositiveInfinity) : child.DesiredSize) : Size.Zero;
 
         private void Arrange(int index, Rect frame)
         {
