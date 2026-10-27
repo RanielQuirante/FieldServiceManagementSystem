@@ -7,6 +7,9 @@ COPY src/FieldService.Web/ ./
 RUN npm run generate:api && npm run build-only
 
 FROM nginxinc/nginx-unprivileged:1.30.6-alpine3.24 AS runtime
+USER root
+RUN apk del --no-cache curl && apk upgrade --no-cache brotli-libs zlib
+USER 101
 COPY src/FieldService.Web/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /repo/src/FieldService.Web/dist /usr/share/nginx/html
 EXPOSE 8080
