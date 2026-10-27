@@ -25,3 +25,6 @@ src/FieldService.Web/src/shared/api/schema.gen.ts
 *.jks
 *.pfx
 *.p12
+*.pem
+*.key
+secrets.json
