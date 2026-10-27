@@ -156,15 +156,16 @@ test.describe('E2E-02 wrong application refused', () => {
 })
 
 test.describe('E2E-03 sign-out across tabs', () => {
-  test('signing out in one tab returns the other tab to sign-in and the old cookie is refused', async ({
+  test('a sign-out that fails twice keeps both tabs signed in with one toast and a reload keeps the session and page, then signing out returns the other tab to sign-in and the old cookie is refused', async ({
     openContext,
     guards,
     playwright,
     baseURL,
     sentinelSink,
   }) => {
+    guards.allowConsole(/net::ERR_FAILED @ \S*\/api\/auth\/sign-out$/)
     const context = await openContext()
-    await readSession(
+    const signedIn = await readSession(
       await signIn(context.request, demoAccounts.administrator, 'Web', sentinelSink),
       'The sign-in of the two-tab context',
     )
@@ -176,6 +177,39 @@ test.describe('E2E-03 sign-out across tabs', () => {
     await expect(first.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
     await second.goto('/jobs')
     await expect(second.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
+    let abortedSignOuts = 0
+    await first.route(
+      '**/api/auth/sign-out',
+      async (route) => {
+        abortedSignOuts += 1
+        await route.abort('failed')
+      },
+      { times: 2 },
+    )
+
+    await first.getByRole('button', { name: shellCopy.signOut }).click()
+
+    const failure = first
+      .getByRole('region', { name: shellCopy.notifications })
+      .getByRole('alert')
+      .filter({ hasText: shellCopy.signOutFailedTitle })
+    await expect(failure).toHaveCount(1)
+    await expect(failure).toContainText(shellCopy.signOutFailedBody)
+    expect(abortedSignOuts).toBe(2)
+    await expect(first).toHaveURL('/jobs')
+    await expect(first.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
+    await expect(second).toHaveURL('/jobs')
+    await expect(second.getByText(signInCopy.signedOutElsewhere)).toHaveCount(0)
+    const restored = first.waitForResponse('**/api/auth/refresh')
+    await first.reload()
+    const refresh = await restored
+    expect(refresh.status()).toBe(200)
+    expect(((await refresh.json()) as SessionResponse).user.id).toBe(signedIn.user.id)
+    await expect(first).toHaveURL('/jobs')
+    await expect(first.getByRole('heading', { level: 1, name: jobsCopy.heading })).toBeVisible()
+    await expect(first.getByRole('navigation', { name: shellCopy.mainNavigation })).toContainText(
+      signedIn.user.displayName,
+    )
     const cookieBeforeSignOut = (await context.cookies()).find(
       (item) => item.name === refreshCookieName,
     )?.value

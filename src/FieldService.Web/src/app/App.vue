@@ -4,6 +4,7 @@ import { RouterView } from 'vue-router'
 
 import { useSessionStore } from '@/features/auth/session-store'
 import { useRealtimeConnection } from '@/features/realtime/use-realtime-connection'
+import { useToasts } from '@/shared/composables/use-toasts'
 import { roleLabel } from '@/shared/format/labels'
 import AppShell from '@/shared/ui/AppShell.vue'
 import ConnectionBanner from '@/shared/ui/ConnectionBanner.vue'
@@ -17,6 +18,14 @@ const session = useSessionStore()
 const realtime = useRealtimeConnection()
 
 const signingOut = ref(false)
+
+const toasts = useToasts()
+
+const signOutFailedTitle = 'Sign-out did not finish'
+
+const signOutFailedBody = 'You are still signed in. Try again in a moment.'
+
+let signOutToast: number | null = null
 
 const userName = computed(() => session.user?.displayName ?? '')
 
@@ -35,8 +44,18 @@ async function signOut(): Promise<void> {
     return
   }
   signingOut.value = true
+  if (signOutToast !== null) {
+    toasts.dismiss(signOutToast)
+    signOutToast = null
+  }
   try {
-    await session.signOut()
+    if ((await session.signOut()) === 'failed') {
+      signOutToast = toasts.show({
+        kind: 'error',
+        title: signOutFailedTitle,
+        body: signOutFailedBody,
+      })
+    }
   } finally {
     signingOut.value = false
   }

@@ -14,6 +14,8 @@ export type SessionEndReason = 'expired' | 'signed-out' | 'signed-out-elsewhere'
 
 export type RefreshOutcome = 'refreshed' | 'ended' | 'failed'
 
+export type SignOutOutcome = 'signed-out' | 'failed'
+
 export type SessionEndListener = (reason: SessionEndReason) => void
 
 export const refreshLeadMilliseconds = 60_000
@@ -21,6 +23,8 @@ export const refreshLeadMilliseconds = 60_000
 export const minimumRefreshDelayMilliseconds = 15_000
 
 export const refreshRetryMilliseconds = 30_000
+
+export const signOutAttempts = 2
 
 export const useSessionStore = defineStore('session', () => {
   const user = ref<SessionUser | null>(null)
@@ -31,6 +35,7 @@ export const useSessionStore = defineStore('session', () => {
   const isAdministrator = computed(() => isSignedIn.value && user.value?.role === 'Administrator')
 
   let accessToken: string | null = null
+  let accessTokenExpiresAt: string | null = null
   let generation = 0
   let refreshTimer: ReturnType<typeof setTimeout> | undefined
   let restoring: Promise<void> | null = null
@@ -70,6 +75,7 @@ export const useSessionStore = defineStore('session', () => {
 
   function applySession(session: SessionResponse): void {
     accessToken = session.accessToken
+    accessTokenExpiresAt = session.accessTokenExpiresAt
     user.value = session.user
     status.value = 'signed-in'
     endReason.value = null
@@ -80,6 +86,7 @@ export const useSessionStore = defineStore('session', () => {
     generation += 1
     const wasSignedIn = status.value === 'signed-in'
     accessToken = null
+    accessTokenExpiresAt = null
     user.value = null
     status.value = 'signed-out'
     cancelRefreshTimer()
@@ -145,12 +152,36 @@ export const useSessionStore = defineStore('session', () => {
     applySession(session)
   }
 
-  async function signOut(): Promise<void> {
+  async function postSignOut(): Promise<boolean> {
+    for (let attempt = 1; attempt <= signOutAttempts; attempt += 1) {
+      try {
+        await authApi.signOut()
+        return true
+      } catch (error) {
+        if (isApiError(error) && error.status === 401) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  async function signOut(): Promise<SignOutOutcome> {
     generation += 1
     cancelRefreshTimer()
-    await withSessionLock(() => authApi.signOut().catch(() => undefined))
+    const ended = await withSessionLock(postSignOut)
+    if (!ended) {
+      if (status.value !== 'signed-in') {
+        return 'signed-out'
+      }
+      if (accessTokenExpiresAt !== null) {
+        scheduleRefreshBefore(accessTokenExpiresAt)
+      }
+      return 'failed'
+    }
     endSession('signed-out')
     channel.announceSignedOut()
+    return 'signed-out'
   }
 
   function expireSession(): void {

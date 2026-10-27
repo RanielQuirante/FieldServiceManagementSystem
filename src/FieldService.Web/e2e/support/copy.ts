@@ -28,6 +28,8 @@ export const shellCopy = {
   jobsLink: 'Jobs',
   newJob: 'New job',
   signOut: 'Sign out',
+  signOutFailedTitle: 'Sign-out did not finish',
+  signOutFailedBody: 'You are still signed in. Try again in a moment.',
   notifications: 'Notifications',
 } as const
 

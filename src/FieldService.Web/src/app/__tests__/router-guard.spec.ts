@@ -1,4 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryHistory,
@@ -19,7 +20,14 @@ import { assignedInProgressJob } from '@/features/jobs/__tests__/job-fixtures'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import { useSessionStore } from '@/features/auth/session-store'
 import { sessionChannelName } from '@/features/auth/session-sync'
-import { json, noContent, problem, stubFetch, type RouteTable } from '@/shared/testing/fetch-stub'
+import {
+  json,
+  networkFailure,
+  noContent,
+  problem,
+  stubFetch,
+  type RouteTable,
+} from '@/shared/testing/fetch-stub'
 
 import App from '../App.vue'
 import {
@@ -538,6 +546,57 @@ describe('the application frame', () => {
     expect(wrapper.find('nav[aria-label="Main"]').exists()).toBe(false)
     expect(wrapper.find('[role="region"][aria-label="Notifications"]').exists()).toBe(true)
     wrapper.unmount()
+  })
+
+  it('keeps the page signed in and says sign-out did not finish when it fails twice, as a reload would find it', async () => {
+    const stub = stubFetch({
+      [refreshRoute]: json(sessionResponse()),
+      'GET /api/dashboard/summary': json(demoSummary()),
+      'GET /api/technicians': json({ items: [] }),
+      'POST /api/auth/sign-out': [networkFailure(), problem(500, 'server.error')],
+    })
+    const router = guardedRouter()
+    await router.push('/reports')
+    const wrapper = mount(App, { global: { plugins: [router] }, attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('button[aria-label="Sign out"]').trigger('click')
+    await flushPromises()
+
+    expect(stub.requestsTo('POST /api/auth/sign-out')).toHaveLength(2)
+    expect(router.currentRoute.value.fullPath).toBe('/reports')
+    expect(useSessionStore().isAdministrator).toBe(true)
+    expect(wrapper.find('nav[aria-label="Main"]').exists()).toBe(true)
+    expect(wrapper.find('.app-shell__account').text()).toContain('Dana Whitfield')
+    const signOutFailure = [
+      'Sign-out did not finish',
+      'You are still signed in. Try again in a moment.',
+    ]
+    const alerts = (): string[][] =>
+      wrapper
+        .findAll('[role="region"][aria-label="Notifications"] [role="alert"]')
+        .map((alert) => [alert.find('.toast__title').text(), alert.find('.toast__body').text()])
+    expect(alerts()).toEqual([signOutFailure])
+    expect(
+      wrapper.find('button[aria-label="Sign out"]').attributes('aria-disabled'),
+    ).toBeUndefined()
+
+    await wrapper.find('button[aria-label="Sign out"]').trigger('click')
+    await flushPromises()
+    expect(stub.requestsTo('POST /api/auth/sign-out')).toHaveLength(4)
+    expect(alerts()).toEqual([signOutFailure])
+    wrapper.unmount()
+
+    setActivePinia(createPinia())
+    const reloaded = guardedRouter()
+    await reloaded.push('/reports')
+    const page = mount(App, { global: { plugins: [reloaded] }, attachTo: document.body })
+    await flushPromises()
+
+    expect(stub.requestsTo(refreshRoute)).toHaveLength(2)
+    expect(reloaded.currentRoute.value.fullPath).toBe('/reports')
+    expect(page.find('nav[aria-label="Main"]').exists()).toBe(true)
+    page.unmount()
   })
 })
 

@@ -19,6 +19,7 @@ import {
   minimumRefreshDelayMilliseconds,
   refreshLeadMilliseconds,
   refreshRetryMilliseconds,
+  signOutAttempts,
   useSessionStore,
   type SessionEndReason,
 } from '../session-store'
@@ -311,15 +312,69 @@ describe('sign-out', () => {
     expect(broadcastChannelClass().posted).toEqual([])
   })
 
-  it('clears the session even when the sign-out request fails', async () => {
-    stubFetch({ [signInRoute]: json(sessionResponse()), [signOutRoute]: networkFailure() })
+  it('keeps the session, its refresh and the other tabs when sign-out fails twice', async () => {
+    vi.useFakeTimers({ now: issuedAt })
+    const stub = stubFetch({
+      [signInRoute]: json(sessionResponse(accessToken(), minutesAfterIssue(15))),
+      [signOutRoute]: [networkFailure(), problem(500, 'server.error')],
+      [refreshRoute]: json(sessionResponse()),
+    })
     const session = useSessionStore()
+    const ends = recordEnds(session)
     await session.signIn(demoAdministratorEmail, password())
 
-    await session.signOut()
+    expect(await session.signOut()).toBe('failed')
 
-    expect(session.isSignedIn).toBe(false)
-    expect(broadcastChannelClass().posted).toHaveLength(1)
+    expect(stub.requestsTo(signOutRoute)).toHaveLength(signOutAttempts)
+    expect(session.status).toBe('signed-in')
+    expect(session.user?.displayName).toBe('Dana Whitfield')
+    expect(session.endReason).toBeNull()
+    expect(ends).toEqual([])
+    expect(broadcastChannelClass().posted).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(14 * 60_000)
+    await vi.waitFor(() => expect(stub.requestsTo(refreshRoute)).toHaveLength(1))
+    await settle()
+    expect(session.isSignedIn).toBe(true)
+  })
+
+  it('ends the session when the retried sign-out succeeds', async () => {
+    const stub = stubFetch({
+      [signInRoute]: json(sessionResponse()),
+      [signOutRoute]: [networkFailure(), noContent()],
+    })
+    const session = useSessionStore()
+    const ends = recordEnds(session)
+    await session.signIn(demoAdministratorEmail, password())
+
+    expect(await session.signOut()).toBe('signed-out')
+
+    expect(stub.requestsTo(signOutRoute)).toHaveLength(2)
+    expect(session.status).toBe('signed-out')
+    expect(session.user).toBeNull()
+    expect(ends).toEqual(['signed-out'])
+    expect(broadcastChannelClass().posted).toEqual([
+      { name: sessionChannelName, data: { type: 'signed-out' } },
+    ])
+  })
+
+  it('ends the session without a retry when sign-out answers 401', async () => {
+    const stub = stubFetch({
+      [signInRoute]: json(sessionResponse()),
+      [signOutRoute]: [problem(401, 'auth.session-expired'), noContent()],
+    })
+    const session = useSessionStore()
+    const ends = recordEnds(session)
+    await session.signIn(demoAdministratorEmail, password())
+
+    expect(await session.signOut()).toBe('signed-out')
+
+    expect(stub.requestsTo(signOutRoute)).toHaveLength(1)
+    expect(session.status).toBe('signed-out')
+    expect(ends).toEqual(['signed-out'])
+    expect(broadcastChannelClass().posted).toEqual([
+      { name: sessionChannelName, data: { type: 'signed-out' } },
+    ])
   })
 
   it('signs out a second tab when the first tab signs out', async () => {
