@@ -1,6 +1,6 @@
 # Known limitations
 
-This page lists the known limits of FieldService as it stands, and the small display differences that are still open. Each entry says what happens and, where it helps, what to do instead.
+This page lists the known limits of FieldService as it stands, the small display differences that are still open, and the improvements planned next. Each entry says what happens and, where it helps, what to do instead.
 
 ## Technician app
 
@@ -26,7 +26,7 @@ On Android 7.0 to 8.1 (API 24 to 27), TalkBack reads the My jobs header (the dat
 
 ### Signing out while the API cannot be reached
 
-When the technician signs out and the sign-out request fails (no connection, a timeout or a server error), the app still removes its session from the device and returns to sign-in. The session on the server then stays valid until it expires (after 7 days without use, and 30 days at most). Only someone who already holds that session's token could use it. To end it at once, an administrator can revoke the technician's sessions as described in [security.md](security.md#revoking-a-users-sessions).
+When the technician signs out and the sign-out request fails (no connection, a timeout or a server error), the app still removes its session from the device and returns to sign-in. The session on the server then stays valid until it expires (after 7 days without use, and 30 days at most). Only someone who already holds that session's token could use it. To end it at once, an operator with database access can revoke the technician's sessions as described in [security.md](security.md#revoking-a-users-sessions).
 
 ### Very narrow windows on Windows
 
@@ -49,3 +49,23 @@ These do not block any task and are planned as improvements:
 ### Personal data in client error reports
 
 The dashboard sends a short report to the API when an unexpected error happens in the browser. The dashboard and the API remove quoted text, email addresses, tokens and query strings before a report is logged, and the dashboard never puts form values or API response data into a report. No pattern can reliably find a name or an address that appears without quotes, so if a browser's own error message contains one, it can reach the API log. See [security.md](security.md#client-error-reports).
+
+## Accounts and access
+
+### Seeded accounts, no self-service
+
+Accounts come from the seeded demo data. There is no self-registration, password reset, multi-factor authentication or account lockout; rate limits slow password guessing instead. To end a person's access at once, an operator with database access deactivates the account and revokes its sessions in one step, as described in [security.md](security.md#revoking-a-users-sessions); there is no screen for this in the dashboard.
+
+## Improvements planned next
+
+In order of priority:
+
+1. **iOS for the technician app.** The app is built with .NET MAUI, so most of it is shared. An iOS version needs its own platform code for focus, keyboard and screen-reader behaviour, testing with VoiceOver, and a macOS build in the pipeline.
+2. **Sign-out retry in the technician app.** When the sign-out request fails, keep the session's token aside and retry it at the next start or when the connection returns, so the server session always ends.
+3. **Smarter offline detection on Windows.** On a network without internet access, try the API once before showing the offline banner.
+4. **Keyboard and screen-reader polish.** Return focus to the job card that was opened after Back; make a whole contact or site row one touch target; start keyboard focus on Back on Android's job pages; show the focus ring after a keyboard-driven layout switch.
+5. **The small display differences** listed above.
+6. **Windows window polish.** A start screen while a saved session is restored, the Mica backdrop and a title-bar icon, a wider sign-in column on large windows, keeping the selected job when the window narrows, and a minimum window width.
+7. **Durable job events.** Keep job events in the database until the notification service has received them, so a restart of the API never loses one.
+8. **Account self-service.** Password reset and multi-factor authentication.
+9. **Published container images.** Publish the images to a container registry on every release.
