@@ -243,7 +243,7 @@ The controls live in `src/FieldService.Mobile/Shared/Controls`: `AppHeader` (lis
 
 Every screen has loading, empty, error and offline states. An error shows a reference for support and a Try again button. When the API cannot be reached, the app keeps the jobs it has loaded and says when they were loaded. On Windows, the app counts the device as online only while Windows reports internet access.
 
-On Windows, at 900 units wide or more, My jobs shows the list and the selected job's details side by side. Crossing 900 in either direction closes an open sheet without sending a change, or, while a change is being sent, once its request ends, and moves keyboard focus to the account button, or to the in-page Back on a job opened at phone width.
+On Windows, at 900 units wide or more, My jobs shows the list and the selected job's details side by side. Crossing 900 in either direction closes an open sheet without sending a change, or, while a change is being sent, once its request ends, and moves keyboard focus to the account button. A job open at phone width moves into the job pane when the window widens. The app keeps working at text sizes up to 225 % and in the narrowest window Windows allows, and line spacing grows with the text size.
 
 ### Accessibility
 
@@ -265,5 +265,6 @@ On Windows, at 900 units wide or more, My jobs shows the list and the selected j
 - Keyboard focus shows as one 2-unit ring outside the control, on Windows and, in Android's keyboard mode, on option rows, check box rows and job cards.
 - Each answer option is one screen-reader item with its selected state. Choosing a result announces it with the new progress, and a submission is announced on My jobs.
 - A field error moves focus to its field and scrolls it, with its message, into view above the bottom action bar.
+- On Android, while the keyboard is open on the checklist or Review and submit, the page shrinks above the keyboard and the bottom action bar hides until it closes.
 - Icons beside text that can wrap stay level with the first line, at every text size.
 - At large text sizes on narrow phones, the answer options drop their icons together and then stack as full-width rows, the My jobs segments, the two dock buttons and the status and priority chips stack in rows, and button labels wrap instead of being cut.
