@@ -152,11 +152,19 @@ The API writes to `/app/logs`, bind-mounted from `logs/api`, and the notificatio
 
 A release applies the database changes before the new services start.
 
-1. **Database roles, once per environment.** A database administrator runs `infrastructure/postgres/bootstrap.sql` with `psql`, with `FIELDSERVICE_MIGRATOR_PASSWORD` and `FIELDSERVICE_APP_PASSWORD` in the environment. It creates `fieldservice_migrator`, which owns the schema, and `fieldservice_app`, which the API uses, and the `fieldservice` database owned by the migrator role ([database.md](database.md)). On a managed service, confirm that the administrator role can create roles and give database ownership: PostgreSQL 16 and later require membership in a role to make it an owner.
-2. **Migrations.** Run the `migrate` image once, with `ConnectionStrings__Migrations` set to the migrator role's connection string; it applies every pending migration and exits 0, or stops at the first migration that fails and exits with a non-zero code. Alternatively, apply a reviewed script from `dotnet ef migrations script --idempotent --project src/FieldService.Api`. REST changes are additive only, so the running API version keeps working on the new schema.
-3. **API.**
-4. **Notification service.**
-5. **Web server.**
+1. **Database roles, once per environment.** A database administrator runs the bootstrap script with both role passwords in the environment, injected from the secret store, never on the command line:
+
+   ```
+   psql -X -h <database host> -U <admin role> -d postgres -v ON_ERROR_STOP=1 -f infrastructure/postgres/bootstrap.sql
+   ```
+
+   It creates `fieldservice_migrator`, which owns the database and the schema, and `fieldservice_app`, which the API uses, with row privileges only and a connection limit of 30, and the `fieldservice` database owned by the migrator role. Running it again brings the roles, the database and the schema back to the same state, passwords included. On a managed service, the provider's administrative role runs it after it has been granted membership in `fieldservice_migrator`: PostgreSQL 16 and later require that membership to make a role an owner ([database.md](database.md#bootstrap-script)).
+2. **Migrations.** Run the `migrate` image once, as a one-off job, with `ConnectionStrings__Migrations` set to the migrator role's connection string; it applies every pending migration, each in its own transaction, and exits 0, or stops at the first migration that fails and exits with a non-zero code. Alternatively, apply a reviewed script from `dotnet ef migrations script --idempotent --project src/FieldService.Api` with `psql -X -v ON_ERROR_STOP=1 -f <script>` as the migrator, without `--single-transaction` ([database.md](database.md#applying-migrations)). REST changes are additive only, so the running API version keeps working on the new schema.
+3. **API.** Deploy the new `fieldservice-api` image, then wait until `/health/ready` answers 200.
+4. **Notification service.** Deploy the new `fieldservice-notifications` image, then wait until its `/health/ready` answers 200.
+5. **Web server.** Deploy the new `fieldservice-web` image.
+
+The roles stay separate in production as everywhere else: only the release step holds the migrator's credentials, the running API connects as `fieldservice_app` and never applies a migration, and the administrator role is used for the bootstrap alone.
 
 A rollback deploys the previous images again. Migrations are never rolled back automatically. In Development and Staging the API refuses to start while a migration is pending; in Production that check does not run, so the migration step always comes first.
 
@@ -166,7 +174,7 @@ A rollback deploys the previous images again. Migrations are never rolled back a
 
 - The internet reaches a TLS load balancer or ingress, and behind it the web image (nginx).
 - nginx serves the dashboard and proxies `/api/` to the API and `/socket.io/` to the notification service, both on a private network.
-- The API connects to a managed PostgreSQL 17 server over TLS, and posts job events to the notification service's `/internal/job-events` over the private network with TLS.
+- The API connects to a managed PostgreSQL 17 server over TLS, and posts job events to the notification service's `/internal/job-events` over the private network with TLS. The notification service itself serves plain HTTP on 5090, so the platform's internal TLS terminates that hop in front of it, as described under TLS below.
 - The technician app calls `https://<public host>/api/…`.
 - Only nginx is public. `/internal`, `/health` and `/openapi` are never routed from outside.
 
@@ -212,15 +220,72 @@ map $from_tls_proxy $forwarded_proto {
 - The proxied locations stay as in this repository's file: `proxy_set_header X-Forwarded-For $remote_addr` and `proxy_set_header X-Forwarded-Proto $forwarded_proto`.
 - The image's nginx is built with the realip module (`nginx -V` lists `--with-http_realip_module`).
 
-**Secrets.** Every secret reaches the services as an environment variable, typically from the platform's secret store: `ConnectionStrings__FieldService`, `Auth__AccessTokenKey`, `Auth__SocketTicketKey`, `Notifications__WebhookSecret`, the notification service's `WEBHOOK_SECRETS` and `SOCKET_TICKET_KEY`, and `ConnectionStrings__Migrations` for the release step only. There is no file-based secret provider and no `*_FILE` variable. Create each value in the format of [configuration.md](configuration.md#secrets), for example with `openssl rand -base64 32`, with `whsec_` in front for the webhook secret, and create each one separately: both services refuse at startup an empty value, a short value, a published test key and a patterned key, and the API refuses equal keys. Rotate them as described in [configuration.md](configuration.md#formats-stores-and-rotation); the webhook secret rotates without downtime through the two entries of `WEBHOOK_SECRETS`.
+**Secrets.** Every secret reaches the services as an environment variable, typically from the platform's secret store: `ConnectionStrings__FieldService`, `Auth__AccessTokenKey`, `Auth__SocketTicketKey`, `Notifications__WebhookSecret`, the notification service's `WEBHOOK_SECRETS` and `SOCKET_TICKET_KEY`, and `ConnectionStrings__Migrations` for the release step only. There is no file-based secret provider and no `*_FILE` variable. Create each value in the format of [configuration.md](configuration.md#secrets), for example with `openssl rand -base64 32`, with `whsec_` in front for the webhook secret, and create each one separately: both services refuse at startup an empty value, such as an unfilled placeholder, a short value, a published test key and a patterned key, and the API refuses equal keys.
 
-**TLS.** Terminate TLS at the load balancer or ingress. The API connects to PostgreSQL with `SSL Mode=VerifyFull` and the provider's CA certificate, and calls the notification service over `https`, which Production requires. Outside Development, the API adds `Strict-Transport-Security` with a one-year lifetime to responses of requests that reach it as `https`.
+**Key rotation.** Rotate a key when it may have leaked, and otherwise on the platform's schedule. Each new value is created fresh, in its format, and differs from every other key.
+
+| Secret | Steps | Effect on users |
+|---|---|---|
+| Access-token key (`Auth__AccessTokenKey`) | Replace it, then restart the API | Access tokens signed with the old key fail with 401. The web dashboard and the technician app refresh their session and retry, because refresh tokens are stored values, not signed ones, so nobody signs in again |
+| Socket-ticket key (`Auth__SocketTicketKey` and `SOCKET_TICKET_KEY`) | Set the same new value in both services, then restart both together | Tickets live 60 seconds, so only connections opened while the two values differ are refused; the dashboard retries with a new ticket. Open sockets stay connected until their 900-second session cap and then reconnect |
+| Webhook secret (`Notifications__WebhookSecret` and `WEBHOOK_SECRETS`) | Without downtime: (1) set `WEBHOOK_SECRETS` to the new secret and the old one, newest first, separated by a space, and restart the notification service; (2) set the API's `Notifications__WebhookSecret` to the new secret and restart the API; (3) set `WEBHOOK_SECRETS` to the new secret alone and restart the notification service | None: every event verifies under one of the two entries |
+| Role passwords (`fieldservice_app`, `fieldservice_migrator`) | Connected to the database as an administrator in psql, run `\password fieldservice_app` or `\password fieldservice_migrator`: psql asks for the new password, sends only its SCRAM verifier, and keeps the plain text out of its history. Alternatively, run the bootstrap script with the new values in `FIELDSERVICE_APP_PASSWORD` and `FIELDSERVICE_MIGRATOR_PASSWORD`. For the app role, then update `ConnectionStrings__FieldService` and restart the API; for the migrator, update `ConnectionStrings__Migrations` before the next release step | New database connections of the API fail between the password change and its restart; keep that gap short |
+
+After a rotation, check the logs: `job-event.rejected` with the reason `signature-mismatch`, or `socket.rejected` with the reason `signature`, shows a value that differs between the two services ([configuration.md](configuration.md#values-shared-with-the-api)).
+
+**TLS.** Terminate TLS at the load balancer or ingress. The API connects to PostgreSQL with `SSL Mode=VerifyFull` and the provider's CA certificate. Outside Development, the API adds `Strict-Transport-Security` with a one-year lifetime to responses of requests that reach it as `https`.
+
+The API also calls the notification service over `https`, which Production requires, but the notification service serves plain HTTP only, on 5090. Give it a private `https` endpoint through the platform's internal TLS: an internal load balancer, a service mesh or a TLS sidecar in front of the service. Set `Notifications__BaseUrl` to that endpoint, and keep port 5090 reachable only on the private network, from that terminator.
 
 **Operations**
 
-- **Health probes.** Liveness at `/health/live` and readiness at `/health/ready` on the API (port 8080) and on the notification service (port 5090), from inside the private network only. The API's readiness includes its database.
-- **Networks and limits.** Split the network into an edge network (web, API, notification service) and a data network (database, migrations, API), so that nginx cannot reach the database. Set memory and process limits, for example 512 MB and 200 processes for the API, 256 MB and 100 for the migrations and the notification service, and 128 MB and 100 for nginx.
-- **Logs.** Collect the JSON console output centrally and search it by correlation id. Keep file logs on a volume at `/app/logs` only where the platform has no log collector.
+- **Health probes.** Probe from inside the private network only; nginx answers `404` for `/health` itself, so the public address never exposes them.
+
+  | Service | Liveness | Readiness |
+  |---|---|---|
+  | API, port 8080 | `GET /health/live`: 200 `Healthy` while the process serves requests; it runs no check | `GET /health/ready`: 200 `Healthy` when the database answers, otherwise 503 `Unhealthy` |
+  | Notification service, port 5090 | `GET /health/live`: 200 `Healthy` | `GET /health/ready`: 200 `Healthy` while it listens, 503 `Unhealthy` once it begins to stop |
+  | Web server, port 8080 | `GET /`: 200 with the dashboard | The same |
+
+  The API's chiseled image has no shell and no HTTP client, so use the platform's HTTP probes rather than a command inside the container. The API answers `GET` and `HEAD`, the notification service `GET` only. The API logs health requests at Verbose, below every configured level, so probes do not fill its logs.
+- **Networks and limits.** The loopback-only Staging stack keeps one network and no resource limits. In production, split the network in two, so that nginx cannot reach the database, and limit memory and processes per service. In a production Compose file, the services carry these keys besides their own:
+
+  ```yaml
+  services:
+    web:
+      networks: [edge]
+      mem_limit: 128m
+      pids_limit: 100
+    api:
+      networks: [edge, data]
+      mem_limit: 512m
+      pids_limit: 200
+    notifications:
+      networks: [edge]
+      mem_limit: 256m
+      pids_limit: 100
+    migrate:
+      networks: [data]
+      mem_limit: 256m
+      pids_limit: 100
+  networks:
+    edge: {}
+    data: {}
+  ```
+
+  - `edge` holds `web`, `api` and `notifications`, and the TLS terminator in front of `notifications` that `Notifications__BaseUrl` names; `data` holds `migrate`, `api` and the route to the database, or the database service itself on a single host. The API is the only service on both.
+  - Give `web` a fixed address on `edge` with `ipv4_address`, and give `edge` an `ipam` subnet and `ip_range` that leave that address out, as the Staging file does on its one network; `ForwardedHeaders__KnownProxies__0` holds that address ([Network and the trusted proxy](#network-and-the-trusted-proxy)).
+  - The values are starting points; raise a limit when the service's own metrics show it is reached. Other platforms set the same limits as memory and process limits per container.
+- **Logs.** Each service writes JSON lines to its console; collect them centrally and search them by correlation id ([logging.md](logging.md#correlation-ids)).
+
+  | Service | Console | Files, only where the platform has no collector |
+  |---|---|---|
+  | API | Compact JSON events | `/app/logs/api-YYYYMMDD.log` on a volume, daily and at 50 MB, 14 files kept |
+  | Notification service | pino JSON lines | `/app/logs/notifications.YYYYMMDD.N.log` on a volume, daily and at 50 MB, 14 rotated files plus the active one |
+  | Web server | JSON access log on stdout; errors on stderr at `crit` only | None |
+  | Migrations | The migrations applied, as text | None |
+
+  File names use the container's UTC date. Keep the collector's retention to 14 days, the same as the files, because three security events carry client addresses ([logging.md](logging.md#redaction)). A volume for `/app/logs` must be writable by UID 1654 for the API and by UID 1000 for the notification service.
 - **Database server log.** PostgreSQL's defaults write a failed statement's text and its `DETAIL` line to the server log, such as a rejected row's names, email address and phone number, an operator's literal query, or a role password from a failed `CREATE ROLE` or `ALTER ROLE`. Set `log_min_error_statement=panic` and `log_error_verbosity=terse` on the managed server, as the Compose `db` service does ([logging.md](logging.md#containers)); where the provider does not allow it, treat the database server log as personal data, with restricted access and a short retention. Keep `log_statement` at `none` and `log_min_duration_statement` at `-1`, the defaults: with `ddl` or `all`, every bootstrap run writes the role passwords of its `ALTER ROLE` statements to the log, and a duration threshold writes slow statements with their parameter values. Look rows up by id in operational queries.
 - **Backups.** Daily backups with point-in-time recovery on the managed database, and a restore test every quarter. A later PostgreSQL major version is reached with `pg_upgrade` or the provider's major-version upgrade.
 - **Scaling limits.** Run one instance of the notification service, whose duplicate detection, used-ticket record and socket rooms live in memory, and one instance of the API, so that rate limits stay global and job events keep their order. Running more instances needs a shared Socket.IO adapter, shared rate limiting and a transactional outbox for job events.

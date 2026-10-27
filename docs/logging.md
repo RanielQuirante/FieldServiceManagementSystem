@@ -18,8 +18,9 @@ This document describes where each FieldService application writes its logs, how
 | Technician app | Release | Same | Information |
 | Web dashboard | All | No log files. The errors it reports reach the API's log as `client-error.reported` ([Client error reports](#client-error-reports)) | — |
 | nginx | Staging (Compose) | JSON access log to stdout, without query strings or client addresses; errors to stderr at `crit` only ([Containers](#containers)) | — |
-| PostgreSQL | Compose | Container stdout | Server default |
+| PostgreSQL | Compose | Container stdout, with `log_min_error_statement=panic` and `log_error_verbosity=terse` ([Containers](#containers)) | Server default |
 | PostgreSQL | Homebrew on macOS | `/opt/homebrew/var/log/postgresql@17.log` | Server default |
+| PostgreSQL | The installer on Windows | The `log` folder of the data directory, `C:\Program Files\PostgreSQL\17\data\log` by default | Server default |
 
 ## File names, rotation and retention
 
@@ -30,6 +31,7 @@ This document describes where each FieldService application writes its logs, how
 | Technician app | `<app data folder>/logs/mobile-YYYYMMDD.log` | Daily, and at 5 MB | 7 files |
 | Docker console logs (Compose) | Docker's `json-file` driver, per service | 10 MB per file | 3 files |
 | PostgreSQL (Homebrew) | `/opt/homebrew/var/log/postgresql@17.log` | None | Truncate it by hand |
+| Production | The platform's log collector for every console; `/app/logs` on a volume only where no collector exists | The collector's own; the files as above | 14 days in the collector, like the daily files, because three security events carry client addresses ([Redaction](#redaction), [deployment.md](deployment.md#production-guidance)) |
 
 - Each application writes to its own folder, so one library's retention never deletes another application's files.
 - The API's folder, file count and size limit come from the `Logs` settings: `Logs:Directory` (`../../logs/api` from the project folder on a developer machine, `/app/logs` in a container), `Logs:RetainedFileCountLimit` (14) and `Logs:FileSizeLimitBytes` (52428800). The notification service's folder comes from `LOG_DIR`; its rotation is fixed in code.

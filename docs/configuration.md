@@ -26,7 +26,7 @@ Later sources override earlier ones.
 | API | `appsettings.json`, then `appsettings.{Environment}.json`, then user-secrets (Development only, id `fieldservice-api`), then environment variables, then the command line | User-secrets |
 | Design-time database context and migrations bundle | User-secrets `fieldservice-api` (optional), then environment variables | User-secrets |
 | API tests | The test host sets its configuration in memory. The test fixture reads environment variables first, then user-secrets `fieldservice-api-tests` | Test user-secrets |
-| Notification service | Built-in defaults, then `.env` (loaded only through `--env-file-if-exists=.env` by `npm run dev` and the VS Code launch configuration), then real environment variables, which always win. An empty value counts as unset | `src/FieldService.Notifications/.env` |
+| Notification service | Built-in defaults, then the package's `.env` file (loaded only through Node's `--env-file-if-exists` flag, by `npm run dev` and the VS Code launch configuration), then real environment variables, which always win. An empty value counts as unset. The image sets `NODE_ENV=production` | `src/FieldService.Notifications/.env` |
 | Web dashboard | `vite.config.ts` reads two proxy targets from the environment. Nothing reaches the browser bundle: there are no `VITE_` variables, and Vite reads no env file | None |
 | End-to-end tests | `src/FieldService.Web/e2e/.env`, which `playwright.config.ts` loads only when the file exists and `E2E_DEMO_PASSWORD` is unset; then real environment variables, which always win | `src/FieldService.Web/e2e/.env` |
 | Technician app | MSBuild properties at build time, embedded as assembly metadata | None |
@@ -68,7 +68,7 @@ These values are deliberately not configurable; changing one is a code change wi
 
 ### Settings
 
-The default is the value in `appsettings.json`, or the framework's own when that file has none. "None" means that no committed file holds a value, so it must come from a secret store, the test host or the environment. The startup rule of each key is in [Startup checks](#startup-checks).
+The default is the value in `appsettings.json`, or the framework's own when that file has none. "None" means that no committed file holds a value, so it must come from a secret store, the test host or the environment. [Values per environment](#values-per-environment) gives an example of every key, with secrets as placeholders, and the startup rule of each key is in [Startup checks](#startup-checks).
 
 | Key (environment variable) | Type | Default | Purpose | Secret | Set in |
 |---|---|---|---|---|---|
@@ -197,19 +197,19 @@ The API validates its configuration after it builds the host and before it touch
 
 `create-dev-env.mjs` writes every key, so interpolation never fails, whichever profile is active. The Compose file marks each secret as required with `${VAR:?}`, which stops Compose with "required variable … is missing a value" when `infrastructure/.env` is missing, and reads optional values with `${VAR:-default}`, which treats an empty value as unset.
 
-| Variable | Used by | Purpose | Default | Secret | Format |
-|---|---|---|---|---|---|
-| `DB_HOST_PORT` | `db` port mapping | Host port of the container's PostgreSQL | `5433` | No | 1024 to 65535 |
-| `NETWORK_SUBNET` | Network `fieldservice-net` | Fixed subnet that holds nginx's fixed address | `172.30.80.0/24` | No | IPv4 CIDR. Change it only if it overlaps an existing Docker network, and then set a matching `NETWORK_IP_RANGE` and `WEB_IPV4_ADDRESS` |
-| `NETWORK_IP_RANGE` | Network `fieldservice-net` | The part of the subnet from which Docker assigns the gateway's address and every container address other than nginx's, so no other container can take nginx's fixed address | `172.30.80.128/25` | No | IPv4 CIDR inside `NETWORK_SUBNET` that leaves out `WEB_IPV4_ADDRESS`, such as the subnet's upper half. A range outside the subnet makes `docker compose up` fail; Docker does not check that it leaves the address out |
-| `WEB_IPV4_ADDRESS` | `web` address; the API's only trusted proxy | nginx's fixed address | `172.30.80.10` | No | An IPv4 address inside `NETWORK_SUBNET` and outside `NETWORK_IP_RANGE`, with the host part `.10`. An address outside the subnet makes `docker compose up` fail |
-| `POSTGRES_PASSWORD` | `db` | Superuser password, used by the database initialisation and by the test admin connection on a CI runner | Required | Yes | 32 characters, base64url |
-| `FIELDSERVICE_MIGRATOR_PASSWORD` | `db` bootstrap; `migrate` | Password of `fieldservice_migrator` | Required | Yes | 32 characters, base64url |
-| `FIELDSERVICE_APP_PASSWORD` | `db` bootstrap; `api` | Password of `fieldservice_app` | Required | Yes | 32 characters, base64url |
-| `AUTH_ACCESS_TOKEN_KEY` | `api` `Auth__AccessTokenKey` | Access-token key | Required | Yes | Standard base64 of 32 random bytes, distinct from `AUTH_SOCKET_TICKET_KEY` |
-| `AUTH_SOCKET_TICKET_KEY` | `api` `Auth__SocketTicketKey`; `notifications` `SOCKET_TICKET_KEY` | Socket-ticket key, shared by both services | Required | Yes | Standard base64 of 32 random bytes, distinct from `AUTH_ACCESS_TOKEN_KEY` |
-| `NOTIFICATIONS_WEBHOOK_SECRET` | `api` `Notifications__WebhookSecret`; `notifications` `WEBHOOK_SECRETS` | Event signing secret | Required | Yes | `whsec_` followed by standard base64 of 32 random bytes |
-| `SEED_DEMO_PASSWORD` | `api` `Seed__DemoPassword` | Demo account password | Required | Yes, local only | `xxxx-xxxx-xxxx-xxxx`, 19 characters |
+| Variable | Used by | Purpose | Default | Example | Secret | Format |
+|---|---|---|---|---|---|---|
+| `DB_HOST_PORT` | `db` port mapping | Host port of the container's PostgreSQL | `5433` | `5434` | No | 1024 to 65535 |
+| `NETWORK_SUBNET` | Network `fieldservice-net` | Fixed subnet that holds nginx's fixed address | `172.30.80.0/24` | `172.31.90.0/24` | No | IPv4 CIDR. Change it only if it overlaps an existing Docker network, and then set a matching `NETWORK_IP_RANGE` and `WEB_IPV4_ADDRESS` |
+| `NETWORK_IP_RANGE` | Network `fieldservice-net` | The part of the subnet from which Docker assigns the gateway's address and every container address other than nginx's, so no other container can take nginx's fixed address | `172.30.80.128/25` | `172.31.90.128/25` | No | IPv4 CIDR inside `NETWORK_SUBNET` that leaves out `WEB_IPV4_ADDRESS`, such as the subnet's upper half. A range outside the subnet makes `docker compose up` fail; Docker does not check that it leaves the address out |
+| `WEB_IPV4_ADDRESS` | `web` address; the API's only trusted proxy | nginx's fixed address | `172.30.80.10` | `172.31.90.10` | No | An IPv4 address inside `NETWORK_SUBNET` and outside `NETWORK_IP_RANGE`, with the host part `.10`. An address outside the subnet makes `docker compose up` fail |
+| `POSTGRES_PASSWORD` | `db` | Superuser password, used by the database initialisation and by the test admin connection on a CI runner | Required | `<32 random base64url characters>` | Yes | 32 characters, base64url |
+| `FIELDSERVICE_MIGRATOR_PASSWORD` | `db` bootstrap; `migrate` | Password of `fieldservice_migrator` | Required | `<32 random base64url characters>` | Yes | 32 characters, base64url |
+| `FIELDSERVICE_APP_PASSWORD` | `db` bootstrap; `api` | Password of `fieldservice_app` | Required | `<32 random base64url characters>` | Yes | 32 characters, base64url |
+| `AUTH_ACCESS_TOKEN_KEY` | `api` `Auth__AccessTokenKey` | Access-token key | Required | `<base64 of 32 random bytes>` | Yes | Standard base64 of 32 random bytes, distinct from `AUTH_SOCKET_TICKET_KEY` |
+| `AUTH_SOCKET_TICKET_KEY` | `api` `Auth__SocketTicketKey`; `notifications` `SOCKET_TICKET_KEY` | Socket-ticket key, shared by both services | Required | `<base64 of 32 random bytes>` | Yes | Standard base64 of 32 random bytes, distinct from `AUTH_ACCESS_TOKEN_KEY` |
+| `NOTIFICATIONS_WEBHOOK_SECRET` | `api` `Notifications__WebhookSecret`; `notifications` `WEBHOOK_SECRETS` | Event signing secret | Required | `whsec_<base64 of 32 random bytes>` | Yes | `whsec_` followed by standard base64 of 32 random bytes |
+| `SEED_DEMO_PASSWORD` | `api` `Seed__DemoPassword` | Demo account password | Required | `<xxxx-xxxx-xxxx-xxxx>` | Yes, local only | `xxxx-xxxx-xxxx-xxxx`, 19 characters |
 
 - An `infrastructure/.env` written before `NETWORK_IP_RANGE` existed has no such key, and Compose uses the default. The next run of `create-dev-env.mjs` adds the key with an empty value and keeps every other value.
 - The `db` service fixes its superuser and maintenance database at `postgres`. The bootstrap script creates `fieldservice`, owned by `fieldservice_migrator`.
@@ -231,7 +231,10 @@ The API validates its configuration after it builds the host and before it touch
 | `Auth__SocketTicketKey` | `${AUTH_SOCKET_TICKET_KEY}` | The same value as the notification service's `SOCKET_TICKET_KEY` |
 | `Notifications__BaseUrl` | `http://notifications:5090` | The notification service on the Compose network |
 | `Notifications__WebhookSecret` | `${NOTIFICATIONS_WEBHOOK_SECRET}` | The same value as the notification service's `WEBHOOK_SECRETS` |
-| `Cors__AllowedOrigins__0` to `__3` | `http://localhost:8081`, `http://127.0.0.1:8081`, `http://localhost:5173`, `http://127.0.0.1:5173` | nginx's origins, and the dev server's for the `backend` profile |
+| `Cors__AllowedOrigins__0` | `http://localhost:8081` | nginx's origins |
+| `Cors__AllowedOrigins__1` | `http://127.0.0.1:8081` | |
+| `Cors__AllowedOrigins__2` | `http://localhost:5173` | The dev server's origins, for the `backend` profile |
+| `Cors__AllowedOrigins__3` | `http://127.0.0.1:5173` | |
 | `ForwardedHeaders__KnownProxies__0` | `${WEB_IPV4_ADDRESS:-172.30.80.10}` | nginx's fixed address, from the same variable as `web`'s address, and the API's only trusted proxy. No `ForwardedHeaders__KnownNetworks__0` is set, and the API would refuse one in Staging |
 | `Seed__DemoData` | `true` | |
 | `Seed__DemoPassword` | `${SEED_DEMO_PASSWORD}` | |
@@ -263,7 +266,7 @@ Every other setting comes from `appsettings.json`: the `Information` level with 
 
 `WEBHOOK_TOLERANCE_SECONDS`, `SOCKET_TICKET_ISSUER`, `SOCKET_TICKET_AUDIENCE` and `SOCKET_SESSION_MAX_SECONDS` are not set, so their defaults apply.
 
-**`db`.** `POSTGRES_USER` and `POSTGRES_DB` are `postgres`, `POSTGRES_PASSWORD` is `${POSTGRES_PASSWORD}` and `POSTGRES_INITDB_ARGS` is `--data-checksums`. `FIELDSERVICE_MIGRATOR_PASSWORD` and `FIELDSERVICE_APP_PASSWORD` reach the bootstrap script on the first start of an empty volume.
+**`db`.** `POSTGRES_USER` and `POSTGRES_DB` are `postgres`, `POSTGRES_PASSWORD` is `${POSTGRES_PASSWORD}` and `POSTGRES_INITDB_ARGS` is `--data-checksums`. `FIELDSERVICE_MIGRATOR_PASSWORD` and `FIELDSERVICE_APP_PASSWORD` reach the bootstrap script on the first start of an empty volume. The service starts PostgreSQL with two server settings, `log_min_error_statement=panic` and `log_error_verbosity=terse`, so the server log never quotes a failed statement or its row values ([logging.md](logging.md#containers)).
 
 **`web`.** No variables. The baked `nginx.conf` holds the upstream names, the response headers and the cache policy ([deployment.md](deployment.md#the-web-server)).
 
@@ -314,15 +317,16 @@ Each value below must agree between the two services. Each service validates onl
 
 ## Web dashboard and end-to-end tests (`src/FieldService.Web`)
 
-| Variable | Read by | Purpose | Default | Secret |
-|---|---|---|---|---|
-| `API_PROXY_TARGET` | `vite.config.ts` | Target of the `/api` proxy of the dev server and of `vite preview` | `http://127.0.0.1:5080` | No |
-| `REALTIME_PROXY_TARGET` | `vite.config.ts` | Target of the `/socket.io` proxy, WebSocket included, of the dev server and of `vite preview` | `http://127.0.0.1:5090` | No |
-| `E2E_BASE_URL` | `playwright.config.ts` | Overrides the base URL of the Playwright project that runs | The project's own base URL: `compose` http://127.0.0.1:8081, `host` http://127.0.0.1:5173 | No |
-| `E2E_DEMO_PASSWORD` | Playwright tests | Demo account password for sign-in; one value serves the host stack and the Compose stack | Locally, `playwright.config.ts` loads it from `src/FieldService.Web/e2e/.env` when it is unset. CI exports it | Yes, local only |
-| `E2E_LOGS_DIR` | Playwright global teardown | The folder whose `api` and `notifications` logs are scanned for leaked secrets after a run | `../../logs`, the repository's `logs/` seen from `src/FieldService.Web` | No |
-| `E2E_RUN_ID` | Playwright global setup | Marks every record a run creates | Created per run | No |
-| `CI` | `playwright.config.ts`, Vitest | Set by the CI runner. Turns on `forbidOnly`, one retry, failure on flaky tests and the CI reporters | Unset locally | No |
+| Variable | Read by | Purpose | Default | Example | Secret |
+|---|---|---|---|---|---|
+| `API_PROXY_TARGET` | `vite.config.ts` | Target of the `/api` proxy of the dev server and of `vite preview` | `http://127.0.0.1:5080` | `http://127.0.0.1:5081`, when the API runs on another port | No |
+| `REALTIME_PROXY_TARGET` | `vite.config.ts` | Target of the `/socket.io` proxy, WebSocket included, of the dev server and of `vite preview` | `http://127.0.0.1:5090` | `http://127.0.0.1:5091` | No |
+| `E2E_BASE_URL` | `playwright.config.ts` | Overrides the base URL of the Playwright project that runs | The project's own base URL: `compose` http://127.0.0.1:8081, `host` http://127.0.0.1:5173 | `http://127.0.0.1:8081`, as CI sets it | No |
+| `E2E_DEMO_PASSWORD` | Playwright tests | Demo account password for sign-in; one value serves the host stack and the Compose stack | Locally, `playwright.config.ts` loads it from `src/FieldService.Web/e2e/.env` when it is unset. CI exports it | `<demo password>` | Yes, local only |
+| `E2E_LOGS_DIR` | Playwright global teardown | The folder whose `api` and `notifications` logs are scanned for leaked secrets after a run | `../../logs`, the repository's `logs/` seen from `src/FieldService.Web` | `../../logs`, as CI sets it | No |
+| `E2E_RUN_ID` | Playwright global setup | Marks every record a run creates | Created per run from the time and four random characters | Leave unset | No |
+| `PLAYWRIGHT_HTML_OUTPUT_DIR`, `PLAYWRIGHT_HTML_REPORT` | Playwright, and the report scan that runs after each test run | Playwright's own variables for the HTML report folder; the report scan reads the same folder, so it also scans a moved report | Unset: the configured `playwright-report` | Leave unset | No |
+| `CI` | `playwright.config.ts`, Vitest | Set by the CI runner. Turns on `forbidOnly`, one retry, failure on flaky tests and the CI reporters | Unset locally | `true`, on the runner | No |
 
 - No `VITE_` variable exists, and none may hold a secret, because Vite inlines such variables into the bundle.
 - The dev server and `vite preview` both bind 127.0.0.1:5173 with `strictPort`. Both proxy `/api` with `changeOrigin` and `xfwd`, so the API sees the browser's address through its forwarded-headers handling, and `/socket.io` with WebSocket support. Only `vite preview` sends the production security headers: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy`, with the values nginx sends.
@@ -347,6 +351,7 @@ Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantin
 | `WindowsPackageType` | Unpackaged Windows app | `None` | `None` |
 | `AndroidPackageFormats` | Package format of the CI Release build | Not set | `apk` in CI |
 | `AndroidSdkDirectory`, `JavaSdkDirectory`, `AcceptAndroidSDKLicenses` | One-time `InstallAndroidDependencies` on a developer machine | Absolute paths | Not set |
+| `AndroidKeyStore`, `AndroidSigningKeyStore`, `AndroidSigningKeyAlias`, `AndroidSigningStorePass`, `AndroidSigningKeyPass` | Signing of a store build ([deployment.md](deployment.md#production-guidance)) | Not set | Not set in this repository's builds; a store build passes the two passwords as `env:<VARIABLE>` references, never as values |
 
 ## Database bootstrap and API test runs
 
@@ -367,6 +372,7 @@ Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantin
 | Variable | Where | Value |
 |---|---|---|
 | `DOTNET_NOLOGO`, `DOTNET_CLI_TELEMETRY_OPTOUT`, `TESTINGPLATFORM_TELEMETRY_OPTOUT` | CI; optional on developer machines | `true` |
+| `DOTNET_WATCH_RESTART_ON_RUDE_EDIT` | Set by `start-dev.mjs` for the API's `dotnet watch` | `true`: an edit that hot reload cannot apply restarts the API instead of prompting |
 | `CI` | Set by the CI runner | `true`. `Directory.Build.props` then turns on locked restores for every .NET project with a lock file |
 | `GITHUB_ENV` | Set by the CI runner | `create-dev-env.mjs --ci` appends the test and end-to-end values here |
 | `JAVA_HOME` | Developer machines | macOS: `$(/usr/libexec/java_home -v 21)`. Windows: the Microsoft OpenJDK 21 folder |
@@ -381,7 +387,7 @@ Specs tagged `@compose-only` run only in `compose`, and specs tagged `@quarantin
 | Secret | Format | Development | Staging | CI | Production | Rotation |
 |---|---|---|---|---|---|---|
 | Compose superuser password | 24 random bytes, base64url (32 characters) | `infrastructure/.env` | Same | Throwaway | Managed by the database service | Reset the Compose volume, or `ALTER ROLE postgres` |
-| `fieldservice_migrator` and `fieldservice_app` passwords | Same | `infrastructure/.env`, API user-secrets, test user-secrets | `infrastructure/.env` | Throwaway | Secret store | `ALTER ROLE … PASSWORD`, then update the connection string and restart |
+| `fieldservice_migrator` and `fieldservice_app` passwords | Same | `infrastructure/.env`, API user-secrets, test user-secrets | `infrastructure/.env` | Throwaway | Secret store | psql's `\password fieldservice_app` or `\password fieldservice_migrator`, which sends a SCRAM verifier and keeps the plain text out of psql's history, or the bootstrap script with the new values in its two environment variables; then update the connection string and restart ([deployment.md](deployment.md#production-guidance)) |
 | `Auth:AccessTokenKey` | 32 random bytes, standard base64 | API user-secrets | `infrastructure/.env` | Throwaway | Secret store | Replace it and restart the API; clients refresh their sessions silently |
 | `Auth:SocketTicketKey` and `SOCKET_TICKET_KEY` | 32 random bytes, standard base64 | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Replace it in both services together. Tickets last 60 seconds, and open sockets reconnect within the 900-second session cap |
 | `Notifications:WebhookSecret` and `WEBHOOK_SECRETS` | `whsec_` followed by standard base64 of 32 random bytes | API user-secrets and the notification service's `.env` | `infrastructure/.env` | Throwaway | Secret store | Without downtime: (1) the notification service gets the new and the old secret, newest first; (2) the API switches to the new secret; (3) the notification service drops the old one |
@@ -402,7 +408,7 @@ The two `.env.example` files list the variable names with empty values, in a sta
 
 | File | Holds |
 |---|---|
-| `infrastructure/.env` | Every Compose variable. The three network settings stay empty, so the Compose defaults apply |
+| `infrastructure/.env` | Every Compose variable. The four settings `DB_HOST_PORT`, `NETWORK_SUBNET`, `NETWORK_IP_RANGE` and `WEB_IPV4_ADDRESS` stay empty, so the Compose defaults apply; a value set by hand is kept |
 | `src/FieldService.Notifications/.env` | Every notification service variable, with the development values of the table above; the two secrets are created |
 | `src/FieldService.Web/e2e/.env` | One line, `E2E_DEMO_PASSWORD`, the same value as `SEED_DEMO_PASSWORD` |
 

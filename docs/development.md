@@ -47,11 +47,11 @@ Every published port binds to loopback; nothing listens on a LAN interface.
 | .NET SDK | 10.0.402, with runtime 10.0.13 | Microsoft's installer package `dotnet-sdk-10.0.402-osx-arm64.pkg`, or the Homebrew `dotnet-sdk` cask while it still ships SDK 10. Both install to `/usr/local/share/dotnet`. Leave `DOTNET_ROOT` unset. |
 | .NET MAUI workload | Workload set 10.0.402 | `sudo dotnet workload install maui-android --version 10.0.402`. No iOS or Mac Catalyst workload is needed, and neither is Xcode. |
 | JDK | Microsoft Build of OpenJDK 21 | `brew install --cask microsoft-openjdk@21`. Android builds fail with `XA0030` on a newer JDK. |
-| Android SDK | API level 36 | Under `$HOME/Library/Android/sdk`: `cmdline-tools;latest`, `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`, `emulator` and `system-images;android-36;google_apis;arm64-v8a` |
-| Android emulator | One AVD on API 36 | For example `avdmanager create avd -n fsm-api36 -k "system-images;android-36;google_apis;arm64-v8a" -d pixel_9` |
+| Android SDK | API level 36 | Under `$HOME/Library/Android/sdk`: `cmdline-tools;latest`, `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`, `emulator` and `system-images;android-36;google_apis;arm64-v8a`. Install them with the SDK Manager of Android Studio, or with `sdkmanager` from Google's command-line tools, as shown below the table |
+| Android emulator | One AVD on API 36 | Created with `avdmanager`, as shown below the table |
 | Node.js | 26.12.0 with npm 11.20.0 | `.nvmrc` holds the version. Each package sets `engine-strict`, so older versions are refused. |
 | PostgreSQL | 17, server and `psql` | `brew install postgresql@17`, then `brew services start postgresql@17`. It listens on 127.0.0.1:5432, your macOS account is its superuser, and loopback connections use trust authentication. The bootstrap script needs `psql` 15 or later. |
-| Docker Desktop | 4.95.0 with Compose 5.6.0 | Optional. Needed only for the Compose database and the Compose profiles. |
+| Docker Desktop | 4.95.0 with Compose 5.6.0 | Optional. Needed only for the Compose database, the Compose profiles and the end-to-end tests against Compose. |
 | VS Code | Current release | With the recommended extensions of `.vscode/extensions.json` |
 | Git | Current release | `.gitattributes` keeps LF line endings in the working tree |
 
@@ -62,6 +62,15 @@ export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
 ```
+
+**Android SDK packages and emulator.** With `sdkmanager` on `PATH` and `ANDROID_HOME` set as above, in a new terminal:
+
+```
+sdkmanager --sdk_root="$ANDROID_HOME" "cmdline-tools;latest" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-36;google_apis;arm64-v8a"
+avdmanager create avd -n fsm-api36 -k "system-images;android-36;google_apis;arm64-v8a" -d pixel_9
+```
+
+Accept the licences when `sdkmanager` asks. The rest of this guide uses the AVD name `fsm-api36`.
 
 **Keeping the .NET SDK on 10.0.4xx.** `global.json` asks for SDK 10.0.402 with `rollForward` set to `latestPatch`, so only a 10.0.4xx SDK at or above 10.0.402 builds the repository. The Homebrew `dotnet-sdk` cask follows the newest .NET release: once it moves to .NET 11, expected in November 2026, upgrading it removes SDK 10, and the cask does not declare `auto_updates`, so a bare `brew upgrade` upgrades it as well. From then on:
 
@@ -85,7 +94,7 @@ Run these commands in PowerShell.
 | VS Code | `winget install Microsoft.VisualStudioCode`, plus the recommended extensions |
 | Docker Desktop (optional) | `winget install Docker.DockerDesktop`, with the WSL 2 backend |
 
-**Long paths.** Android builds create long paths. Clone to a short path such as `C:\src\fieldservice`, run `git config --global core.longpaths true`, and enable long paths once in an elevated PowerShell:
+**Long paths.** Android builds create long paths. Before you clone, run `git config --global core.longpaths true`, plan to clone to a short path such as `C:\src\fieldservice`, and enable long paths once in an elevated PowerShell:
 
 ```
 New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force
@@ -138,6 +147,19 @@ The technician app builds against the .NET MAUI workload from workload set 10.0.
 
 ## First-time setup
 
+Steps 1 to 5 bring a fresh clone to a running stack. Step 2 creates the local secrets: you run it once per machine, yourself, and every later step reads what it wrote.
+
+### Clone the repository
+
+Clone into an empty folder and work from its root. On macOS:
+
+```
+git clone https://github.com/RanielQuirante/FieldServiceManagementSystem.git fieldservice
+cd fieldservice
+```
+
+On Windows, clone to the short path chosen under [Long paths](#windows-11-x64-or-arm64), for example `git clone https://github.com/RanielQuirante/FieldServiceManagementSystem.git C:\src\fieldservice`, then `cd C:\src\fieldservice`.
+
 ### 1. Restore tools and packages
 
 ```
@@ -171,7 +193,7 @@ The script creates every local secret once and writes them where each applicatio
 
 | Output | Contents |
 |---|---|
-| `infrastructure/.env` | The ten Compose variables |
+| `infrastructure/.env` | The eleven Compose variables: four optional network and port settings, left empty, and seven secrets |
 | `src/FieldService.Notifications/.env` | The thirteen notification service variables, with the development values |
 | `src/FieldService.Web/e2e/.env` | `E2E_DEMO_PASSWORD` only, which Playwright reads |
 | User-secrets store `fieldservice-api` | The two connection strings, both signing keys, the webhook secret and the demo password |
@@ -222,7 +244,7 @@ curl -s http://localhost:5080/health/ready
 curl -s http://127.0.0.1:5090/health/ready
 ```
 
-Both print `Healthy`. Then open http://localhost:5173, which leads to the sign-in page. After you sign in, the live indicator in the dashboard's top bar reads "Live" once the dashboard's socket to the notification service is open ([Checking the running stack](#checking-the-running-stack)).
+Both print `Healthy`. In Windows PowerShell, type `curl.exe` instead of `curl`, because `curl` can be an alias of `Invoke-WebRequest` there. Then open http://localhost:5173, which leads to the sign-in page. After you sign in, the live indicator in the dashboard's top bar reads "Live" once the dashboard's socket to the notification service is open ([Checking the running stack](#checking-the-running-stack)).
 
 **Signing in.** Sign in as the demo administrator, `dana.whitfield@fieldservice.example`, with the demo password. Every demo account shares that password, and the dashboard admits administrators only: a technician account gets the message that technicians sign in from the FieldService Tech app. No setup step prints the password, and no tracked file holds it. To see it, run this yourself, in your own terminal:
 
@@ -242,7 +264,7 @@ On macOS, start the emulator with `emulator -avd fsm-api36` (or your AVD's name)
 dotnet build src/FieldService.Mobile/FieldService.Mobile.csproj -t:Run -f net10.0-android
 ```
 
-The Debug build reaches the API at `http://10.0.2.2:5080`.
+The Debug build reaches the API at `http://10.0.2.2:5080`. Sign in as a demo technician, for example `marco.reyes@fieldservice.example`, with the demo password of [step 5](#5-check-that-it-runs); the app admits technicians only.
 
 On Windows, the Windows head uses `http://localhost:5080`:
 
@@ -250,7 +272,9 @@ On Windows, the Windows head uses `http://localhost:5080`:
 dotnet build src/FieldService.Mobile/FieldService.Mobile.csproj -t:Run -f net10.0-windows10.0.19041.0
 ```
 
-On ARM64 hardware, add `-p:RuntimeIdentifierOverride=win-arm64`.
+- The `net10.0-windows10.0.19041.0` target exists only when the build runs on Windows, and the build targets the machine's own architecture, `win-x64` or `win-arm64`.
+- The app is unpackaged (`WindowsPackageType` `None`), so it starts from its build folder with no installation.
+- The Android target builds on Windows as well, with the Android SDK and emulator of the Windows prerequisites; the emulator reaches the API at `http://10.0.2.2:5080` there too.
 
 ### 7. One-time VS Code steps
 
@@ -266,7 +290,7 @@ The compound launch configuration "Full stack" first runs the task `env: check` 
 | Configuration | What it runs | Ready when |
 |---|---|---|
 | `API` | Builds the API with the task `build: api`, then debugs `src/FieldService.Api/bin/Debug/net10.0/FieldService.Api.dll` with the launch profile `http` (http://localhost:5080, environment `Development`). Its working directory is the project folder, so `Logs:Directory` (`../../logs/api`) resolves to the repository's `logs/api`. It reads its keys from the user-secrets store `fieldservice-api` | The Debug Console shows `Now listening on: http://localhost:5080` |
-| `Notifications` | Debugs `src/FieldService.Notifications/src/main.ts` with Node's `--env-file-if-exists=.env`, in the package folder, so it reads the thirteen development variables of `src/FieldService.Notifications/.env`, the same flag that `npm run dev` uses. Node runs the TypeScript directly; type stripping keeps line and column positions, so breakpoints work without source maps | Its terminal shows `server.listening` with `host: "127.0.0.1"` and `port: 5090` |
+| `Notifications` | Debugs `src/FieldService.Notifications/src/main.ts` in the package folder with Node's `--env-file-if-exists` flag, so it reads the thirteen development variables of `src/FieldService.Notifications/.env`, as `npm run dev` does. Node runs the TypeScript directly; type stripping keeps line and column positions, so breakpoints work without source maps | Its terminal shows `server.listening` with `host: "127.0.0.1"` and `port: 5090` |
 | `Web dev server` | `npm run dev` in `src/FieldService.Web`, in a terminal: it writes the API client types from `docs/contracts/openapi.v1.json`, then starts Vite | The terminal shows Vite's `ready in` line and `http://127.0.0.1:5173/` |
 
 **Stopping.** The compound sets `stopAll`, so stopping any one of the three sessions, or the compound itself with Shift+F5, stops all three. The API first spends up to 5 seconds delivering the job events still queued, and the notification service closes its sockets before it exits. Afterwards nothing listens on 5080, 5090 or 5173; check with `lsof -nP -iTCP:5080 -sTCP:LISTEN`, and the same for 5090 and 5173, on macOS.
@@ -314,7 +338,7 @@ npm run dev
 
 ### Containers: Compose profiles
 
-With Docker Desktop, the server-side applications also run as containers, in the Staging environment, from `infrastructure/docker-compose.yml`. They use the same host ports as the host processes, so stop the host processes first ([Ports](#ports)). Images, services, hardening and the web server are described in [deployment.md](deployment.md#running-the-staging-stack-with-compose), and the environment of each container in [configuration.md](configuration.md#staging-in-compose).
+With Docker Desktop, the server-side applications also run as containers, in the Staging environment, from `infrastructure/docker-compose.yml`. Start Docker Desktop first (`open -a Docker` on macOS, or from the Start menu on Windows) and wait until `docker info` answers without an error. The containers use the same host ports as the host processes, so stop the host processes first ([Ports](#ports)). Step 2 of the first-time setup must have run, because Compose reads its secrets from `infrastructure/.env` and mounts the `logs/` folders. Images, services, hardening and the web server are described in [deployment.md](deployment.md#running-the-staging-stack-with-compose), and the environment of each container in [configuration.md](configuration.md#staging-in-compose).
 
 | Goal | Command | VS Code task |
 |---|---|---|
@@ -438,7 +462,7 @@ npm run build
 npm run preview
 ```
 
-**End-to-end tests against Compose.** `npm run test:e2e` in `src/FieldService.Web`, or the task `test: e2e (compose)`, runs the Playwright `compose` project against the nginx web image of the Compose `full` profile on http://127.0.0.1:8081.
+**End-to-end tests against Compose.** `npm run test:e2e` in `src/FieldService.Web`, or the task `test: e2e (compose)`, runs the Playwright `compose` project against the nginx web image of the Compose `full` profile on http://127.0.0.1:8081. Stop the host processes, start the profile with the task `compose: full up`, and wait until the API is ready ([Containers: Compose profiles](#containers-compose-profiles)) before the run.
 
 ## VS Code workspace
 
@@ -491,7 +515,7 @@ Only `.vscode/extensions.json`, `.vscode/launch.json` and `.vscode/tasks.json` a
 | `compose: full up` | `docker compose -f infrastructure/docker-compose.yml --profile full up -d --build --wait` | Starts the services of the `full` profile and the database |
 | `compose: down` | `docker compose -f infrastructure/docker-compose.yml --profile full down` | Stops and removes the containers, and keeps the database volume |
 
-Services without a profile always start, so while `infrastructure/docker-compose.yml` defines only the `db` service, the three `compose:` tasks start or stop the database container alone.
+The `db` service has no profile, so it starts with either profile, and with `db: start container` on its own.
 
 ## Scripts
 
