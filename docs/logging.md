@@ -56,7 +56,7 @@ In the Compose stack ([deployment.md](deployment.md#running-the-staging-stack-wi
 | `notifications` | `/app/logs`, bind-mounted from the host's `logs/notifications/`: the same `notifications.YYYYMMDD.N.log` files | pino's JSON lines |
 | `migrate` | None | The migrations it applied, as text |
 | `web` | None | nginx's access log, one JSON object per line; errors at `crit` only |
-| `db` | None | PostgreSQL's server log |
+| `db` | None | PostgreSQL's server log. The service starts PostgreSQL with `log_min_error_statement=panic` and `log_error_verbosity=terse`, which the first start's bootstrap server receives too, so an error is logged as its error line only, without the failing statement's text and without the `DETAIL`, `HINT`, `QUERY` and `CONTEXT` lines that would hold row values or a role password |
 
 - **Console limits.** Every service's console goes to Docker's `json-file` driver with `max-size` 10 MB and `max-file` 3, so the console of one service never takes more than 30 MB. These logs belong to the container: `down` removes them with it, and the files under `logs/` stay.
 - **Folders.** The bind mounts never create a missing host folder. `create-dev-env.mjs` creates `logs/api/` and `logs/notifications/`, and `up` stops with "bind source path does not exist" when one is missing.

@@ -17,6 +17,7 @@ x-hardened: &hardened
 services:
   db:
     image: postgres:17.11-trixie
+    command: ["postgres", "-c", "log_min_error_statement=panic", "-c", "log_error_verbosity=terse"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
