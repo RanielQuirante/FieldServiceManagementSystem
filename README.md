@@ -11,7 +11,7 @@ FieldService is a field service management system. Administrators create service
 ## Features
 
 - **Administrators:** sign in, a dashboard with status counts and live activity, a jobs list with filters, job creation, assignment and cancellation, job details with the status history, inspection reports, and a technicians page.
-- **Technicians:** sign in, jobs grouped by day, job details with navigation to the site, status changes with a reason for each hold, a checklist inspection with readings and fault notes, and review and submit. Jobs already loaded stay readable offline.
+- **Technicians:** sign in, jobs grouped by day, job details with navigation to the site, status changes with a reason for each hold, a checklist inspection with readings and fault notes, and review and submit. The jobs list and an open job stay readable offline.
 - **Real time:** status changes, assignments and new jobs appear on open dashboards within a second, without a reload.
 - **Accessibility:** screen reader support with TalkBack on Android, Narrator on Windows and screen readers in the browser; full keyboard use; large text sizes.
 

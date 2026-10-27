@@ -5,7 +5,7 @@ This walkthrough shows FieldService end to end with the seeded demo data: an adm
 ## Before you start
 
 1. Set up the repository as described in [development.md](development.md), including the one-time `create-dev-env.mjs` run.
-2. Start the containers with the dashboard: `docker compose -f infrastructure/docker-compose.yml --profile full up -d --wait`. The dashboard is at http://127.0.0.1:8081, and the API at http://127.0.0.1:5080.
+2. Build and start the containers with the dashboard: `docker compose -f infrastructure/docker-compose.yml --profile full up -d --build --wait`, then wait until the API is ready: `curl --fail --silent --show-error --retry 30 --retry-delay 2 --retry-all-errors http://127.0.0.1:5080/health/ready`. The dashboard is at http://127.0.0.1:8081, and the API at http://127.0.0.1:5080.
 3. Start the technician app in a Debug build ([development.md](development.md#6-run-the-technician-app)): on the Android emulator it calls the API at `10.0.2.2:5080`, and on Windows at `localhost:5080`.
 4. Show the demo password once, at your own terminal: `node infrastructure/scripts/create-dev-env.mjs --show-demo-password`. Every demo account uses it.
 
@@ -27,11 +27,11 @@ Sign in to the dashboard as Dana. The dashboard shows today's status counts, the
 
 ### 2. Assign a job
 
-Open **Jobs** and select **JOB-1051**, "Replace faulty breaker panel", which has no technician. In the assign panel choose **Aisha Karim** and assign. The job's status changes to Assigned, and the history records who assigned it and when.
+Open **Jobs** and select **JOB-1051**, "Replace faulty breaker panel", which has no technician. In the assign panel choose **Aisha Karim** and assign. The job's status changes to Assigned, and the history records the assignment to Aisha Karim and its time.
 
 ### 3. Create a job
 
-Open **New job**, fill in a title, customer, site address, priority, checklist template and schedule, and create it. Leaving the site address empty shows the field's error. The new job takes the next number, JOB-1056, and appears in the list with no technician.
+Open **New job**, fill in a title, description, customer, site address, priority, checklist template and schedule, and create it. Leaving the site address empty shows the field's error. The new job takes the next number, JOB-1056, and appears in the list with no technician.
 
 ### 4. The technician's day
 
@@ -55,17 +55,17 @@ On the dashboard, open JOB-1056, the job you created, choose **Cancel job**, giv
 
 ### 8. Real-time recovery
 
-Stop the notification service: `docker compose -f infrastructure/docker-compose.yml stop notifications`. After a few seconds the dashboard shows **Reconnecting**, then **Live updates paused**. Change a job in the technician app; the change still saves. Start the service again with `docker compose -f infrastructure/docker-compose.yml start notifications`. The dashboard shows **Back online** and refetches, so the change you made is there.
+Stop the notification service: `docker compose -f infrastructure/docker-compose.yml stop notifications`. The live indicator shows **Reconnecting** at once, and **Live updates paused** after 30 seconds. Change a job in the technician app; the change still saves. Start the service again with `docker compose -f infrastructure/docker-compose.yml start notifications`. The dashboard shows **Back online** and refetches, so the change you made is there.
 
 ### 9. Offline in the technician app
 
-Turn on airplane mode on the emulator, or disconnect the Windows device from the network. The app shows the offline banner with the time the jobs were loaded, and the loaded jobs stay readable. Turn the network back on and choose **Try again**.
+Turn on airplane mode on the emulator, or disconnect the Windows device from the network. The app shows the offline banner with the time the jobs were loaded. The loaded list stays readable, and so does a job that is already open. Turn the network back on: the app reloads the jobs by itself. While the banner shows, **Try again** retries at once.
 
 ## Reset the demo data
 
 The demo changes the data, so reset it before the next run.
 
-- **Containers:** stop the stack and delete its database volume with `docker compose -f infrastructure/docker-compose.yml --profile full down -v`, then start it again with `docker compose -f infrastructure/docker-compose.yml --profile full up -d --wait`. The API seeds the demo data again on the empty database. `-v` deletes only this project's database volume.
+- **Containers:** stop the stack and delete its database volume with `docker compose -f infrastructure/docker-compose.yml --profile full down -v`, then start it again with `docker compose -f infrastructure/docker-compose.yml --profile full up -d --wait`. The API seeds the demo data again on the empty database. `-v` deletes the Compose database volume, `fieldservice-pgdata`, and nothing else; the local server's database is not affected.
 - **Local database:** run the VS Code task **db: reset**, or its terminal equivalent in [development.md](development.md#resets). The next API start seeds the demo data again.
 
 The demo times are relative to the seed day, so a reset also brings the schedule back to today.

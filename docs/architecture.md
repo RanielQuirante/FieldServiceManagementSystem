@@ -374,7 +374,7 @@ sequenceDiagram
     Page->>Rep: An uncaught error, an unhandled rejection or a router error
     Rep-->>Page: An error toast at once, with the failed request's reference when there is one
     opt an administrator is signed in, the error is new, fewer than 10 were sent in the last 60 seconds, and no pause after a 429 is running
-        Note over Rep: A failed request is described by its status and code only; quoted text, query strings,<br/>tokens and email addresses are removed; the stack is reduced to its frames; the route is the path only
+        Note over Rep: A failed request is described by its status and code only. Quoted text, query strings,<br/>tokens and email addresses are removed, the stack is reduced to its frames, and the route is the path only
         Rep->>Api: POST /api/client-errors with a new X-Correlation-ID
         Note over Api: Administrator policy, 10 a minute per user (429), 8 KB (413), the fixed members (400)
         Api->>Api: Scrub the text members again, ignore unknown members
